@@ -1,0 +1,24 @@
+{
+  "name": "agentbase",
+  "private": true,
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "preview": "turbo run preview",
+    "start:prod": "turbo run start:prod",
+    "lint": "turbo run lint",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check-types": "turbo run check-types"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "prettier": "^3.7.4",
+    "turbo": "^2.9.5",
+    "typescript": "6.0.2"
+  },
+  "packageManager": "pnpm@9.0.0",
+  "engines": {
+    "node": ">=20.19.0"
+  }
+}

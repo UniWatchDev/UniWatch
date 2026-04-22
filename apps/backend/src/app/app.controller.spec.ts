@@ -1,0 +1,25 @@
+import { Test } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { AppController } from '@/app/app.controller';
+import { AppService } from '@/app/app.service';
+
+describe('AppController', () => {
+  let appController: AppController;
+
+  beforeEach(async () => {
+    const app: TestingModule = await Test.createTestingModule({
+      controllers: [AppController],
+      providers: [AppService]
+    }).compile();
+
+    appController = app.get<AppController>(AppController);
+  });
+
+  describe('root', () => {
+    it('should return the starter health message', () => {
+      expect(appController.getRoot()).toEqual({
+        message: 'agentbase backend is running'
+      });
+    });
+  });
+});

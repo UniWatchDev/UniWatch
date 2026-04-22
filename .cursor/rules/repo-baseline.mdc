@@ -1,0 +1,13 @@
+---
+description: Repo-wide starter expectations
+alwaysApply: true
+---
+
+# agentbase baseline
+
+- Treat this repository as a reusable starter, not a product-specific app.
+- Keep human-facing copy generic and easy to rename.
+- Preserve internal `@repo/*` package scopes unless explicitly asked to rename them.
+- Prefer shared config changes over per-app drift.
+- When workflow, structure, or standards change, update the relevant README, `AGENTS.md`, `CLAUDE.md`, and `.cursor/rules` files in the same change.
+- Before claiming success, verify the repo with the appropriate commands such as `pnpm lint` and `pnpm check-types`.

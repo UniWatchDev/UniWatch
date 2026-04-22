@@ -1,0 +1,16 @@
+---
+description: Next.js 16 App Router — Server Components, routing, metadata, data fetching
+alwaysApply: true
+---
+
+# Next.js patterns (Next.js 16, App Router)
+
+- **Server Components by default**: Every component is a Server Component unless it needs interactivity, browser APIs, or hooks. Only add `'use client'` when you have a concrete reason.
+- **Push client boundaries down**: When a page needs one interactive widget, wrap that widget in `'use client'` — not the entire page. Keep the client boundary as small and as low in the tree as possible.
+- **App Router file conventions**: Use `layout.tsx` for shared shells, `page.tsx` for route content, `loading.tsx` for Suspense fallbacks, `error.tsx` for error boundaries, `not-found.tsx` for 404 states.
+- **Data fetching in Server Components**: Fetch data in `async` Server Components using `fetch` or direct database/service calls. Never fetch data in client components via `useEffect` when a Server Component could do it.
+- **Dynamic metadata**: Use `generateMetadata` for dynamic SEO (titles, descriptions, OpenGraph). Do not hardcode `<title>` or `<meta>` tags in JSX.
+- **Use framework components**: `next/image` for images (automatic optimization, lazy loading), `next/link` for navigation (client-side transitions), `next/font` for font loading (no external stylesheet links).
+- **Route handlers**: Use `route.ts` files for API endpoints within the App Router. Keep them thin — parse input, call shared service logic, return a response.
+- **Avoid client-side data fetching patterns**: Do not reach for SWR, React Query, or `useEffect`-based fetching for data that is available at request time. Server Components and `fetch` with caching are the primary data layer.
+- **Streaming and partial rendering**: Use nested `Suspense` boundaries to stream parts of the page independently. Do not block the entire page on the slowest data source.

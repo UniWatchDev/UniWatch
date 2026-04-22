@@ -1,0 +1,22 @@
+{
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "moduleNameMapper": {
+    "^@/(.*)$": "<rootDir>/../src/$1",
+    "^@repo/schemas/notes$": "<rootDir>/../../../packages/schemas/src/notes/notes.schemas.ts",
+    "^@repo/schemas/health$": "<rootDir>/../../../packages/schemas/src/health/health.schemas.ts",
+    "^@repo/schemas/root$": "<rootDir>/../../../packages/schemas/src/root/root.schemas.ts",
+    "^@repo/schemas/errors$": "<rootDir>/../../../packages/schemas/src/errors/problem-details.schemas.ts"
+  },
+  "rootDir": ".",
+  "testEnvironment": "node",
+  "testRegex": ".e2e-spec.ts$",
+  "forceExit": true,
+  "transform": {
+    "^.+\\.(t|j)s$": [
+      "ts-jest",
+      {
+        "tsconfig": "<rootDir>/../tsconfig.spec.json"
+      }
+    ]
+  }
+}

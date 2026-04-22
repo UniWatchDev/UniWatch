@@ -1,0 +1,15 @@
+# Dependencies
+node_modules
+
+# Framework and build outputs
+.next
+.turbo
+.vercel
+build
+coverage
+dist
+out
+*.tsbuildinfo
+
+# Generated lockfiles
+pnpm-lock.yaml
