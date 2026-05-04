@@ -7,6 +7,7 @@ import { AppService } from '@/app/app.service';
 import { validateEnv } from '@/utils/env.validation';
 import { HealthModule } from '@/health/health.module';
 import { NotesModule } from '@/notes/notes.module';
+import { RealtimeModule } from '@/realtime/realtime.module';
 import { HttpExceptionFilter } from '@/filters/http-exception.filter';
 import { RequestIdMiddleware } from '@/middleware/request-id.middleware';
 
@@ -26,7 +27,8 @@ const envFilePath = [
       validate: validateEnv
     }),
     HealthModule,
-    NotesModule
+    NotesModule,
+    RealtimeModule
   ],
   controllers: [AppController],
   providers: [
