@@ -41,7 +41,7 @@ src/
     auth.module.ts       — AuthModule
     auth.controller.ts   — POST register, login, refresh, logout; GET me (HttpOnly cookies + JwtAuthGuard)
     auth.service.ts      — in-memory users + refresh sessions; bcrypt + JwtService
-    auth.dto.ts          — Register + login Zod DTOs
+    auth.dto.ts          — nestjs-zod DTOs wrapping `@repo/schemas/auth`
     auth.consts.ts       — cookie names for access / refresh tokens
     auth.types.ts        — JwtAccessPayload + global `Express.Request` merge (`authPayload`)
 test/
