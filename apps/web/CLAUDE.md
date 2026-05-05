@@ -10,7 +10,8 @@ src/app/
   layout.tsx               — Server Component: root layout, loads Fraunces + Geist + Geist_Mono + IBM_Plex_Mono via next/font
   page.tsx                 — Server Component: magazine-editorial layout
   health-check.tsx         — Client: auto-pings /api/health, dot + latency
-  notes-panel.tsx          — Client: full CRUD, styled as "Letters" column
+  auth-panel.tsx           — Client: auth flows (register/login/refresh/me/logout), contracts + cookies
+  notes-panel.tsx          — Client: full CRUD, styled as "Letters" column (optional; not on home page)
   package-verification.tsx — Client: static probes of every @repo/* export + live backend
   endpoint-explorer.tsx    — Client: every EndpointContract with Try button + JSON drawer
   globals.css              — Tailwind v4 + @theme inline (editorial tokens + keyframes)
@@ -20,7 +21,7 @@ src/app/
 ## Server vs Client boundary
 
 - `layout.tsx` and `page.tsx` are **Server Components** — no hooks, no interactivity.
-- `health-check.tsx` and `notes-panel.tsx` are **Client Components** (`'use client'`) — they own all interactive state.
+- `health-check.tsx`, `auth-panel.tsx`, `notes-panel.tsx`, `package-verification.tsx`, and `endpoint-explorer.tsx` are **Client Components** (`'use client'`) — they own interactive state.
 - Push `"use client"` boundaries down as far as possible.
 
 ## Next.js 16
