@@ -22,6 +22,8 @@ Run before claiming work is complete:
 pnpm lint && pnpm check-types && pnpm build
 ```
 
+Do not commit `.pnpm-store/` (pnpm’s local cache); it is gitignored — see **Repository hygiene** in `AGENTS.md`.
+
 ## Code standards
 
 ### TypeScript
