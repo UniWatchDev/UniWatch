@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  ServiceUnavailableException,
   UnauthorizedException
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -27,6 +28,7 @@ import type {
   VerifyEmailResponse
 } from '@/auth/auth.dto';
 import type { JwtAccessPayload } from '@/auth/auth.types';
+import { MailService } from '@/mail/mail.service';
 import type { Env } from '@/utils/env.validation';
 import { parseDurationToMs } from '@/utils/parse-duration-ms';
 
@@ -83,11 +85,17 @@ export class AuthService {
 
   constructor(
     private readonly jwtService: JwtService,
-    private readonly config: ConfigService<Env, true>
+    private readonly config: ConfigService<Env, true>,
+    private readonly mail: MailService
   ) {}
 
   private debugEmailTokens(): boolean {
     return this.config.get('AUTH_DEBUG_EMAIL_TOKENS', { infer: true });
+  }
+
+  /** API `debug` codes only when debug flag is on and SMTP is off (codes are never duplicated in email + JSON). */
+  private includeEmailDebugInApi(): boolean {
+    return this.debugEmailTokens() && !this.mail.isSmtpConfigured();
   }
 
   private putEmailVerification(emailKey: string): {
@@ -182,6 +190,16 @@ export class AuthService {
 
     const { code, expiresAtIso } = this.putEmailVerification(emailKey);
 
+    if (this.mail.isSmtpConfigured()) {
+      try {
+        await this.mail.sendEmailVerification(row.email, code, expiresAtIso);
+      } catch {
+        throw new ServiceUnavailableException(
+          'Could not send verification email; try again later'
+        );
+      }
+    }
+
     const base: RegisterResponse = {
       userId,
       userName: row.userName,
@@ -191,7 +209,7 @@ export class AuthService {
       emailVerified: false
     };
 
-    if (!this.debugEmailTokens()) {
+    if (!this.includeEmailDebugInApi()) {
       return base;
     }
 
@@ -241,7 +259,7 @@ export class AuthService {
     };
   }
 
-  resendVerification(body: ResendVerificationBody): AuthNonEnumeratingAck {
+  async resendVerification(body: ResendVerificationBody): Promise<AuthNonEnumeratingAck> {
     const emailKey = body.email;
     const userId = this.userIdByEmail.get(emailKey);
     if (userId === undefined) {
@@ -253,7 +271,18 @@ export class AuthService {
     }
 
     const { code, expiresAtIso } = this.putEmailVerification(emailKey);
-    if (!this.debugEmailTokens()) {
+
+    if (this.mail.isSmtpConfigured()) {
+      try {
+        await this.mail.sendEmailVerification(user.email, code, expiresAtIso);
+      } catch {
+        throw new ServiceUnavailableException(
+          'Could not send verification email; try again later'
+        );
+      }
+    }
+
+    if (!this.includeEmailDebugInApi()) {
       return { ok: true, message: AUTH_RESEND_ACK_MESSAGE };
     }
     return {
@@ -266,7 +295,7 @@ export class AuthService {
     };
   }
 
-  forgotPassword(body: ForgotPasswordBody): ForgotPasswordAck {
+  async forgotPassword(body: ForgotPasswordBody): Promise<ForgotPasswordAck> {
     const emailKey = body.email;
     const userId = this.userIdByEmail.get(emailKey);
     if (userId === undefined) {
@@ -280,7 +309,17 @@ export class AuthService {
     this.clearPasswordResetForUser(userId);
     const { token, expiresAtIso } = this.putPasswordReset(userId);
 
-    if (!this.debugEmailTokens()) {
+    if (this.mail.isSmtpConfigured()) {
+      try {
+        await this.mail.sendPasswordReset(user.email, token, expiresAtIso);
+      } catch {
+        throw new ServiceUnavailableException(
+          'Could not send password reset email; try again later'
+        );
+      }
+    }
+
+    if (!this.includeEmailDebugInApi()) {
       return { ok: true, message: AUTH_RESEND_ACK_MESSAGE };
     }
     return {

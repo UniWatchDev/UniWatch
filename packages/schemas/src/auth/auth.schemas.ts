@@ -1,5 +1,9 @@
 import { email, z } from 'zod';
 
+function stripNullBytes(value: string): string {
+  return value.replace(/\u0000/g, '');
+}
+
 /** Accepts +9725XXXXXXXX, 9725XXXXXXXX, or 05XXXXXXXX (spaces/hyphens stripped). */
 function normalizeIsraeliMobile(raw: string): string {
   const compact = raw.trim().replace(/[\s-]/g, '');
@@ -30,16 +34,22 @@ export const registerBodySchema = z.strictObject({
   userName: z
     .string()
     .trim()
-    .min(3, 'Username must be at least 3 characters')
-    .max(32, 'Username must be at most 32 characters')
-    .regex(
-      /^[a-zA-Z0-9_]+$/,
-      'Username may only contain letters, numbers, and underscores'
+    .transform(stripNullBytes)
+    .pipe(
+      z
+        .string()
+        .min(3, 'Username must be at least 3 characters')
+        .max(32, 'Username must be at most 32 characters')
+        .regex(
+          /^[a-zA-Z0-9_]+$/,
+          'Username may only contain letters, numbers, and underscores'
+        )
     ),
 
   phoneNumber: z
     .string()
     .trim()
+    .transform(stripNullBytes)
     .transform(normalizeIsraeliMobile)
     .pipe(
       z
@@ -53,10 +63,11 @@ export const registerBodySchema = z.strictObject({
   email: z
     .string()
     .trim()
-    .toLowerCase()
+    .transform(stripNullBytes)
+    .transform((value) => value.toLowerCase())
     .pipe(email('Enter a valid email address')),
 
-  password: passwordSchema
+  password: z.string().transform(stripNullBytes).pipe(passwordSchema)
 });
 
 export type RegisterBody = z.infer<typeof registerBodySchema>;

@@ -214,11 +214,13 @@ export class AuthController {
   @ZodResponse({
     status: 202,
     description:
-      'Non-enumerating ack; optional `debug` when AUTH_DEBUG_EMAIL_TOKENS and account is unverified',
+      'Non-enumerating ack; optional `debug` when AUTH_DEBUG_EMAIL_TOKENS, SMTP off, and account is unverified',
     type: AuthNonEnumeratingAckDto
   })
-  resendVerification(@Body() body: ResendVerificationDto): AuthNonEnumeratingAck {
-    return this.authService.resendVerification(body);
+  async resendVerification(
+    @Body() body: ResendVerificationDto
+  ): Promise<AuthNonEnumeratingAck> {
+    return await this.authService.resendVerification(body);
   }
 
   @Post(AUTH_ROUTE_FORGOT_PASSWORD)
@@ -226,11 +228,11 @@ export class AuthController {
   @ZodResponse({
     status: 202,
     description:
-      'Non-enumerating ack; optional `debug.passwordResetToken` when AUTH_DEBUG_EMAIL_TOKENS and a verified account exists',
+      'Non-enumerating ack; optional `debug.passwordResetToken` when AUTH_DEBUG_EMAIL_TOKENS and SMTP off',
     type: ForgotPasswordAckDto
   })
-  forgotPassword(@Body() body: ForgotPasswordDto): ForgotPasswordAck {
-    return this.authService.forgotPassword(body);
+  async forgotPassword(@Body() body: ForgotPasswordDto): Promise<ForgotPasswordAck> {
+    return await this.authService.forgotPassword(body);
   }
 
   @Post(AUTH_ROUTE_RESET_PASSWORD)

@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
   Param,
   Patch,
   Post,
@@ -11,6 +12,7 @@ import {
 import { ApiTags } from '@nestjs/swagger';
 import { ZodResponse } from 'nestjs-zod';
 import type { Note, DeleteNoteResponse } from '@repo/schemas/notes';
+
 import {
   CreateNoteDto,
   UpdateNoteDto,
@@ -39,20 +41,27 @@ export class NotesController {
   }
 
   @Post()
+  @HttpCode(201)
   @ZodResponse({ status: 201, description: 'Create a note', type: NoteDto })
   create(@Body() body: CreateNoteDto): Note {
     return this.notesService.create(body);
   }
 
   @Put(':id')
-  @ZodResponse({ status: 200, description: 'Replace a note', type: NoteDto })
-  update(@Param() params: NoteIdParamsDto, @Body() body: UpdateNoteDto): Note {
+  @ZodResponse({ status: 200, description: 'Update a note', type: NoteDto })
+  update(
+    @Param() params: NoteIdParamsDto,
+    @Body() body: UpdateNoteDto
+  ): Note {
     return this.notesService.update(params.id, body);
   }
 
   @Patch(':id')
   @ZodResponse({ status: 200, description: 'Patch a note', type: NoteDto })
-  patch(@Param() params: NoteIdParamsDto, @Body() body: PatchNoteDto): Note {
+  patch(
+    @Param() params: NoteIdParamsDto,
+    @Body() body: PatchNoteDto
+  ): Note {
     return this.notesService.patch(params.id, body);
   }
 

@@ -10,7 +10,7 @@ Reusable monorepo baseline — not a product-specific app. Keep the starter gene
 
 - `apps/frontend` — Vite 8 + React 19 client (port 5173 via `VITE_PORT`)
 - `apps/web` — Next.js 16 App Router (port 5172 hardcoded in scripts); home at `/`, cookie-gated **`/app`** (client `GET /api/auth/me`, redirect on `401`), auth panel includes forgot/reset like Vite.
-- `apps/backend` — NestJS 11 API under `/api` prefix (port 3000 via `PORT` env, Swagger UI at `/docs`)
+- `apps/backend` — NestJS 11 API under `/api` prefix (port 3000 via `PORT` env, Swagger UI at `/docs`).
 - `apps/mobile` — empty placeholder
 
 ### Shared packages
