@@ -128,7 +128,7 @@ describe('Backend bootstrap (e2e)', () => {
     await agent
       .post(AUTH_LOGIN_ENDPOINT)
       .send({
-        email: registerBody.email,
+        identifier: registerBody.email,
         password: registerBody.password
       })
       .expect(200);
@@ -152,7 +152,7 @@ describe('Backend bootstrap (e2e)', () => {
     await agent
       .post(AUTH_LOGIN_ENDPOINT)
       .send({
-        email: registerBody.email,
+        identifier: registerBody.email,
         password: registerBody.password
       })
       .expect(200);
@@ -169,12 +169,40 @@ describe('Backend bootstrap (e2e)', () => {
     await agent
       .post(AUTH_LOGIN_ENDPOINT)
       .send({
-        email: registerBody.email,
+        identifier: registerBody.email,
         password: registerBody.password
       })
       .expect(200);
     await agent.post(AUTH_LOGOUT_ENDPOINT).expect(204);
     await agent.post(AUTH_REFRESH_ENDPOINT).expect(401);
+  });
+
+  it('auth: two accounts may share the same phone number', async () => {
+    const agent = request.agent(app.getHttpServer());
+    const sharedPhone = `05${String(Math.floor(Math.random() * 100_000_000)).padStart(8, '0')}`;
+    const first = uniqueRegisterBody('p');
+    const second = uniqueRegisterBody('q');
+    await agent
+      .post(AUTH_REGISTER_ENDPOINT)
+      .send({ ...first, phoneNumber: sharedPhone })
+      .expect(201);
+    await agent
+      .post(AUTH_REGISTER_ENDPOINT)
+      .send({ ...second, phoneNumber: sharedPhone })
+      .expect(201);
+  });
+
+  it('auth: login accepts username as identifier', async () => {
+    const agent = request.agent(app.getHttpServer());
+    const registerBody = uniqueRegisterBody('c');
+    await agent.post(AUTH_REGISTER_ENDPOINT).send(registerBody).expect(201);
+    await agent
+      .post(AUTH_LOGIN_ENDPOINT)
+      .send({
+        identifier: registerBody.userName,
+        password: registerBody.password
+      })
+      .expect(200);
   });
 
   it('auth: refresh without cookies returns 401', async () => {

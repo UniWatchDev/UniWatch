@@ -41,8 +41,6 @@ export class AuthService {
   private readonly userIdByUserName = new Map<string, number>();
   /** email → userId */
   private readonly userIdByEmail = new Map<string, number>();
-  /** E.164 phone → userId */
-  private readonly userIdByPhoneNumber = new Map<string, number>();
   /** opaque refresh token → session */
   private readonly refreshByToken = new Map<string, RefreshSession>();
 
@@ -54,16 +52,12 @@ export class AuthService {
   async register(body: RegisterBody): Promise<RegisterResponse> {
     const emailKey = body.email;
     const userNameKey = body.userName.toLowerCase();
-    const phoneKey = body.phoneNumber;
 
     if (this.userIdByEmail.has(emailKey)) {
       throw new ConflictException('Email already registered');
     }
     if (this.userIdByUserName.has(userNameKey)) {
       throw new ConflictException('Username already taken');
-    }
-    if (this.userIdByPhoneNumber.has(phoneKey)) {
-      throw new ConflictException('Phone number already registered');
     }
 
     const passwordHash = await bcrypt.hash(body.password, 12);
@@ -82,7 +76,6 @@ export class AuthService {
     this.userByUserId.set(userId, row);
     this.userIdByEmail.set(emailKey, userId);
     this.userIdByUserName.set(userNameKey, userId);
-    this.userIdByPhoneNumber.set(phoneKey, userId);
 
     return {
       userId,
@@ -94,17 +87,20 @@ export class AuthService {
   }
 
   async login(body: LoginBody): Promise<LoginWithTokens> {
-    const userId = this.userIdByEmail.get(body.email);
+    const key = body.identifier;
+    const userId = key.includes('@')
+      ? this.userIdByEmail.get(key)
+      : this.userIdByUserName.get(key);
     if (userId === undefined) {
-      throw new UnauthorizedException('Invalid email or password');
+      throw new UnauthorizedException('Invalid email, username, or password');
     }
     const user = this.userByUserId.get(userId);
     if (!user) {
-      throw new UnauthorizedException('Invalid email or password');
+      throw new UnauthorizedException('Invalid email, username, or password');
     }
     const passwordOk = await bcrypt.compare(body.password, user.passwordHash);
     if (!passwordOk) {
-      throw new UnauthorizedException('Invalid email or password');
+      throw new UnauthorizedException('Invalid email, username, or password');
     }
 
     const accessToken = await this.jwtService.signAsync(

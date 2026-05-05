@@ -30,7 +30,7 @@ export function AuthPanel() {
     () => `u${String(Date.now())}@example.com`
   );
   const [password, setPassword] = useState('Secret1a');
-  const [loginEmail, setLoginEmail] = useState(
+  const [loginIdentifier, setLoginIdentifier] = useState(
     () => `u${String(Date.now())}@example.com`
   );
   const [loginPassword, setLoginPassword] = useState('Secret1a');
@@ -70,7 +70,7 @@ export function AuthPanel() {
       setStatus(
         `Registered as ${data.userName} (${data.email}). You can log in next.`
       );
-      setLoginEmail(data.email);
+      setLoginIdentifier(data.email);
     } catch (err) {
       setError(formatErr(err));
     }
@@ -81,7 +81,7 @@ export function AuthPanel() {
     setSessionUser(null);
     try {
       const body = loginAuthContract.bodySchema.parse({
-        email: loginEmail,
+        identifier: loginIdentifier,
         password: loginPassword
       });
       const response = await fetch(`${API_BASE_URL}${loginAuthContract.path}`, {
@@ -182,6 +182,10 @@ export function AuthPanel() {
           <p className="mono mb-2 text-[11px] font-semibold uppercase tracking-wider text-[color:var(--color-mute)]">
             Register
           </p>
+          <p className="mono mb-2 text-[10px] leading-snug text-[color:var(--color-mute)]">
+            Email and username must be unique. Several accounts may use the same
+            phone number.
+          </p>
           <div className="grid gap-2">
             <label className="grid gap-0.5">
               <span className="mono text-[10px] text-[color:var(--color-mute)]">
@@ -251,13 +255,13 @@ export function AuthPanel() {
           <div className="grid gap-2">
             <label className="grid gap-0.5">
               <span className="mono text-[10px] text-[color:var(--color-mute)]">
-                email
+                email or username
               </span>
               <input
                 className="rounded-xl border border-white/20 bg-white/80 px-3 py-2 text-[13px] text-[color:var(--color-ink)] outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-violet)]"
-                value={loginEmail}
+                value={loginIdentifier}
                 onChange={(e) => {
-                  setLoginEmail(e.target.value);
+                  setLoginIdentifier(e.target.value);
                 }}
               />
             </label>

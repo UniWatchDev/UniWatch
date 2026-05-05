@@ -17,6 +17,7 @@ function normalizeIsraeliMobile(raw: string): string {
   return compact;
 }
 
+/** `email` and `userName` must be unique per server; `phoneNumber` may repeat across accounts. */
 export const registerBodySchema = z.strictObject({
   userName: z
     .string()
@@ -67,12 +68,32 @@ export const registerResponseSchema = z.strictObject({
 
 export type RegisterResponse = z.infer<typeof registerResponseSchema>;
 
+/**
+ * Login with email (contains `@`, validated as email) or username
+ * (3–32 chars, same character rules as registration).
+ */
 export const loginBodySchema = z.strictObject({
-  email: z
+  identifier: z
     .string()
     .trim()
-    .toLowerCase()
-    .pipe(email('Enter a valid email address')),
+    .min(1, 'Email or username is required')
+    .transform((raw) => raw.toLowerCase())
+    .refine(
+      (value) => {
+        if (value.includes('@')) {
+          return email().safeParse(value).success;
+        }
+        return (
+          value.length >= 3 &&
+          value.length <= 32 &&
+          /^[a-zA-Z0-9_]+$/.test(value)
+        );
+      },
+      {
+        message:
+          'Use a valid email, or a username of 3–32 letters, numbers, or underscores'
+      }
+    ),
   password: z.string().min(1, 'Password is required')
 });
 

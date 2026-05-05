@@ -112,7 +112,7 @@ export class AuthController {
   @ZodResponse({
     status: 200,
     description:
-      'Login success; access and refresh tokens are also set as HttpOnly cookies',
+      'Login success; body uses `identifier` (email or username) + password. Sets HttpOnly access and refresh cookies.',
     type: LoginResponseDto
   })
   async login(

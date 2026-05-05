@@ -27,7 +27,7 @@ export const registerAuthContract: EndpointContract<
   bodySchema: registerBodySchema
 };
 
-/** POST `/api/auth/login` — JSON body; 200 + user JSON + HttpOnly auth cookies. */
+/** POST `/api/auth/login` — JSON `{ identifier, password }` (`identifier` = email or username); 200 + user JSON + HttpOnly auth cookies. */
 export const loginAuthContract: EndpointContract<LoginResponse, LoginBody> = {
   method: 'POST',
   path: AUTH_LOGIN_ENDPOINT,

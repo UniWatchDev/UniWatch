@@ -122,8 +122,8 @@ Fails fast at startup with formatted error messages on invalid config.
 | ------ | ---------------- | ---------------------------- | --------------------------------------------- |
 | GET    | `/api`           | `AppController.getRoot`      | `{ message: 'agentbase backend is running' }` |
 | GET    | `/api/health`    | `HealthController.getHealth` | `{ status: 'ok' \| 'error' }` (random demo)   |
-| POST   | `/api/auth/register` | `AuthController.register` | Register user; returns public profile JSON |
-| POST   | `/api/auth/login`    | `AuthController.login`    | Validates credentials; JSON `{ userId, userName, email }` + HttpOnly `access_token` + `refresh_token` cookies |
+| POST   | `/api/auth/register` | `AuthController.register` | Register user (`email` + `userName` unique; **phone may repeat**); returns public profile JSON |
+| POST   | `/api/auth/login`    | `AuthController.login`    | Body `{ identifier, password }` where `identifier` is **email or username**; JSON user + HttpOnly `access_token` + `refresh_token` cookies |
 | POST   | `/api/auth/refresh`  | `AuthController.refresh`  | Reads `refresh_token` cookie; returns JSON user + new cookies; **rotates** refresh (old token invalid) |
 | GET    | `/api/auth/me`       | `AuthController.getMe`    | Requires HttpOnly `access_token` cookie; returns `{ userId, userName, email }` |
 | POST   | `/api/auth/logout`   | `AuthController.logout`   | Revokes refresh session when cookie present; clears auth cookies (`204`) |
