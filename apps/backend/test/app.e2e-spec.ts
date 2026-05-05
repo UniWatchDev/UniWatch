@@ -7,14 +7,17 @@ import type { App } from 'supertest/types';
 import { randomBytes } from 'node:crypto';
 
 import {
+  AUTH_FORGOT_PASSWORD_ENDPOINT,
   AUTH_LOGIN_ENDPOINT,
   AUTH_LOGOUT_ENDPOINT,
   AUTH_ME_ENDPOINT,
   AUTH_REFRESH_ENDPOINT,
   AUTH_REGISTER_ENDPOINT,
   AUTH_RESEND_VERIFICATION_ENDPOINT,
+  AUTH_RESET_PASSWORD_ENDPOINT,
   AUTH_VERIFY_EMAIL_ENDPOINT
 } from '@repo/consts/auth';
+import { forgotPasswordAckSchema } from '@repo/schemas/auth';
 
 import { AppModule } from '@/app/app.module';
 import {
@@ -259,6 +262,55 @@ describe('Backend bootstrap (e2e)', () => {
       .expect(200);
   });
 
+  it('auth: forgot-password returns non-enumerating ack for unknown email', async () => {
+    const res = await request(app.getHttpServer())
+      .post(AUTH_FORGOT_PASSWORD_ENDPOINT)
+      .send({ email: 'nobody-forgot@example.com' })
+      .expect(202);
+    forgotPasswordAckSchema.parse(res.body as unknown);
+  });
+
+  it('auth: forgot + reset revokes refresh, bumps pv (old /me + refresh fail), login with new password works', async () => {
+    const agent = request.agent(app.getHttpServer());
+    const registerBody = uniqueRegisterBody('fp');
+    await registerAndVerifyEmail(agent, registerBody);
+    await agent
+      .post(AUTH_LOGIN_ENDPOINT)
+      .send({
+        identifier: registerBody.email,
+        password: registerBody.password
+      })
+      .expect(200);
+
+    const forgotRes = await agent
+      .post(AUTH_FORGOT_PASSWORD_ENDPOINT)
+      .send({ email: registerBody.email })
+      .expect(202);
+    const forgotParsed = forgotPasswordAckSchema.parse(forgotRes.body as unknown);
+    const resetToken = forgotParsed.debug?.passwordResetToken;
+    if (resetToken === undefined) {
+      throw new Error('e2e expects AUTH_DEBUG_EMAIL_TOKENS for forgot debug');
+    }
+
+    await agent
+      .post(AUTH_RESET_PASSWORD_ENDPOINT)
+      .send({ token: resetToken, newPassword: 'Secret2b' })
+      .expect(204);
+
+    await agent.get(AUTH_ME_ENDPOINT).expect(401);
+    await agent.post(AUTH_REFRESH_ENDPOINT).expect(401);
+
+    await agent
+      .post(AUTH_LOGIN_ENDPOINT)
+      .send({
+        identifier: registerBody.email,
+        password: 'Secret2b'
+      })
+      .expect(200);
+    const meAfter = await agent.get(AUTH_ME_ENDPOINT).expect(200);
+    loginResponseSchema.parse(meAfter.body as unknown);
+  });
+
   it('auth: refresh without cookies returns 401', async () => {
     await request(app.getHttpServer()).post(AUTH_REFRESH_ENDPOINT).expect(401);
   });
@@ -275,7 +327,7 @@ describe('Backend bootstrap (e2e, production mode)', () => {
     app = moduleFixture.createNestApplication();
     const realConfig = app.get(ConfigService<Env, true>);
     const prodConfig = {
-      get: (key: keyof Env) => {
+      get: (key: keyof Env): Env[keyof Env] => {
         if (key === 'NODE_ENV') {
           return 'production';
         }

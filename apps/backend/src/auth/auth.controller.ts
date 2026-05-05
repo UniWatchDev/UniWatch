@@ -16,26 +16,32 @@ import type { Request, Response } from 'express';
 
 import {
   AUTH_CONTROLLER_PATH,
+  AUTH_ROUTE_FORGOT_PASSWORD,
   AUTH_ROUTE_LOGIN,
   AUTH_ROUTE_LOGOUT,
   AUTH_ROUTE_ME,
   AUTH_ROUTE_REFRESH,
   AUTH_ROUTE_REGISTER,
   AUTH_ROUTE_RESEND_VERIFICATION,
+  AUTH_ROUTE_RESET_PASSWORD,
   AUTH_ROUTE_VERIFY_EMAIL
 } from '@repo/consts/auth';
 
 import { AUTH_ACCESS_COOKIE, AUTH_REFRESH_COOKIE } from '@/auth/auth.consts';
 import {
   AuthNonEnumeratingAckDto,
+  ForgotPasswordAckDto,
+  ForgotPasswordDto,
   LoginDto,
   LoginResponseDto,
   RegisterDto,
   RegisterResponseDto,
   ResendVerificationDto,
+  ResetPasswordDto,
   VerifyEmailDto,
   VerifyEmailResponseDto,
   type AuthNonEnumeratingAck,
+  type ForgotPasswordAck,
   type LoginResponse,
   type RegisterResponse,
   type VerifyEmailResponse
@@ -213,5 +219,23 @@ export class AuthController {
   })
   resendVerification(@Body() body: ResendVerificationDto): AuthNonEnumeratingAck {
     return this.authService.resendVerification(body);
+  }
+
+  @Post(AUTH_ROUTE_FORGOT_PASSWORD)
+  @HttpCode(202)
+  @ZodResponse({
+    status: 202,
+    description:
+      'Non-enumerating ack; optional `debug.passwordResetToken` when AUTH_DEBUG_EMAIL_TOKENS and a verified account exists',
+    type: ForgotPasswordAckDto
+  })
+  forgotPassword(@Body() body: ForgotPasswordDto): ForgotPasswordAck {
+    return this.authService.forgotPassword(body);
+  }
+
+  @Post(AUTH_ROUTE_RESET_PASSWORD)
+  @HttpCode(204)
+  async resetPassword(@Body() body: ResetPasswordDto): Promise<void> {
+    await this.authService.resetPassword(body);
   }
 }

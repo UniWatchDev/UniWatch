@@ -1,29 +1,38 @@
 import {
+  AUTH_FORGOT_PASSWORD_ENDPOINT,
   AUTH_LOGIN_ENDPOINT,
   AUTH_ME_ENDPOINT,
   AUTH_REFRESH_ENDPOINT,
   AUTH_REGISTER_ENDPOINT,
   AUTH_RESEND_VERIFICATION_ENDPOINT,
+  AUTH_RESET_PASSWORD_ENDPOINT,
   AUTH_VERIFY_EMAIL_ENDPOINT
 } from '@repo/consts/auth';
 import {
   authNonEnumeratingAckSchema,
+  forgotPasswordAckSchema,
+  forgotPasswordBodySchema,
   loginBodySchema,
   loginResponseSchema,
   registerBodySchema,
   registerResponseSchema,
   resendVerificationBodySchema,
+  resetPasswordBodySchema,
   verifyEmailBodySchema,
   verifyEmailResponseSchema,
   type AuthNonEnumeratingAck,
+  type ForgotPasswordAck,
+  type ForgotPasswordBody,
   type LoginBody,
   type LoginResponse,
   type RegisterBody,
   type RegisterResponse,
   type ResendVerificationBody,
+  type ResetPasswordBody,
   type VerifyEmailBody,
   type VerifyEmailResponse
 } from '@repo/schemas/auth';
+import { z } from 'zod';
 import type { EndpointContract } from '../shared/endpoint.js';
 
 /** POST `/api/auth/register` — JSON body; 201 + user profile (no cookies). */
@@ -87,4 +96,29 @@ export const resendVerificationAuthContract: EndpointContract<
   path: AUTH_RESEND_VERIFICATION_ENDPOINT,
   responseSchema: authNonEnumeratingAckSchema,
   bodySchema: resendVerificationBodySchema
+};
+
+/**
+ * POST `/api/auth/forgot-password` — `{ email }`; 202 + non-enumerating ack.
+ * Optional `debug.passwordResetToken` when `AUTH_DEBUG_EMAIL_TOKENS` and a verified account exists.
+ */
+export const forgotPasswordAuthContract: EndpointContract<
+  ForgotPasswordAck,
+  ForgotPasswordBody
+> = {
+  method: 'POST',
+  path: AUTH_FORGOT_PASSWORD_ENDPOINT,
+  responseSchema: forgotPasswordAckSchema,
+  bodySchema: forgotPasswordBodySchema
+};
+
+/** POST `/api/auth/reset-password` — `{ token, newPassword }`; 204 No Content. */
+export const resetPasswordAuthContract: EndpointContract<
+  unknown,
+  ResetPasswordBody
+> = {
+  method: 'POST',
+  path: AUTH_RESET_PASSWORD_ENDPOINT,
+  responseSchema: z.unknown(),
+  bodySchema: resetPasswordBodySchema
 };

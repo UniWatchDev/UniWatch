@@ -10,8 +10,9 @@
 | backend  | `JWT_SECRET`               | —             | Required, ≥32 chars                                                                                        |
 | backend  | `JWT_ACCESS_EXPIRES_IN`    | `15m`         | Zod-validated                                                                                              |
 | backend  | `JWT_REFRESH_EXPIRES_IN`   | `7d`          | Zod-validated                                                                                              |
-| backend  | `AUTH_DEBUG_EMAIL_TOKENS`  | `false`       | When `true`, register/resend may include `debug.emailVerificationCode` (never in production)               |
+| backend  | `AUTH_DEBUG_EMAIL_TOKENS`  | `false`       | When `true`, register/resend may include `debug.emailVerificationCode`; forgot-password may include `debug.passwordResetToken` (never in production)               |
 | backend  | `AUTH_EMAIL_VERIFICATION_EXPIRES_IN` | `15m` | TTL for 6-digit email verification codes                                                            |
+| backend  | `AUTH_PASSWORD_RESET_EXPIRES_IN` | `1h` | TTL for opaque forgot-password reset tokens                                                            |
 | frontend | `VITE_PORT`                | `5173`        | Read in `vite.config.ts`                                                                                   |
 | frontend | `VITE_API_BASE_URL`        | —             | Defined in `.env` examples but **not wired** — call sites use hardcoded `API_BASE_URL` from `@repo/consts` |
 | web      | `NEXT_PUBLIC_API_BASE_URL` | —             | Defined in `.env` examples but **not wired** — same hardcoded constant                                     |

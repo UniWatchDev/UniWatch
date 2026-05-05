@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import {
   STARTER_BYLINE,
   STARTER_DECK,
@@ -33,6 +34,12 @@ export default function Home() {
           </span>
         </div>
         <div className="mono small-caps flex items-baseline gap-6 text-[12px] text-[color:var(--color-mute)]">
+          <Link
+            className="text-[color:var(--color-accent)] underline-offset-2 hover:underline"
+            href="/app"
+          >
+            app
+          </Link>
           <span>{STARTER_VOLUME}</span>
           <span>{STARTER_ISSUE}</span>
           <span>{STARTER_ISSUE_DATE}</span>

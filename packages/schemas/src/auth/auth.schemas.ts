@@ -17,6 +17,14 @@ function normalizeIsraeliMobile(raw: string): string {
   return compact;
 }
 
+/** Shared password rules (register + reset). */
+export const passwordSchema = z
+  .string()
+  .min(8, 'Password must be at least 8 characters')
+  .max(128, 'Password is too long')
+  .regex(/[A-Z]/, 'Password must include at least one uppercase letter')
+  .regex(/\d/, 'Password must include at least one number');
+
 /** `email` and `userName` must be unique per server; `phoneNumber` may repeat across accounts. */
 export const registerBodySchema = z.strictObject({
   userName: z
@@ -48,12 +56,7 @@ export const registerBodySchema = z.strictObject({
     .toLowerCase()
     .pipe(email('Enter a valid email address')),
 
-  password: z
-    .string()
-    .min(8, 'Password must be at least 8 characters')
-    .max(128, 'Password is too long')
-    .regex(/[A-Z]/, 'Password must include at least one uppercase letter')
-    .regex(/\d/, 'Password must include at least one number')
+  password: passwordSchema
 });
 
 export type RegisterBody = z.infer<typeof registerBodySchema>;
@@ -162,3 +165,28 @@ export const verifyEmailResponseSchema = z.strictObject({
 });
 
 export type VerifyEmailResponse = z.infer<typeof verifyEmailResponseSchema>;
+
+/** Same shape as resend body (`{ email }`). */
+export const forgotPasswordBodySchema = resendVerificationBodySchema;
+
+export type ForgotPasswordBody = z.infer<typeof forgotPasswordBodySchema>;
+
+export const forgotPasswordAckSchema = z.strictObject({
+  ok: z.literal(true),
+  message: z.string(),
+  debug: z
+    .strictObject({
+      passwordResetToken: z.string().min(32),
+      passwordResetExpiresAt: z.string()
+    })
+    .optional()
+});
+
+export type ForgotPasswordAck = z.infer<typeof forgotPasswordAckSchema>;
+
+export const resetPasswordBodySchema = z.strictObject({
+  token: z.string().min(32, 'Token is required'),
+  newPassword: passwordSchema
+});
+
+export type ResetPasswordBody = z.infer<typeof resetPasswordBodySchema>;

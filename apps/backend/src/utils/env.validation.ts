@@ -19,6 +19,8 @@ const envSchema = z.object({
     .transform((value) => value === 'true' || value === '1' || value === 'yes'),
   /** TTL for email verification codes (e.g. `15m`, `24h`). */
   AUTH_EMAIL_VERIFICATION_EXPIRES_IN: z.string().default('15m'),
+  /** TTL for opaque password-reset tokens (e.g. `1h`, `24h`). */
+  AUTH_PASSWORD_RESET_EXPIRES_IN: z.string().default('1h'),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   /**
    * CORS allowed origins. `*` allows all (dev default). For production, set a

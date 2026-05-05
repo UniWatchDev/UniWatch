@@ -3,8 +3,10 @@
 import { useState } from 'react';
 import { API_BASE_URL } from '@repo/consts/api';
 import {
+  AUTH_FORGOT_PASSWORD_ENDPOINT,
   AUTH_LOGOUT_ENDPOINT,
   AUTH_RESEND_VERIFICATION_ENDPOINT,
+  AUTH_RESET_PASSWORD_ENDPOINT,
   AUTH_VERIFY_EMAIL_ENDPOINT
 } from '@repo/consts/auth';
 import {
@@ -16,7 +18,10 @@ import {
 import type { LoginResponse, RegisterResponse } from '@repo/schemas/auth';
 import {
   authNonEnumeratingAckSchema,
+  forgotPasswordAckSchema,
+  forgotPasswordBodySchema,
   resendVerificationBodySchema,
+  resetPasswordBodySchema,
   verifyEmailBodySchema,
   verifyEmailResponseSchema
 } from '@repo/schemas/auth';
@@ -72,6 +77,9 @@ export function AuthPanel() {
   const [loginPassword, setLoginPassword] = useState('Secret1a');
   const [verificationEmail, setVerificationEmail] = useState('');
   const [verificationCode, setVerificationCode] = useState('');
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [resetToken, setResetToken] = useState('');
+  const [resetNewPassword, setResetNewPassword] = useState('Secret2b');
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sessionUser, setSessionUser] = useState<LoginResponse | null>(null);
@@ -171,6 +179,64 @@ export function AuthPanel() {
         setVerificationCode(ack.debug.emailVerificationCode);
       }
       setStatus(ack.message);
+    } catch (err) {
+      setError(formatErr(err));
+    }
+  }
+
+  async function requestPasswordReset() {
+    clearFeedback();
+    try {
+      const body = forgotPasswordBodySchema.parse({
+        email: forgotEmail
+      });
+      const response = await fetch(
+        `${API_BASE_URL}${AUTH_FORGOT_PASSWORD_ENDPOINT}`,
+        {
+          ...FETCH_INIT,
+          method: 'POST',
+          headers: JSON_HEADERS,
+          body: JSON.stringify(body)
+        }
+      );
+      if (!response.ok) {
+        throw new Error(await readHttpErrorMessage(response));
+      }
+      const ack = forgotPasswordAckSchema.parse(
+        JSON.parse(await response.text()) as unknown
+      );
+      if (ack.debug !== undefined) {
+        setResetToken(ack.debug.passwordResetToken);
+      }
+      setStatus(ack.message);
+    } catch (err) {
+      setError(formatErr(err));
+    }
+  }
+
+  async function resetPasswordWithToken() {
+    clearFeedback();
+    try {
+      const body = resetPasswordBodySchema.parse({
+        token: resetToken,
+        newPassword: resetNewPassword
+      });
+      const response = await fetch(
+        `${API_BASE_URL}${AUTH_RESET_PASSWORD_ENDPOINT}`,
+        {
+          ...FETCH_INIT,
+          method: 'POST',
+          headers: JSON_HEADERS,
+          body: JSON.stringify(body)
+        }
+      );
+      if (response.status !== 204) {
+        throw new Error(await readHttpErrorMessage(response));
+      }
+      setSessionUser(null);
+      setStatus(
+        'Password updated — refresh sessions were revoked and old access tokens no longer work.'
+      );
     } catch (err) {
       setError(formatErr(err));
     }
@@ -420,6 +486,77 @@ export function AuthPanel() {
                 Resend
               </button>
             </div>
+          </div>
+        </div>
+
+        <div>
+          <p className="mono small-caps text-[10px] text-[color:var(--color-mute)]">
+            Forgot / reset password
+          </p>
+          <p className="mono mt-1 text-[10px] text-[color:var(--color-mute)]">
+            Non-enumerating forgot. With{' '}
+            <code className="text-[color:var(--color-ink)]">AUTH_DEBUG_EMAIL_TOKENS</code>, the API
+            may return <code className="text-[color:var(--color-ink)]">debug.passwordResetToken</code>{' '}
+            for local demos only.
+          </p>
+          <div className="mt-2 grid gap-2 border-b border-dotted border-[color:var(--color-rule)] pb-2">
+            <label className="grid gap-0.5">
+              <span className="mono text-[9px] text-[color:var(--color-mute)]">
+                email (forgot)
+              </span>
+              <input
+                className={inputClass}
+                value={forgotEmail}
+                onChange={(e) => {
+                  setForgotEmail(e.target.value);
+                }}
+              />
+            </label>
+            <button
+              type="button"
+              className="mono mt-1 w-fit border border-[color:var(--color-ink)] bg-[color:var(--color-ink)] px-3 py-1 text-[11px] text-[color:var(--color-paper)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--color-accent)]"
+              onClick={() => {
+                void requestPasswordReset();
+              }}
+            >
+              Request reset →
+            </button>
+            <label className="grid gap-0.5">
+              <span className="mono text-[9px] text-[color:var(--color-mute)]">
+                reset token
+              </span>
+              <input
+                className={`${inputClass} font-mono text-[10px]`}
+                value={resetToken}
+                onChange={(e) => {
+                  setResetToken(e.target.value);
+                }}
+                spellCheck={false}
+                autoComplete="off"
+              />
+            </label>
+            <label className="grid gap-0.5">
+              <span className="mono text-[9px] text-[color:var(--color-mute)]">
+                new password
+              </span>
+              <input
+                type="password"
+                className={inputClass}
+                value={resetNewPassword}
+                onChange={(e) => {
+                  setResetNewPassword(e.target.value);
+                }}
+              />
+            </label>
+            <button
+              type="button"
+              className="mono border border-[color:var(--color-rule)] bg-transparent px-2 py-1 text-[10px] text-[color:var(--color-ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--color-accent)]"
+              onClick={() => {
+                void resetPasswordWithToken();
+              }}
+            >
+              Apply new password
+            </button>
           </div>
         </div>
 

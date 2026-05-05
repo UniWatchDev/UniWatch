@@ -8,11 +8,15 @@ import { JwtService } from '@nestjs/jwt';
 import type { Request } from 'express';
 
 import { AUTH_ACCESS_COOKIE } from '@/auth/auth.consts';
+import { AuthService } from '@/auth/auth.service';
 import type { JwtAccessPayload } from '@/auth/auth.types';
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
-  constructor(private readonly jwtService: JwtService) {}
+  constructor(
+    private readonly jwtService: JwtService,
+    private readonly authService: AuthService
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest<Request>();
@@ -23,9 +27,13 @@ export class JwtAuthGuard implements CanActivate {
 
     try {
       const payload = await this.jwtService.verifyAsync<JwtAccessPayload>(token);
+      this.authService.assertAccessTokenClaims(payload);
       req.authPayload = payload;
       return true;
-    } catch {
+    } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
       throw new UnauthorizedException('Missing or invalid access token');
     }
   }

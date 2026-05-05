@@ -1,7 +1,8 @@
-/** JWT access token payload (signed claims). */
+/** JWT access token payload (signed claims). `pv` must match the user's `passwordVersion` or the token is rejected. */
 export type JwtAccessPayload = {
   sub: string;
   email: string;
+  pv: number;
 };
 
 declare global {

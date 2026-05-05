@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { API_BASE_URL } from '@repo/consts/api';
 import {
+  AUTH_FORGOT_PASSWORD_ENDPOINT,
   AUTH_LOGOUT_ENDPOINT,
   AUTH_RESEND_VERIFICATION_ENDPOINT,
+  AUTH_RESET_PASSWORD_ENDPOINT,
   AUTH_VERIFY_EMAIL_ENDPOINT
 } from '@repo/consts/auth';
 import {
@@ -14,7 +16,10 @@ import {
 import type { LoginResponse, RegisterResponse } from '@repo/schemas/auth';
 import {
   authNonEnumeratingAckSchema,
+  forgotPasswordAckSchema,
+  forgotPasswordBodySchema,
   resendVerificationBodySchema,
+  resetPasswordBodySchema,
   verifyEmailBodySchema,
   verifyEmailResponseSchema
 } from '@repo/schemas/auth';
@@ -67,6 +72,9 @@ export function AuthPanel() {
   const [loginPassword, setLoginPassword] = useState('Secret1a');
   const [verificationEmail, setVerificationEmail] = useState('');
   const [verificationCode, setVerificationCode] = useState('');
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [resetToken, setResetToken] = useState('');
+  const [resetNewPassword, setResetNewPassword] = useState('Secret2b');
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sessionUser, setSessionUser] = useState<LoginResponse | null>(null);
@@ -166,6 +174,64 @@ export function AuthPanel() {
         setVerificationCode(ack.debug.emailVerificationCode);
       }
       setStatus(ack.message);
+    } catch (err) {
+      setError(formatErr(err));
+    }
+  }
+
+  async function requestPasswordReset() {
+    clearFeedback();
+    try {
+      const body = forgotPasswordBodySchema.parse({
+        email: forgotEmail
+      });
+      const response = await fetch(
+        `${API_BASE_URL}${AUTH_FORGOT_PASSWORD_ENDPOINT}`,
+        {
+          ...FETCH_INIT,
+          method: 'POST',
+          headers: JSON_HEADERS,
+          body: JSON.stringify(body)
+        }
+      );
+      if (!response.ok) {
+        throw new Error(await readHttpErrorMessage(response));
+      }
+      const ack = forgotPasswordAckSchema.parse(
+        JSON.parse(await response.text()) as unknown
+      );
+      if (ack.debug !== undefined) {
+        setResetToken(ack.debug.passwordResetToken);
+      }
+      setStatus(ack.message);
+    } catch (err) {
+      setError(formatErr(err));
+    }
+  }
+
+  async function resetPasswordWithToken() {
+    clearFeedback();
+    try {
+      const body = resetPasswordBodySchema.parse({
+        token: resetToken,
+        newPassword: resetNewPassword
+      });
+      const response = await fetch(
+        `${API_BASE_URL}${AUTH_RESET_PASSWORD_ENDPOINT}`,
+        {
+          ...FETCH_INIT,
+          method: 'POST',
+          headers: JSON_HEADERS,
+          body: JSON.stringify(body)
+        }
+      );
+      if (response.status !== 204) {
+        throw new Error(await readHttpErrorMessage(response));
+      }
+      setSessionUser(null);
+      setStatus(
+        'Password updated — refresh sessions were revoked and old access tokens no longer work.'
+      );
     } catch (err) {
       setError(formatErr(err));
     }
@@ -415,6 +481,77 @@ export function AuthPanel() {
                 Resend code
               </button>
             </div>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-white/15 bg-white/5 p-4">
+          <p className="mono mb-2 text-[11px] font-semibold uppercase tracking-wider text-[color:var(--color-mute)]">
+            Forgot / reset password
+          </p>
+          <p className="mono mb-2 text-[10px] leading-snug text-[color:var(--color-mute)]">
+            Non-enumerating forgot flow. With{' '}
+            <code className="text-[color:var(--color-ink)]">AUTH_DEBUG_EMAIL_TOKENS</code>, the
+            API may return <code className="text-[color:var(--color-ink)]">debug.passwordResetToken</code>{' '}
+            for local demos only.
+          </p>
+          <div className="grid gap-2">
+            <label className="grid gap-0.5">
+              <span className="mono text-[10px] text-[color:var(--color-mute)]">
+                email (forgot)
+              </span>
+              <input
+                className="rounded-xl border border-white/20 bg-white/80 px-3 py-2 text-[13px] text-[color:var(--color-ink)] outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-violet)]"
+                value={forgotEmail}
+                onChange={(e) => {
+                  setForgotEmail(e.target.value);
+                }}
+              />
+            </label>
+            <button
+              type="button"
+              className="lift rounded-xl bg-gradient-to-r from-[color:var(--color-violet)] to-[color:var(--color-coral)] px-4 py-2 text-[12px] font-semibold text-white focus-visible:ring-2 focus-visible:ring-white/80"
+              onClick={() => {
+                void requestPasswordReset();
+              }}
+            >
+              Request reset link
+            </button>
+            <label className="grid gap-0.5">
+              <span className="mono text-[10px] text-[color:var(--color-mute)]">
+                reset token
+              </span>
+              <input
+                className="rounded-xl border border-white/20 bg-white/80 px-3 py-2 font-mono text-[11px] text-[color:var(--color-ink)] outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-violet)]"
+                value={resetToken}
+                onChange={(e) => {
+                  setResetToken(e.target.value);
+                }}
+                spellCheck={false}
+                autoComplete="off"
+              />
+            </label>
+            <label className="grid gap-0.5">
+              <span className="mono text-[10px] text-[color:var(--color-mute)]">
+                new password
+              </span>
+              <input
+                type="password"
+                className="rounded-xl border border-white/20 bg-white/80 px-3 py-2 text-[13px] text-[color:var(--color-ink)] outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-violet)]"
+                value={resetNewPassword}
+                onChange={(e) => {
+                  setResetNewPassword(e.target.value);
+                }}
+              />
+            </label>
+            <button
+              type="button"
+              className="lift rounded-xl border border-white/25 bg-white/10 px-3 py-2 text-[12px] font-medium text-[color:var(--color-ink)] focus-visible:ring-2 focus-visible:ring-[color:var(--color-violet)]"
+              onClick={() => {
+                void resetPasswordWithToken();
+              }}
+            >
+              Apply new password
+            </button>
           </div>
         </div>
 

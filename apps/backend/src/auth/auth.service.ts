@@ -10,6 +10,12 @@ import * as bcrypt from 'bcrypt';
 import { randomBytes, randomInt } from 'node:crypto';
 
 import type {
+  ForgotPasswordAck,
+  ForgotPasswordBody,
+  ResetPasswordBody
+} from '@repo/schemas/auth';
+
+import type {
   AuthNonEnumeratingAck,
   LoginBody,
   LoginResponse,
@@ -30,6 +36,7 @@ type StoredUser = {
   phoneNumber: string;
   email: string;
   passwordHash: string;
+  passwordVersion: number;
   createdAt: Date;
   emailVerified: boolean;
 };
@@ -41,6 +48,11 @@ type RefreshSession = {
 
 type EmailVerificationChallenge = {
   code: string;
+  expiresAtMs: number;
+};
+
+type PasswordResetChallenge = {
+  userId: number;
   expiresAtMs: number;
 };
 
@@ -66,6 +78,8 @@ export class AuthService {
     string,
     EmailVerificationChallenge
   >();
+  /** opaque password-reset token → challenge */
+  private readonly passwordResetByToken = new Map<string, PasswordResetChallenge>();
 
   constructor(
     private readonly jwtService: JwtService,
@@ -89,6 +103,53 @@ export class AuthService {
     return { code, expiresAtIso: new Date(expiresAtMs).toISOString() };
   }
 
+  private revokeAllRefreshSessionsForUser(userId: number): void {
+    for (const [token, session] of this.refreshByToken) {
+      if (session.userId === userId) {
+        this.refreshByToken.delete(token);
+      }
+    }
+  }
+
+  private clearPasswordResetForUser(userId: number): void {
+    for (const [token, challenge] of this.passwordResetByToken) {
+      if (challenge.userId === userId) {
+        this.passwordResetByToken.delete(token);
+      }
+    }
+  }
+
+  private putPasswordReset(userId: number): { token: string; expiresAtIso: string } {
+    const ttlMs = parseDurationToMs(
+      this.config.get('AUTH_PASSWORD_RESET_EXPIRES_IN', { infer: true })
+    );
+    const token = randomBytes(32).toString('hex');
+    const expiresAtMs = Date.now() + ttlMs;
+    this.passwordResetByToken.set(token, { userId, expiresAtMs });
+    return { token, expiresAtIso: new Date(expiresAtMs).toISOString() };
+  }
+
+  /**
+   * Ensures the JWT was issued for the current password generation.
+   * Call after signature verification (e.g. in `JwtAuthGuard`).
+   */
+  assertAccessTokenClaims(payload: JwtAccessPayload): void {
+    if (typeof payload.pv !== 'number' || !Number.isFinite(payload.pv) || payload.pv < 0) {
+      throw new UnauthorizedException('Invalid token');
+    }
+    const userId = Number(payload.sub);
+    if (!Number.isFinite(userId) || userId < 1) {
+      throw new UnauthorizedException('Invalid token');
+    }
+    const user = this.userByUserId.get(userId);
+    if (!user || user.email !== payload.email) {
+      throw new UnauthorizedException('Invalid token');
+    }
+    if (user.passwordVersion !== payload.pv) {
+      throw new UnauthorizedException('Invalid token');
+    }
+  }
+
   async register(body: RegisterBody): Promise<RegisterResponse> {
     const emailKey = body.email;
     const userNameKey = body.userName.toLowerCase();
@@ -110,6 +171,7 @@ export class AuthService {
       phoneNumber: body.phoneNumber,
       email: body.email,
       passwordHash,
+      passwordVersion: 0,
       createdAt,
       emailVerified: false
     };
@@ -204,6 +266,54 @@ export class AuthService {
     };
   }
 
+  forgotPassword(body: ForgotPasswordBody): ForgotPasswordAck {
+    const emailKey = body.email;
+    const userId = this.userIdByEmail.get(emailKey);
+    if (userId === undefined) {
+      return { ok: true, message: AUTH_RESEND_ACK_MESSAGE };
+    }
+    const user = this.userByUserId.get(userId);
+    if (!user || !user.emailVerified) {
+      return { ok: true, message: AUTH_RESEND_ACK_MESSAGE };
+    }
+
+    this.clearPasswordResetForUser(userId);
+    const { token, expiresAtIso } = this.putPasswordReset(userId);
+
+    if (!this.debugEmailTokens()) {
+      return { ok: true, message: AUTH_RESEND_ACK_MESSAGE };
+    }
+    return {
+      ok: true,
+      message: AUTH_RESEND_ACK_MESSAGE,
+      debug: {
+        passwordResetToken: token,
+        passwordResetExpiresAt: expiresAtIso
+      }
+    };
+  }
+
+  async resetPassword(body: ResetPasswordBody): Promise<void> {
+    const challenge = this.passwordResetByToken.get(body.token);
+    if (challenge === undefined || Date.now() > challenge.expiresAtMs) {
+      if (challenge !== undefined && Date.now() > challenge.expiresAtMs) {
+        this.passwordResetByToken.delete(body.token);
+      }
+      throw new BadRequestException('Invalid or expired reset token');
+    }
+
+    const user = this.userByUserId.get(challenge.userId);
+    if (!user) {
+      this.passwordResetByToken.delete(body.token);
+      throw new BadRequestException('Invalid or expired reset token');
+    }
+
+    this.passwordResetByToken.delete(body.token);
+    user.passwordHash = await bcrypt.hash(body.newPassword, 12);
+    user.passwordVersion += 1;
+    this.revokeAllRefreshSessionsForUser(user.userId);
+  }
+
   async login(body: LoginBody): Promise<LoginWithTokens> {
     const key = body.identifier;
     const userId = key.includes('@')
@@ -225,7 +335,11 @@ export class AuthService {
     }
 
     const accessToken = await this.jwtService.signAsync(
-      { sub: String(user.userId), email: user.email },
+      {
+        sub: String(user.userId),
+        email: user.email,
+        pv: user.passwordVersion
+      },
       {
         expiresIn: this.config.get('JWT_ACCESS_EXPIRES_IN', { infer: true })
       }
@@ -279,7 +393,11 @@ export class AuthService {
     }
 
     const accessToken = await this.jwtService.signAsync(
-      { sub: String(user.userId), email: user.email },
+      {
+        sub: String(user.userId),
+        email: user.email,
+        pv: user.passwordVersion
+      },
       {
         expiresIn: this.config.get('JWT_ACCESS_EXPIRES_IN', { infer: true })
       }
@@ -317,10 +435,8 @@ export class AuthService {
 
   /** Resolves the current user from an access JWT payload (must match stored user). */
   getMeForJwtPayload(payload: JwtAccessPayload): LoginResponse {
+    this.assertAccessTokenClaims(payload);
     const userId = Number(payload.sub);
-    if (!Number.isFinite(userId) || userId < 1) {
-      throw new UnauthorizedException('Invalid token');
-    }
     const user = this.userByUserId.get(userId);
     if (!user || user.email !== payload.email) {
       throw new UnauthorizedException('Invalid token');
