@@ -52,6 +52,10 @@ The full-stack contract chain works like this:
 - When structure or workflow changes, update `README.md`, `AGENTS.md`, `CLAUDE.md`, and `.cursor/rules` in the same change.
 - Do not rename `@repo/*` scopes unless explicitly asked.
 
+## Repository hygiene
+
+- Do not commit pnpm’s content-addressable cache (`.pnpm-store/`). It is gitignored; rely on `pnpm-lock.yaml` and `pnpm install`.
+
 ## Renaming the starter (automated)
 
 When a team clones this starter for a real product, run `node scripts/rename.mjs --name <lower> --display <Proper> --tagline "..."` (add `--apply` to write). The script handles literal `agentbase`/`Agentbase` substitution across the ~17 files that need it, plus `STARTER_NAME` / `STARTER_TAGLINE`. Agents performing a rename should:
