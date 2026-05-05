@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   UnauthorizedException
@@ -6,14 +7,18 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomInt } from 'node:crypto';
 
 import type {
+  AuthNonEnumeratingAck,
   LoginBody,
   LoginResponse,
   LoginWithTokens,
   RegisterBody,
-  RegisterResponse
+  RegisterResponse,
+  ResendVerificationBody,
+  VerifyEmailBody,
+  VerifyEmailResponse
 } from '@/auth/auth.dto';
 import type { JwtAccessPayload } from '@/auth/auth.types';
 import type { Env } from '@/utils/env.validation';
@@ -26,12 +31,25 @@ type StoredUser = {
   email: string;
   passwordHash: string;
   createdAt: Date;
+  emailVerified: boolean;
 };
 
 type RefreshSession = {
   userId: number;
   expiresAtMs: number;
 };
+
+type EmailVerificationChallenge = {
+  code: string;
+  expiresAtMs: number;
+};
+
+const AUTH_RESEND_ACK_MESSAGE =
+  'If an account exists for that email, next steps were recorded where applicable.';
+
+function generateSixDigitCode(): string {
+  return String(randomInt(0, 1_000_000)).padStart(6, '0');
+}
 
 @Injectable()
 export class AuthService {
@@ -43,11 +61,33 @@ export class AuthService {
   private readonly userIdByEmail = new Map<string, number>();
   /** opaque refresh token → session */
   private readonly refreshByToken = new Map<string, RefreshSession>();
+  /** lowercase email → pending verification */
+  private readonly emailVerificationByEmail = new Map<
+    string,
+    EmailVerificationChallenge
+  >();
 
   constructor(
     private readonly jwtService: JwtService,
     private readonly config: ConfigService<Env, true>
   ) {}
+
+  private debugEmailTokens(): boolean {
+    return this.config.get('AUTH_DEBUG_EMAIL_TOKENS', { infer: true });
+  }
+
+  private putEmailVerification(emailKey: string): {
+    code: string;
+    expiresAtIso: string;
+  } {
+    const code = generateSixDigitCode();
+    const ttlMs = parseDurationToMs(
+      this.config.get('AUTH_EMAIL_VERIFICATION_EXPIRES_IN', { infer: true })
+    );
+    const expiresAtMs = Date.now() + ttlMs;
+    this.emailVerificationByEmail.set(emailKey, { code, expiresAtMs });
+    return { code, expiresAtIso: new Date(expiresAtMs).toISOString() };
+  }
 
   async register(body: RegisterBody): Promise<RegisterResponse> {
     const emailKey = body.email;
@@ -70,19 +110,97 @@ export class AuthService {
       phoneNumber: body.phoneNumber,
       email: body.email,
       passwordHash,
-      createdAt
+      createdAt,
+      emailVerified: false
     };
 
     this.userByUserId.set(userId, row);
     this.userIdByEmail.set(emailKey, userId);
     this.userIdByUserName.set(userNameKey, userId);
 
-    return {
+    const { code, expiresAtIso } = this.putEmailVerification(emailKey);
+
+    const base: RegisterResponse = {
       userId,
       userName: row.userName,
       phoneNumber: row.phoneNumber,
       email: row.email,
-      createdAt: createdAt.toISOString()
+      createdAt: createdAt.toISOString(),
+      emailVerified: false
+    };
+
+    if (!this.debugEmailTokens()) {
+      return base;
+    }
+
+    return {
+      ...base,
+      debug: {
+        emailVerificationCode: code,
+        emailVerificationExpiresAt: expiresAtIso
+      }
+    };
+  }
+
+  verifyEmail(body: VerifyEmailBody): VerifyEmailResponse {
+    const emailKey = body.email;
+    const pending = this.emailVerificationByEmail.get(emailKey);
+    if (
+      pending === undefined ||
+      Date.now() > pending.expiresAtMs ||
+      pending.code !== body.code
+    ) {
+      if (pending !== undefined && Date.now() > pending.expiresAtMs) {
+        this.emailVerificationByEmail.delete(emailKey);
+      }
+      throw new BadRequestException('Invalid or expired verification code');
+    }
+
+    const userId = this.userIdByEmail.get(emailKey);
+    if (userId === undefined) {
+      this.emailVerificationByEmail.delete(emailKey);
+      throw new BadRequestException('Invalid or expired verification code');
+    }
+
+    const user = this.userByUserId.get(userId);
+    if (!user || user.email !== emailKey) {
+      this.emailVerificationByEmail.delete(emailKey);
+      throw new BadRequestException('Invalid or expired verification code');
+    }
+
+    this.emailVerificationByEmail.delete(emailKey);
+    user.emailVerified = true;
+
+    return {
+      emailVerified: true,
+      userId: user.userId,
+      userName: user.userName,
+      email: user.email
+    };
+  }
+
+  resendVerification(body: ResendVerificationBody): AuthNonEnumeratingAck {
+    const emailKey = body.email;
+    const userId = this.userIdByEmail.get(emailKey);
+    if (userId === undefined) {
+      return { ok: true, message: AUTH_RESEND_ACK_MESSAGE };
+    }
+    const user = this.userByUserId.get(userId);
+    if (!user || user.emailVerified) {
+      return { ok: true, message: AUTH_RESEND_ACK_MESSAGE };
+    }
+
+    const { code, expiresAtIso } = this.putEmailVerification(emailKey);
+    if (!this.debugEmailTokens()) {
+      return { ok: true, message: AUTH_RESEND_ACK_MESSAGE };
+    }
+    return {
+      ok: true,
+      message: AUTH_RESEND_ACK_MESSAGE,
+      debug: {
+        emailVerificationCode: code,
+        emailVerificationExpiresAt: expiresAtIso
+      }
     };
   }
 
@@ -101,6 +219,9 @@ export class AuthService {
     const passwordOk = await bcrypt.compare(body.password, user.passwordHash);
     if (!passwordOk) {
       throw new UnauthorizedException('Invalid email, username, or password');
+    }
+    if (!user.emailVerified) {
+      throw new UnauthorizedException('Email not verified');
     }
 
     const accessToken = await this.jwtService.signAsync(
@@ -122,7 +243,8 @@ export class AuthService {
     const userPayload: LoginResponse = {
       userId: user.userId,
       userName: user.userName,
-      email: user.email
+      email: user.email,
+      emailVerified: user.emailVerified
     };
 
     return {
@@ -152,6 +274,9 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException('Invalid or expired session');
     }
+    if (!user.emailVerified) {
+      throw new UnauthorizedException('Email not verified');
+    }
 
     const accessToken = await this.jwtService.signAsync(
       { sub: String(user.userId), email: user.email },
@@ -172,7 +297,8 @@ export class AuthService {
     const userPayload: LoginResponse = {
       userId: user.userId,
       userName: user.userName,
-      email: user.email
+      email: user.email,
+      emailVerified: user.emailVerified
     };
 
     return {
@@ -199,10 +325,14 @@ export class AuthService {
     if (!user || user.email !== payload.email) {
       throw new UnauthorizedException('Invalid token');
     }
+    if (!user.emailVerified) {
+      throw new UnauthorizedException('Email not verified');
+    }
     return {
       userId: user.userId,
       userName: user.userName,
-      email: user.email
+      email: user.email,
+      emailVerified: user.emailVerified
     };
   }
 }

@@ -11,11 +11,19 @@ import {
   AUTH_LOGOUT_ENDPOINT,
   AUTH_ME_ENDPOINT,
   AUTH_REFRESH_ENDPOINT,
-  AUTH_REGISTER_ENDPOINT
+  AUTH_REGISTER_ENDPOINT,
+  AUTH_RESEND_VERIFICATION_ENDPOINT,
+  AUTH_VERIFY_EMAIL_ENDPOINT
 } from '@repo/consts/auth';
 
 import { AppModule } from '@/app/app.module';
-import { loginResponseSchema, type LoginResponse } from '@/auth/auth.dto';
+import {
+  authNonEnumeratingAckSchema,
+  loginResponseSchema,
+  registerResponseSchema,
+  verifyEmailResponseSchema,
+  type LoginResponse
+} from '@/auth/auth.dto';
 import { configureApp } from '@/bootstrap';
 import type { Env } from '@/utils/env.validation';
 
@@ -33,6 +41,27 @@ function uniqueRegisterBody(prefix: string): {
     email: `${prefix}${id}@example.com`,
     password: 'Secret1a'
   };
+}
+
+async function registerAndVerifyEmail(
+  agent: ReturnType<typeof request.agent>,
+  registerBody: ReturnType<typeof uniqueRegisterBody>
+): Promise<void> {
+  const regRes = await agent
+    .post(AUTH_REGISTER_ENDPOINT)
+    .send(registerBody)
+    .expect(201);
+  const parsed = registerResponseSchema.parse(regRes.body as unknown);
+  expect(parsed.emailVerified).toBe(false);
+  const code = parsed.debug?.emailVerificationCode;
+  if (code === undefined) {
+    throw new Error('e2e expects AUTH_DEBUG_EMAIL_TOKENS');
+  }
+  const verifyRes = await agent
+    .post(AUTH_VERIFY_EMAIL_ENDPOINT)
+    .send({ email: registerBody.email, code })
+    .expect(200);
+  verifyEmailResponseSchema.parse(verifyRes.body as unknown);
 }
 
 describe('Backend bootstrap (e2e)', () => {
@@ -121,10 +150,33 @@ describe('Backend bootstrap (e2e)', () => {
     );
   });
 
-  it('auth: register, login, and refresh with cookie jar', async () => {
+  it('auth: login is rejected until email is verified', async () => {
+    const agent = request.agent(app.getHttpServer());
+    const registerBody = uniqueRegisterBody('nv');
+    await agent.post(AUTH_REGISTER_ENDPOINT).send(registerBody).expect(201);
+    const loginRes = await agent
+      .post(AUTH_LOGIN_ENDPOINT)
+      .send({
+        identifier: registerBody.email,
+        password: registerBody.password
+      })
+      .expect(401);
+    const body = loginRes.body as Record<string, unknown>;
+    expect(body['detail']).toBe('Email not verified');
+  });
+
+  it('auth: resend-verification returns non-enumerating ack for unknown email', async () => {
+    const res = await request(app.getHttpServer())
+      .post(AUTH_RESEND_VERIFICATION_ENDPOINT)
+      .send({ email: 'nobody-at-all@example.com' })
+      .expect(202);
+    authNonEnumeratingAckSchema.parse(res.body as unknown);
+  });
+
+  it('auth: register, verify email, login, and refresh with cookie jar', async () => {
     const agent = request.agent(app.getHttpServer());
     const registerBody = uniqueRegisterBody('u');
-    await agent.post(AUTH_REGISTER_ENDPOINT).send(registerBody).expect(201);
+    await registerAndVerifyEmail(agent, registerBody);
     await agent
       .post(AUTH_LOGIN_ENDPOINT)
       .send({
@@ -139,6 +191,7 @@ describe('Backend bootstrap (e2e)', () => {
     expect(body.userName).toBe(registerBody.userName);
     expect(body.email).toBe(registerBody.email.toLowerCase());
     expect(typeof body.userId).toBe('number');
+    expect(body.emailVerified).toBe(true);
   });
 
   it('auth: GET /me without cookies returns 401', async () => {
@@ -148,7 +201,7 @@ describe('Backend bootstrap (e2e)', () => {
   it('auth: GET /me after login returns the same user shape', async () => {
     const agent = request.agent(app.getHttpServer());
     const registerBody = uniqueRegisterBody('m');
-    await agent.post(AUTH_REGISTER_ENDPOINT).send(registerBody).expect(201);
+    await registerAndVerifyEmail(agent, registerBody);
     await agent
       .post(AUTH_LOGIN_ENDPOINT)
       .send({
@@ -160,12 +213,13 @@ describe('Backend bootstrap (e2e)', () => {
     const me: LoginResponse = loginResponseSchema.parse(meRes.body as unknown);
     expect(me.userName).toBe(registerBody.userName);
     expect(me.email).toBe(registerBody.email.toLowerCase());
+    expect(me.emailVerified).toBe(true);
   });
 
   it('auth: logout clears session and cookies (refresh then fails)', async () => {
     const agent = request.agent(app.getHttpServer());
     const registerBody = uniqueRegisterBody('l');
-    await agent.post(AUTH_REGISTER_ENDPOINT).send(registerBody).expect(201);
+    await registerAndVerifyEmail(agent, registerBody);
     await agent
       .post(AUTH_LOGIN_ENDPOINT)
       .send({
@@ -192,10 +246,10 @@ describe('Backend bootstrap (e2e)', () => {
       .expect(201);
   });
 
-  it('auth: login accepts username as identifier', async () => {
+  it('auth: login accepts username as identifier after verify', async () => {
     const agent = request.agent(app.getHttpServer());
     const registerBody = uniqueRegisterBody('c');
-    await agent.post(AUTH_REGISTER_ENDPOINT).send(registerBody).expect(201);
+    await registerAndVerifyEmail(agent, registerBody);
     await agent
       .post(AUTH_LOGIN_ENDPOINT)
       .send({
@@ -221,8 +275,15 @@ describe('Backend bootstrap (e2e, production mode)', () => {
     app = moduleFixture.createNestApplication();
     const realConfig = app.get(ConfigService<Env, true>);
     const prodConfig = {
-      get: (key: keyof Env) =>
-        key === 'NODE_ENV' ? 'production' : realConfig.get(key, { infer: true })
+      get: (key: keyof Env) => {
+        if (key === 'NODE_ENV') {
+          return 'production';
+        }
+        if (key === 'AUTH_DEBUG_EMAIL_TOKENS') {
+          return false;
+        }
+        return realConfig.get(key, { infer: true });
+      }
     } as unknown as ConfigService<Env, true>;
     configureApp(app, prodConfig);
     await app.init();

@@ -20,17 +20,25 @@ import {
   AUTH_ROUTE_LOGOUT,
   AUTH_ROUTE_ME,
   AUTH_ROUTE_REFRESH,
-  AUTH_ROUTE_REGISTER
+  AUTH_ROUTE_REGISTER,
+  AUTH_ROUTE_RESEND_VERIFICATION,
+  AUTH_ROUTE_VERIFY_EMAIL
 } from '@repo/consts/auth';
 
 import { AUTH_ACCESS_COOKIE, AUTH_REFRESH_COOKIE } from '@/auth/auth.consts';
 import {
+  AuthNonEnumeratingAckDto,
   LoginDto,
   LoginResponseDto,
   RegisterDto,
   RegisterResponseDto,
+  ResendVerificationDto,
+  VerifyEmailDto,
+  VerifyEmailResponseDto,
+  type AuthNonEnumeratingAck,
   type LoginResponse,
-  type RegisterResponse
+  type RegisterResponse,
+  type VerifyEmailResponse
 } from '@/auth/auth.dto';
 import { AuthService } from '@/auth/auth.service';
 import '@/auth/auth.types';
@@ -182,5 +190,28 @@ export class AuthController {
   logout(@Req() req: Request, @Res({ passthrough: true }) res: Response): void {
     this.authService.logout(this.readRefreshCookie(req));
     this.clearAuthCookies(res);
+  }
+
+  @Post(AUTH_ROUTE_VERIFY_EMAIL)
+  @HttpCode(200)
+  @ZodResponse({
+    status: 200,
+    description: 'Email verified when code matches',
+    type: VerifyEmailResponseDto
+  })
+  verifyEmail(@Body() body: VerifyEmailDto): VerifyEmailResponse {
+    return this.authService.verifyEmail(body);
+  }
+
+  @Post(AUTH_ROUTE_RESEND_VERIFICATION)
+  @HttpCode(202)
+  @ZodResponse({
+    status: 202,
+    description:
+      'Non-enumerating ack; optional `debug` when AUTH_DEBUG_EMAIL_TOKENS and account is unverified',
+    type: AuthNonEnumeratingAckDto
+  })
+  resendVerification(@Body() body: ResendVerificationDto): AuthNonEnumeratingAck {
+    return this.authService.resendVerification(body);
   }
 }

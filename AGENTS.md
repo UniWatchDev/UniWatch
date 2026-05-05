@@ -39,7 +39,7 @@ Packages build bottom-up. Turbo handles ordering via `^build` task deps.
 The full-stack contract chain works like this:
 
 1. `@repo/consts` defines endpoint path strings (`/api`, `/api/auth/*`, `/api/health`, `/api/notes`, `/api/notes/:id`).
-2. `@repo/schemas` defines Zod schemas and infers types (`Note`, `HealthResponse`, auth register/login shapes, `CreateNoteInput`, `NoteIdParams`, `RootResponse`, `ProblemDetails`).
+2. `@repo/schemas` defines Zod schemas and infers types (`Note`, `HealthResponse`, auth register/login/verify/resend shapes, `CreateNoteInput`, `NoteIdParams`, `RootResponse`, `ProblemDetails`).
 3. `@repo/contracts` combines consts + schemas into `EndpointContract` objects with `method`, `path`, `responseSchema`, and optional `bodySchema`/`paramsSchema`/`querySchema` (see `/auth`, `/health`, `/notes`, `/root` subpaths).
 4. Backend: DTOs extend `createZodDto(schema)` from `nestjs-zod`, reusing the same `@repo/schemas`. Global `ZodValidationPipe` validates `@Body()` and `@Param()` with those DTOs; `ZodSerializerInterceptor` validates responses. `HttpExceptionFilter` emits all errors as `ProblemDetails`.
 5. Frontend + web: each call site uses native `fetch()` and validates directly against the contract's schemas — e.g. `contract.bodySchema.parse(input)` before `JSON.stringify`, then `contract.responseSchema.parse(await response.json())`. No shared fetch wrapper — keeps the path clear for integrating React Query / RTK Query / SWR later.

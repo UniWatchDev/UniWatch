@@ -7,6 +7,11 @@
 | backend  | `NODE_ENV`                 | `development` | Zod-validated at startup (`env.validation.ts`)                                                             |
 | backend  | `PORT`                     | `3000`        | Zod-validated at startup                                                                                   |
 | backend  | `CORS_ORIGIN`              | `*`           | Zod-validated. `*` allows all; comma-separated list for production (e.g. `https://app.example.com`)         |
+| backend  | `JWT_SECRET`               | —             | Required, ≥32 chars                                                                                        |
+| backend  | `JWT_ACCESS_EXPIRES_IN`    | `15m`         | Zod-validated                                                                                              |
+| backend  | `JWT_REFRESH_EXPIRES_IN`   | `7d`          | Zod-validated                                                                                              |
+| backend  | `AUTH_DEBUG_EMAIL_TOKENS`  | `false`       | When `true`, register/resend may include `debug.emailVerificationCode` (never in production)               |
+| backend  | `AUTH_EMAIL_VERIFICATION_EXPIRES_IN` | `15m` | TTL for 6-digit email verification codes                                                            |
 | frontend | `VITE_PORT`                | `5173`        | Read in `vite.config.ts`                                                                                   |
 | frontend | `VITE_API_BASE_URL`        | —             | Defined in `.env` examples but **not wired** — call sites use hardcoded `API_BASE_URL` from `@repo/consts` |
 | web      | `NEXT_PUBLIC_API_BASE_URL` | —             | Defined in `.env` examples but **not wired** — same hardcoded constant                                     |

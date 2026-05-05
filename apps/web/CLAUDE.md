@@ -10,7 +10,7 @@ src/app/
   layout.tsx               — Server Component: root layout, loads Fraunces + Geist + Geist_Mono + IBM_Plex_Mono via next/font
   page.tsx                 — Server Component: magazine-editorial layout
   health-check.tsx         — Client: auto-pings /api/health, dot + latency
-  auth-panel.tsx           — Client: auth flows (register/login/refresh/me/logout), contracts + cookies
+  auth-panel.tsx           — Client: register + email verify/resend + login (blocked until verified) + session, consts/schemas + cookies
   notes-panel.tsx          — Client: full CRUD, styled as "Letters" column (optional; not on home page)
   package-verification.tsx — Client: static probes of every @repo/* export + live backend
   endpoint-explorer.tsx    — Client: every EndpointContract with Try button + JSON drawer

@@ -1,18 +1,28 @@
 import {
   AUTH_LOGIN_ENDPOINT,
   AUTH_ME_ENDPOINT,
+  AUTH_REFRESH_ENDPOINT,
   AUTH_REGISTER_ENDPOINT,
-  AUTH_REFRESH_ENDPOINT
+  AUTH_RESEND_VERIFICATION_ENDPOINT,
+  AUTH_VERIFY_EMAIL_ENDPOINT
 } from '@repo/consts/auth';
 import {
+  authNonEnumeratingAckSchema,
   loginBodySchema,
   loginResponseSchema,
   registerBodySchema,
   registerResponseSchema,
+  resendVerificationBodySchema,
+  verifyEmailBodySchema,
+  verifyEmailResponseSchema,
+  type AuthNonEnumeratingAck,
   type LoginBody,
   type LoginResponse,
   type RegisterBody,
-  type RegisterResponse
+  type RegisterResponse,
+  type ResendVerificationBody,
+  type VerifyEmailBody,
+  type VerifyEmailResponse
 } from '@repo/schemas/auth';
 import type { EndpointContract } from '../shared/endpoint.js';
 
@@ -52,4 +62,29 @@ export const getAuthMeContract: EndpointContract<LoginResponse> = {
   method: 'GET',
   path: AUTH_ME_ENDPOINT,
   responseSchema: loginResponseSchema
+};
+
+/** POST `/api/auth/verify-email` — `{ email, code }`; 200 when code is valid. */
+export const verifyEmailAuthContract: EndpointContract<
+  VerifyEmailResponse,
+  VerifyEmailBody
+> = {
+  method: 'POST',
+  path: AUTH_VERIFY_EMAIL_ENDPOINT,
+  responseSchema: verifyEmailResponseSchema,
+  bodySchema: verifyEmailBodySchema
+};
+
+/**
+ * POST `/api/auth/resend-verification` — `{ email }`; 202 + non-enumerating ack.
+ * Optional `debug` when `AUTH_DEBUG_EMAIL_TOKENS` and an unverified account exists.
+ */
+export const resendVerificationAuthContract: EndpointContract<
+  AuthNonEnumeratingAck,
+  ResendVerificationBody
+> = {
+  method: 'POST',
+  path: AUTH_RESEND_VERIFICATION_ENDPOINT,
+  responseSchema: authNonEnumeratingAckSchema,
+  bodySchema: resendVerificationBodySchema
 };

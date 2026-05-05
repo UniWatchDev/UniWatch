@@ -2,7 +2,11 @@
 
 import { useState } from 'react';
 import { API_BASE_URL } from '@repo/consts/api';
-import { AUTH_LOGOUT_ENDPOINT } from '@repo/consts/auth';
+import {
+  AUTH_LOGOUT_ENDPOINT,
+  AUTH_RESEND_VERIFICATION_ENDPOINT,
+  AUTH_VERIFY_EMAIL_ENDPOINT
+} from '@repo/consts/auth';
 import {
   getAuthMeContract,
   loginAuthContract,
@@ -10,6 +14,12 @@ import {
   registerAuthContract
 } from '@repo/contracts/auth';
 import type { LoginResponse, RegisterResponse } from '@repo/schemas/auth';
+import {
+  authNonEnumeratingAckSchema,
+  resendVerificationBodySchema,
+  verifyEmailBodySchema,
+  verifyEmailResponseSchema
+} from '@repo/schemas/auth';
 
 const JSON_HEADERS = {
   'Content-Type': 'application/json',
@@ -21,6 +31,27 @@ const FETCH_INIT = { credentials: 'include' as const };
 function formatErr(err: unknown): string {
   if (err instanceof Error) return err.message;
   return 'Something went wrong';
+}
+
+async function readHttpErrorMessage(response: Response): Promise<string> {
+  const raw = await response.text();
+  if (raw.length === 0) {
+    return `HTTP ${String(response.status)}`;
+  }
+  try {
+    const data: unknown = JSON.parse(raw);
+    if (
+      data !== null &&
+      typeof data === 'object' &&
+      'detail' in data &&
+      typeof (data as { detail: unknown }).detail === 'string'
+    ) {
+      return (data as { detail: string }).detail;
+    }
+  } catch {
+    /* ignore */
+  }
+  return `HTTP ${String(response.status)}`;
 }
 
 const inputClass =
@@ -39,6 +70,8 @@ export function AuthPanel() {
     () => `u${String(Date.now())}@example.com`
   );
   const [loginPassword, setLoginPassword] = useState('Secret1a');
+  const [verificationEmail, setVerificationEmail] = useState('');
+  const [verificationCode, setVerificationCode] = useState('');
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sessionUser, setSessionUser] = useState<LoginResponse | null>(null);
@@ -67,15 +100,77 @@ export function AuthPanel() {
         }
       );
       if (!response.ok) {
-        throw new Error(`register HTTP ${String(response.status)}`);
+        throw new Error(await readHttpErrorMessage(response));
       }
       const data: RegisterResponse = registerAuthContract.responseSchema.parse(
-        await response.json()
+        JSON.parse(await response.text()) as unknown
       );
-      setStatus(
-        `Registered as ${data.userName} (${data.email}). Log in when ready.`
-      );
+      setVerificationEmail(data.email);
       setLoginIdentifier(data.email);
+      if (data.debug !== undefined) {
+        setVerificationCode(data.debug.emailVerificationCode);
+      }
+      setStatus(
+        `Registered as ${data.userName}. Enter the 6-digit code for ${data.email}, then log in.`
+      );
+    } catch (err) {
+      setError(formatErr(err));
+    }
+  }
+
+  async function verifyEmail() {
+    clearFeedback();
+    try {
+      const body = verifyEmailBodySchema.parse({
+        email: verificationEmail,
+        code: verificationCode
+      });
+      const response = await fetch(
+        `${API_BASE_URL}${AUTH_VERIFY_EMAIL_ENDPOINT}`,
+        {
+          ...FETCH_INIT,
+          method: 'POST',
+          headers: JSON_HEADERS,
+          body: JSON.stringify(body)
+        }
+      );
+      if (!response.ok) {
+        throw new Error(await readHttpErrorMessage(response));
+      }
+      verifyEmailResponseSchema.parse(
+        JSON.parse(await response.text()) as unknown
+      );
+      setStatus('Email verified — you can log in now.');
+    } catch (err) {
+      setError(formatErr(err));
+    }
+  }
+
+  async function resendVerification() {
+    clearFeedback();
+    try {
+      const body = resendVerificationBodySchema.parse({
+        email: verificationEmail
+      });
+      const response = await fetch(
+        `${API_BASE_URL}${AUTH_RESEND_VERIFICATION_ENDPOINT}`,
+        {
+          ...FETCH_INIT,
+          method: 'POST',
+          headers: JSON_HEADERS,
+          body: JSON.stringify(body)
+        }
+      );
+      if (!response.ok) {
+        throw new Error(await readHttpErrorMessage(response));
+      }
+      const ack = authNonEnumeratingAckSchema.parse(
+        JSON.parse(await response.text()) as unknown
+      );
+      if (ack.debug !== undefined) {
+        setVerificationCode(ack.debug.emailVerificationCode);
+      }
+      setStatus(ack.message);
     } catch (err) {
       setError(formatErr(err));
     }
@@ -95,11 +190,26 @@ export function AuthPanel() {
         headers: JSON_HEADERS,
         body: JSON.stringify(body)
       });
+      const raw = await response.text();
       if (!response.ok) {
-        throw new Error(`login HTTP ${String(response.status)}`);
+        let msg = `login HTTP ${String(response.status)}`;
+        try {
+          const data: unknown = JSON.parse(raw);
+          if (
+            data !== null &&
+            typeof data === 'object' &&
+            'detail' in data &&
+            typeof (data as { detail: unknown }).detail === 'string'
+          ) {
+            msg = (data as { detail: string }).detail;
+          }
+        } catch {
+          /* keep msg */
+        }
+        throw new Error(msg);
       }
       const user: LoginResponse = loginAuthContract.responseSchema.parse(
-        await response.json()
+        JSON.parse(raw) as unknown
       );
       setSessionUser(user);
       setStatus('Logged in — HttpOnly cookies set. Try Refresh or Me.');
@@ -120,7 +230,7 @@ export function AuthPanel() {
         }
       );
       if (!response.ok) {
-        throw new Error(`refresh HTTP ${String(response.status)}`);
+        throw new Error(await readHttpErrorMessage(response));
       }
       const user: LoginResponse = refreshAuthContract.responseSchema.parse(
         await response.json()
@@ -141,7 +251,7 @@ export function AuthPanel() {
         headers: { Accept: 'application/json' }
       });
       if (!response.ok) {
-        throw new Error(`me HTTP ${String(response.status)}`);
+        throw new Error(await readHttpErrorMessage(response));
       }
       const user: LoginResponse = getAuthMeContract.responseSchema.parse(
         await response.json()
@@ -179,9 +289,8 @@ export function AuthPanel() {
       </div>
       <div className="mt-2 h-px w-full origin-left bg-[color:var(--color-ink)] rule-draw" />
       <p className="mono mt-2 text-[10px] leading-snug text-[color:var(--color-mute)]">
-        Same contracts as the Vite client.{' '}
         <code className="text-[color:var(--color-ink)]">credentials: include</code>
-        . API {API_BASE_URL}.
+        . Login requires verified email. API {API_BASE_URL}.
       </p>
 
       <div className="mt-3 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1 editorial-scroll">
@@ -251,6 +360,66 @@ export function AuthPanel() {
             >
               Register →
             </button>
+          </div>
+        </div>
+
+        <div>
+          <p className="mono small-caps text-[10px] text-[color:var(--color-mute)]">
+            Verify email
+          </p>
+          <p className="mono mt-1 text-[10px] text-[color:var(--color-mute)]">
+            With <code className="text-[color:var(--color-ink)]">AUTH_DEBUG_EMAIL_TOKENS</code>{' '}
+            on the API, code may be prefilled. Production uses a mailer, not{' '}
+            <code className="text-[color:var(--color-ink)]">debug</code>.
+          </p>
+          <div className="mt-2 grid gap-2 border-b border-dotted border-[color:var(--color-rule)] pb-2">
+            <label className="grid gap-0.5">
+              <span className="mono text-[9px] text-[color:var(--color-mute)]">
+                email
+              </span>
+              <input
+                className={inputClass}
+                value={verificationEmail}
+                onChange={(e) => {
+                  setVerificationEmail(e.target.value);
+                }}
+              />
+            </label>
+            <label className="grid gap-0.5">
+              <span className="mono text-[9px] text-[color:var(--color-mute)]">
+                6-digit code
+              </span>
+              <input
+                className={inputClass}
+                value={verificationCode}
+                onChange={(e) => {
+                  setVerificationCode(e.target.value);
+                }}
+                inputMode="numeric"
+                maxLength={6}
+                autoComplete="one-time-code"
+              />
+            </label>
+            <div className="mt-1 flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="mono border border-[color:var(--color-ink)] bg-[color:var(--color-ink)] px-2 py-1 text-[10px] text-[color:var(--color-paper)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--color-accent)]"
+                onClick={() => {
+                  void verifyEmail();
+                }}
+              >
+                Verify →
+              </button>
+              <button
+                type="button"
+                className="mono border border-[color:var(--color-rule)] bg-transparent px-2 py-1 text-[10px] text-[color:var(--color-ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--color-accent)]"
+                onClick={() => {
+                  void resendVerification();
+                }}
+              >
+                Resend
+              </button>
+            </div>
           </div>
         </div>
 

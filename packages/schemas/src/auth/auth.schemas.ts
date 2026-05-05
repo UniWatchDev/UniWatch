@@ -58,12 +58,23 @@ export const registerBodySchema = z.strictObject({
 
 export type RegisterBody = z.infer<typeof registerBodySchema>;
 
+export const emailVerificationCodeSchema = z
+  .string()
+  .regex(/^\d{6}$/, 'Enter the 6-digit code from your email');
+
 export const registerResponseSchema = z.strictObject({
   userId: z.number().int().positive(),
   userName: z.string(),
   phoneNumber: z.string().regex(/^\+9725\d{8}$/),
   email: email(),
-  createdAt: z.string()
+  createdAt: z.string(),
+  emailVerified: z.boolean(),
+  debug: z
+    .strictObject({
+      emailVerificationCode: emailVerificationCodeSchema,
+      emailVerificationExpiresAt: z.string()
+    })
+    .optional()
 });
 
 export type RegisterResponse = z.infer<typeof registerResponseSchema>;
@@ -102,7 +113,52 @@ export type LoginBody = z.infer<typeof loginBodySchema>;
 export const loginResponseSchema = z.strictObject({
   userId: z.number().int().positive(),
   userName: z.string(),
-  email: email()
+  email: email(),
+  emailVerified: z.boolean()
 });
 
 export type LoginResponse = z.infer<typeof loginResponseSchema>;
+
+export const verifyEmailBodySchema = z.strictObject({
+  email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .pipe(email('Enter a valid email address')),
+  code: emailVerificationCodeSchema
+});
+
+export type VerifyEmailBody = z.infer<typeof verifyEmailBodySchema>;
+
+export const resendVerificationBodySchema = z.strictObject({
+  email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .pipe(email('Enter a valid email address'))
+});
+
+export type ResendVerificationBody = z.infer<typeof resendVerificationBodySchema>;
+
+/** Non-enumerating ack for resend (and future forgot-password). */
+export const authNonEnumeratingAckSchema = z.strictObject({
+  ok: z.literal(true),
+  message: z.string(),
+  debug: z
+    .strictObject({
+      emailVerificationCode: emailVerificationCodeSchema,
+      emailVerificationExpiresAt: z.string()
+    })
+    .optional()
+});
+
+export type AuthNonEnumeratingAck = z.infer<typeof authNonEnumeratingAckSchema>;
+
+export const verifyEmailResponseSchema = z.strictObject({
+  emailVerified: z.literal(true),
+  userId: z.number().int().positive(),
+  userName: z.string(),
+  email: email()
+});
+
+export type VerifyEmailResponse = z.infer<typeof verifyEmailResponseSchema>;

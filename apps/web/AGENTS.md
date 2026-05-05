@@ -11,7 +11,7 @@ Next.js 16 App Router server-rendered starter surface. Use for generic starter e
 - `src/app/layout.tsx` — Server Component: root layout. Loads Fraunces (display serif, italic, SOFT+WONK+opsz axes), Geist Sans (body), Geist Mono, IBM Plex Mono (mono/numerals) via `next/font`.
 - `src/app/page.tsx` — Server Component: Magazine-editorial layout (masthead → hero + by-the-numbers stats → endpoint explorer + session → health + pitch footer).
 - `src/app/health-check.tsx` — Client Component: auto-pings `healthContract`, renders dot + latency.
-- `src/app/auth-panel.tsx` — Client Component: register / login / refresh / me / logout via `@repo/contracts/auth`, `credentials: 'include'`, editorial column chrome (same pattern as Vite `auth-panel`).
+- `src/app/auth-panel.tsx` — Client Component: register (email verification), verify + resend, login (blocked until verified), refresh / me / logout via `@repo/contracts/auth`, `credentials: 'include'`, editorial column chrome (same pattern as Vite `auth-panel`).
 - `src/app/notes-panel.tsx` — Client Component: full CRUD styled as a "Letters to the Editor" column (not mounted on the home page; kept for reuse).
 - `src/app/package-verification.tsx` — Client Component: runtime checks via static imports of each `@repo/*` package + live backend health.
 - `src/app/endpoint-explorer.tsx` — Client Component: lists every `EndpointContract` with a "Try →" button, auto-runs GETs on mount, shows JSON response inline.
