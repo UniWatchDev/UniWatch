@@ -1,15 +1,17 @@
 import { MiddlewareConsumer, Module, type NestModule } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_FILTER, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { ZodSerializerInterceptor, ZodValidationPipe } from 'nestjs-zod';
 import { AppController } from '@/app/app.controller';
 import { AppService } from '@/app/app.service';
-import { validateEnv } from '@/utils/env.validation';
+import { Env, validateEnv } from '@/utils/env.validation';
 import { HealthModule } from '@/health/health.module';
 import { NotesModule } from '@/notes/notes.module';
 import { RealtimeModule } from '@/realtime/realtime.module';
 import { HttpExceptionFilter } from '@/filters/http-exception.filter';
 import { RequestIdMiddleware } from '@/middleware/request-id.middleware';
+import { JwtModule } from '@nestjs/jwt';
+import { AuthModule } from '@/auth/auth.module';
 
 const nodeEnv = process.env['NODE_ENV'] ?? 'development';
 const envFilePath = [
@@ -26,9 +28,19 @@ const envFilePath = [
       envFilePath,
       validate: validateEnv
     }),
+    JwtModule.registerAsync({
+      global: true,
+      imports: [ConfigModule],
+      useFactory: (configService: ConfigService<Env, true>) => ({
+        secret: configService.get('JWT_SECRET'),
+        signOptions: { expiresIn: configService.get('JWT_ACCESS_EXPIRES_IN') }
+      }),
+      inject: [ConfigService<Env, true>]
+    }),
     HealthModule,
     NotesModule,
-    RealtimeModule
+    RealtimeModule,
+    AuthModule
   ],
   controllers: [AppController],
   providers: [

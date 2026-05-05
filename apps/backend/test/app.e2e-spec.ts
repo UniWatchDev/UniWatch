@@ -4,9 +4,28 @@ import type { TestingModule } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import type { App } from 'supertest/types';
+import { randomBytes } from 'node:crypto';
+
 import { AppModule } from '@/app/app.module';
+import { loginResponseSchema, type LoginResponse } from '@/auth/auth.dto';
 import { configureApp } from '@/bootstrap';
 import type { Env } from '@/utils/env.validation';
+
+function uniqueRegisterBody(prefix: string): {
+  userName: string;
+  phoneNumber: string;
+  email: string;
+  password: string;
+} {
+  const id = `${String(Date.now())}${randomBytes(4).toString('hex')}`;
+  const phoneSuffix = randomBytes(4).readUInt32BE(0) % 100_000_000;
+  return {
+    userName: `${prefix}${id}`,
+    phoneNumber: `05${String(phoneSuffix).padStart(8, '0')}`,
+    email: `${prefix}${id}@example.com`,
+    password: 'Secret1a'
+  };
+}
 
 describe('Backend bootstrap (e2e)', () => {
   let app: INestApplication<App>;
@@ -92,6 +111,66 @@ describe('Backend bootstrap (e2e)', () => {
     expect(response.headers['content-security-policy']).toContain(
       "default-src 'self'"
     );
+  });
+
+  it('auth: register, login, and refresh with cookie jar', async () => {
+    const agent = request.agent(app.getHttpServer());
+    const registerBody = uniqueRegisterBody('u');
+    await agent.post('/api/auth/register').send(registerBody).expect(201);
+    await agent
+      .post('/api/auth/login')
+      .send({
+        email: registerBody.email,
+        password: registerBody.password
+      })
+      .expect(200);
+    const refreshRes = await agent.post('/api/auth/refresh').expect(200);
+    const body: LoginResponse = loginResponseSchema.parse(
+      refreshRes.body as unknown
+    );
+    expect(body.userName).toBe(registerBody.userName);
+    expect(body.email).toBe(registerBody.email.toLowerCase());
+    expect(typeof body.userId).toBe('number');
+  });
+
+  it('auth: GET /me without cookies returns 401', async () => {
+    await request(app.getHttpServer()).get('/api/auth/me').expect(401);
+  });
+
+  it('auth: GET /me after login returns the same user shape', async () => {
+    const agent = request.agent(app.getHttpServer());
+    const registerBody = uniqueRegisterBody('m');
+    await agent.post('/api/auth/register').send(registerBody).expect(201);
+    await agent
+      .post('/api/auth/login')
+      .send({
+        email: registerBody.email,
+        password: registerBody.password
+      })
+      .expect(200);
+    const meRes = await agent.get('/api/auth/me').expect(200);
+    const me: LoginResponse = loginResponseSchema.parse(meRes.body as unknown);
+    expect(me.userName).toBe(registerBody.userName);
+    expect(me.email).toBe(registerBody.email.toLowerCase());
+  });
+
+  it('auth: logout clears session and cookies (refresh then fails)', async () => {
+    const agent = request.agent(app.getHttpServer());
+    const registerBody = uniqueRegisterBody('l');
+    await agent.post('/api/auth/register').send(registerBody).expect(201);
+    await agent
+      .post('/api/auth/login')
+      .send({
+        email: registerBody.email,
+        password: registerBody.password
+      })
+      .expect(200);
+    await agent.post('/api/auth/logout').expect(204);
+    await agent.post('/api/auth/refresh').expect(401);
+  });
+
+  it('auth: refresh without cookies returns 401', async () => {
+    await request(app.getHttpServer()).post('/api/auth/refresh').expect(401);
   });
 });
 

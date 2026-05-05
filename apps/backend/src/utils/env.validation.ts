@@ -4,6 +4,10 @@ const envSchema = z.object({
   NODE_ENV: z
     .enum(['development', 'production', 'test'])
     .default('development'),
+    JWT_SECRET: z.string().min(32),
+    JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
+    /** Refresh cookie lifetime (opaque refresh token TTL), e.g. `7d`. */
+    JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   /**
    * CORS allowed origins. `*` allows all (dev default). For production, set a
