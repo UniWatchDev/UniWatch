@@ -3,6 +3,7 @@
   "type": "module",
   "exports": {
     "./api": "./dist/api.js",
+    "./auth": "./dist/auth/auth.consts.js",
     "./health": "./dist/health/health.consts.js",
     "./notes": "./dist/notes/notes.consts.js",
     "./root": "./dist/root/root.consts.js",
