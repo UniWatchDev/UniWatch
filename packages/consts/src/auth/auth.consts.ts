@@ -1,3 +1,12 @@
+/** Nest `@Controller()` segment (app uses global prefix `api`). */
+export const AUTH_CONTROLLER_PATH = 'auth' as const;
+
+export const AUTH_ROUTE_REGISTER = 'register' as const;
+export const AUTH_ROUTE_LOGIN = 'login' as const;
+export const AUTH_ROUTE_REFRESH = 'refresh' as const;
+export const AUTH_ROUTE_ME = 'me' as const;
+export const AUTH_ROUTE_LOGOUT = 'logout' as const;
+
 /** POST — create account (JSON body). */
 export const AUTH_REGISTER_ENDPOINT = '/api/auth/register' as const;
 

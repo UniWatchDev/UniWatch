@@ -39,7 +39,7 @@ src/
     notes.dto.ts         — CreateNoteDto, UpdateNoteDto, PatchNoteDto, NoteDto, DeleteNoteResponseDto, NoteIdParamsDto
   auth/
     auth.module.ts       — AuthModule
-    auth.controller.ts   — POST register, login, refresh, logout; GET me (HttpOnly cookies + JwtAuthGuard)
+    auth.controller.ts   — POST register, login, refresh, logout; GET me; paths from `@repo/consts/auth`; HttpOnly cookies + JwtAuthGuard
     auth.service.ts      — in-memory users + refresh sessions; bcrypt + JwtService
     auth.dto.ts          — nestjs-zod DTOs wrapping `@repo/schemas/auth`
     auth.consts.ts       — cookie names for access / refresh tokens

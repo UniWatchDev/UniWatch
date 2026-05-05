@@ -31,6 +31,8 @@
     "@nestjs/platform-socket.io": "^11.1.19",
     "@nestjs/swagger": "^11.2.0",
     "@nestjs/websockets": "^11.1.19",
+    "@repo/consts": "workspace:*",
+    "@repo/contracts": "workspace:*",
     "@repo/schemas": "workspace:*",
     "bcrypt": "^6.0.0",
     "cookie-parser": "^1.4.7",

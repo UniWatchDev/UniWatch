@@ -14,6 +14,15 @@ import { ApiTags } from '@nestjs/swagger';
 import { ZodResponse } from 'nestjs-zod';
 import type { Request, Response } from 'express';
 
+import {
+  AUTH_CONTROLLER_PATH,
+  AUTH_ROUTE_LOGIN,
+  AUTH_ROUTE_LOGOUT,
+  AUTH_ROUTE_ME,
+  AUTH_ROUTE_REFRESH,
+  AUTH_ROUTE_REGISTER
+} from '@repo/consts/auth';
+
 import { AUTH_ACCESS_COOKIE, AUTH_REFRESH_COOKIE } from '@/auth/auth.consts';
 import {
   LoginDto,
@@ -30,7 +39,7 @@ import type { Env } from '@/utils/env.validation';
 import { parseDurationToMs } from '@/utils/parse-duration-ms';
 
 @ApiTags('auth')
-@Controller('auth')
+@Controller(AUTH_CONTROLLER_PATH)
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
@@ -87,7 +96,7 @@ export class AuthController {
     return typeof value === 'string' && value.length > 0 ? value : undefined;
   }
 
-  @Post('register')
+  @Post(AUTH_ROUTE_REGISTER)
   @HttpCode(201)
   @ZodResponse({
     status: 201,
@@ -98,7 +107,7 @@ export class AuthController {
     return this.authService.register(body);
   }
 
-  @Post('login')
+  @Post(AUTH_ROUTE_LOGIN)
   @HttpCode(200)
   @ZodResponse({
     status: 200,
@@ -118,7 +127,7 @@ export class AuthController {
     return result.user;
   }
 
-  @Post('refresh')
+  @Post(AUTH_ROUTE_REFRESH)
   @HttpCode(200)
   @ZodResponse({
     status: 200,
@@ -151,7 +160,7 @@ export class AuthController {
     }
   }
 
-  @Get('me')
+  @Get(AUTH_ROUTE_ME)
   @UseGuards(JwtAuthGuard)
   @HttpCode(200)
   @ZodResponse({
@@ -168,7 +177,7 @@ export class AuthController {
     return this.authService.getMeForJwtPayload(payload);
   }
 
-  @Post('logout')
+  @Post(AUTH_ROUTE_LOGOUT)
   @HttpCode(204)
   logout(@Req() req: Request, @Res({ passthrough: true }) res: Response): void {
     this.authService.logout(this.readRefreshCookie(req));

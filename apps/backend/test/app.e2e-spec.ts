@@ -6,6 +6,14 @@ import request from 'supertest';
 import type { App } from 'supertest/types';
 import { randomBytes } from 'node:crypto';
 
+import {
+  AUTH_LOGIN_ENDPOINT,
+  AUTH_LOGOUT_ENDPOINT,
+  AUTH_ME_ENDPOINT,
+  AUTH_REFRESH_ENDPOINT,
+  AUTH_REGISTER_ENDPOINT
+} from '@repo/consts/auth';
+
 import { AppModule } from '@/app/app.module';
 import { loginResponseSchema, type LoginResponse } from '@/auth/auth.dto';
 import { configureApp } from '@/bootstrap';
@@ -116,15 +124,15 @@ describe('Backend bootstrap (e2e)', () => {
   it('auth: register, login, and refresh with cookie jar', async () => {
     const agent = request.agent(app.getHttpServer());
     const registerBody = uniqueRegisterBody('u');
-    await agent.post('/api/auth/register').send(registerBody).expect(201);
+    await agent.post(AUTH_REGISTER_ENDPOINT).send(registerBody).expect(201);
     await agent
-      .post('/api/auth/login')
+      .post(AUTH_LOGIN_ENDPOINT)
       .send({
         email: registerBody.email,
         password: registerBody.password
       })
       .expect(200);
-    const refreshRes = await agent.post('/api/auth/refresh').expect(200);
+    const refreshRes = await agent.post(AUTH_REFRESH_ENDPOINT).expect(200);
     const body: LoginResponse = loginResponseSchema.parse(
       refreshRes.body as unknown
     );
@@ -134,21 +142,21 @@ describe('Backend bootstrap (e2e)', () => {
   });
 
   it('auth: GET /me without cookies returns 401', async () => {
-    await request(app.getHttpServer()).get('/api/auth/me').expect(401);
+    await request(app.getHttpServer()).get(AUTH_ME_ENDPOINT).expect(401);
   });
 
   it('auth: GET /me after login returns the same user shape', async () => {
     const agent = request.agent(app.getHttpServer());
     const registerBody = uniqueRegisterBody('m');
-    await agent.post('/api/auth/register').send(registerBody).expect(201);
+    await agent.post(AUTH_REGISTER_ENDPOINT).send(registerBody).expect(201);
     await agent
-      .post('/api/auth/login')
+      .post(AUTH_LOGIN_ENDPOINT)
       .send({
         email: registerBody.email,
         password: registerBody.password
       })
       .expect(200);
-    const meRes = await agent.get('/api/auth/me').expect(200);
+    const meRes = await agent.get(AUTH_ME_ENDPOINT).expect(200);
     const me: LoginResponse = loginResponseSchema.parse(meRes.body as unknown);
     expect(me.userName).toBe(registerBody.userName);
     expect(me.email).toBe(registerBody.email.toLowerCase());
@@ -157,20 +165,20 @@ describe('Backend bootstrap (e2e)', () => {
   it('auth: logout clears session and cookies (refresh then fails)', async () => {
     const agent = request.agent(app.getHttpServer());
     const registerBody = uniqueRegisterBody('l');
-    await agent.post('/api/auth/register').send(registerBody).expect(201);
+    await agent.post(AUTH_REGISTER_ENDPOINT).send(registerBody).expect(201);
     await agent
-      .post('/api/auth/login')
+      .post(AUTH_LOGIN_ENDPOINT)
       .send({
         email: registerBody.email,
         password: registerBody.password
       })
       .expect(200);
-    await agent.post('/api/auth/logout').expect(204);
-    await agent.post('/api/auth/refresh').expect(401);
+    await agent.post(AUTH_LOGOUT_ENDPOINT).expect(204);
+    await agent.post(AUTH_REFRESH_ENDPOINT).expect(401);
   });
 
   it('auth: refresh without cookies returns 401', async () => {
-    await request(app.getHttpServer()).post('/api/auth/refresh').expect(401);
+    await request(app.getHttpServer()).post(AUTH_REFRESH_ENDPOINT).expect(401);
   });
 });
 
