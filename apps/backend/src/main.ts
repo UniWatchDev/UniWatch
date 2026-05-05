@@ -4,12 +4,14 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from '@/app/app.module';
 import { configureApp } from '@/bootstrap';
 import type { Env } from '@/utils/env.validation';
+import { IoAdapter } from '@nestjs/platform-socket.io';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService<Env, true>);
 
   configureApp(app, configService);
+  app.useWebSocketAdapter(new IoAdapter(app));
 
   const port = configService.get('PORT', { infer: true });
   const nodeEnv = configService.get('NODE_ENV', { infer: true });
