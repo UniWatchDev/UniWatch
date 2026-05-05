@@ -7,9 +7,9 @@ import {
   STARTER_STATS
 } from '@repo/consts/starter';
 
+import { AuthPanel } from '@/auth-panel';
 import { EndpointExplorer } from '@/endpoint-explorer';
 import { HealthCheck } from '@/health-check';
-import { NotesPanel } from '@/notes-panel';
 import { PackageVerification } from '@/package-verification';
 
 function App() {
@@ -123,12 +123,12 @@ function App() {
           <EndpointExplorer />
         </section>
 
-        {/* Notes — cols 8-12, rows 3 */}
+        {/* Auth — cols 8-12, rows 3 */}
         <section
           className="fade-up glass col-span-5 col-start-8 row-start-3 flex min-h-0 flex-col rounded-3xl p-5"
           style={{ animationDelay: '240ms' }}
         >
-          <NotesPanel />
+          <AuthPanel />
         </section>
 
         {/* Footer: health + pitch pillars */}

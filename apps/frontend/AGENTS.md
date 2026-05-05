@@ -8,9 +8,9 @@ Vite 8 + React 19 client-side starter surface. Keep it polished, generic, and us
 
 ## Structure
 
-- `src/App.tsx` — glassmorphic single-viewport layout (gradient canvas + ambient blobs + frosted cards: hero, package verification, endpoint explorer, notes, health + pitch footer).
+- `src/App.tsx` — glassmorphic single-viewport layout (gradient canvas + ambient blobs + frosted cards: hero, package verification, endpoint explorer, auth, health + pitch footer).
 - `src/health-check.tsx` — frosted pill: auto-pings `healthContract`, gradient-ring glow on ok, latency display.
-- `src/notes-panel.tsx` — frosted card with full CRUD against notes contracts. Hover-reveal row actions.
+- `src/auth-panel.tsx` — frosted card: register + login + refresh + `/me` + logout against `@repo/contracts/auth` with `credentials: 'include'` (HttpOnly cookies).
 - `src/package-verification.tsx` — frosted card with runtime probes against each `@repo/*` export + live backend health with latency. Uses static imports (no dynamic import() at runtime, which Vite cannot resolve from variable paths).
 - `src/endpoint-explorer.tsx` — frosted card listing every `EndpointContract` with gradient method badges + "Try" button; auto-runs GETs on mount, shows JSON response drawer inline.
 - `src/index.css` — Tailwind v4 via `@import 'tailwindcss'`. Gradient canvas + ambient blurred blobs + frosted-glass card utility (`.glass`) + keyframes (`gradient-drift`, `float-*`, `check-pop`, `glow-pulse`).
