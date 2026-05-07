@@ -8,15 +8,6 @@ const envSchema = z.object({
     JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
     /** Refresh cookie lifetime (opaque refresh token TTL), e.g. `7d`. */
     JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
-  /**
-   * When true, register / resend-verification may include a `debug` object with the
-   * 6-digit email code (local demos only — never enable in production).
-   */
-  AUTH_DEBUG_EMAIL_TOKENS: z
-    .string()
-    .optional()
-    .default('false')
-    .transform((value) => value === 'true' || value === '1' || value === 'yes'),
   /** TTL for email verification codes (e.g. `15m`, `24h`). */
   AUTH_EMAIL_VERIFICATION_EXPIRES_IN: z.string().default('15m'),
   /** TTL for opaque password-reset tokens (e.g. `1h`, `24h`). */
@@ -29,7 +20,7 @@ const envSchema = z.object({
   CORS_ORIGIN: z.string().default('*'),
   /**
    * When set (non-empty), outbound mail uses SMTP. Requires `SMTP_FROM` and `SMTP_PORT`.
-   * Leave empty for local/CI (verification codes only via `AUTH_DEBUG_EMAIL_TOKENS` when enabled).
+   * Leave empty for local/CI (no verification email is sent; configure SMTP for real delivery).
    */
   SMTP_HOST: z.string().default(''),
   SMTP_PORT: z.preprocess(

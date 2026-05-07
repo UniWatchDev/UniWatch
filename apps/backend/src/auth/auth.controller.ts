@@ -213,8 +213,7 @@ export class AuthController {
   @HttpCode(202)
   @ZodResponse({
     status: 202,
-    description:
-      'Non-enumerating ack; optional `debug` when AUTH_DEBUG_EMAIL_TOKENS, SMTP off, and account is unverified',
+    description: 'Non-enumerating ack',
     type: AuthNonEnumeratingAckDto
   })
   async resendVerification(
@@ -227,8 +226,7 @@ export class AuthController {
   @HttpCode(202)
   @ZodResponse({
     status: 202,
-    description:
-      'Non-enumerating ack; optional `debug.passwordResetToken` when AUTH_DEBUG_EMAIL_TOKENS and SMTP off',
+    description: 'Non-enumerating ack',
     type: ForgotPasswordAckDto
   })
   async forgotPassword(@Body() body: ForgotPasswordDto): Promise<ForgotPasswordAck> {

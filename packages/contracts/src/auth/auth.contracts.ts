@@ -86,7 +86,6 @@ export const verifyEmailAuthContract: EndpointContract<
 
 /**
  * POST `/api/auth/resend-verification` — `{ email }`; 202 + non-enumerating ack.
- * Optional `debug` when `AUTH_DEBUG_EMAIL_TOKENS` and an unverified account exists.
  */
 export const resendVerificationAuthContract: EndpointContract<
   AuthNonEnumeratingAck,
@@ -100,7 +99,6 @@ export const resendVerificationAuthContract: EndpointContract<
 
 /**
  * POST `/api/auth/forgot-password` — `{ email }`; 202 + non-enumerating ack.
- * Optional `debug.passwordResetToken` when `AUTH_DEBUG_EMAIL_TOKENS` and a verified account exists.
  */
 export const forgotPasswordAuthContract: EndpointContract<
   ForgotPasswordAck,

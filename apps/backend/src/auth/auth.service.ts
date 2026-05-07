@@ -89,15 +89,6 @@ export class AuthService {
     private readonly mail: MailService
   ) {}
 
-  private debugEmailTokens(): boolean {
-    return this.config.get('AUTH_DEBUG_EMAIL_TOKENS', { infer: true });
-  }
-
-  /** API `debug` codes only when debug flag is on and SMTP is off (codes are never duplicated in email + JSON). */
-  private includeEmailDebugInApi(): boolean {
-    return this.debugEmailTokens() && !this.mail.isSmtpConfigured();
-  }
-
   private putEmailVerification(emailKey: string): {
     code: string;
     expiresAtIso: string;
@@ -200,25 +191,13 @@ export class AuthService {
       }
     }
 
-    const base: RegisterResponse = {
+    return {
       userId,
       userName: row.userName,
       phoneNumber: row.phoneNumber,
       email: row.email,
       createdAt: createdAt.toISOString(),
       emailVerified: false
-    };
-
-    if (!this.includeEmailDebugInApi()) {
-      return base;
-    }
-
-    return {
-      ...base,
-      debug: {
-        emailVerificationCode: code,
-        emailVerificationExpiresAt: expiresAtIso
-      }
     };
   }
 
@@ -282,17 +261,7 @@ export class AuthService {
       }
     }
 
-    if (!this.includeEmailDebugInApi()) {
-      return { ok: true, message: AUTH_RESEND_ACK_MESSAGE };
-    }
-    return {
-      ok: true,
-      message: AUTH_RESEND_ACK_MESSAGE,
-      debug: {
-        emailVerificationCode: code,
-        emailVerificationExpiresAt: expiresAtIso
-      }
-    };
+    return { ok: true, message: AUTH_RESEND_ACK_MESSAGE };
   }
 
   async forgotPassword(body: ForgotPasswordBody): Promise<ForgotPasswordAck> {
@@ -319,17 +288,7 @@ export class AuthService {
       }
     }
 
-    if (!this.includeEmailDebugInApi()) {
-      return { ok: true, message: AUTH_RESEND_ACK_MESSAGE };
-    }
-    return {
-      ok: true,
-      message: AUTH_RESEND_ACK_MESSAGE,
-      debug: {
-        passwordResetToken: token,
-        passwordResetExpiresAt: expiresAtIso
-      }
-    };
+    return { ok: true, message: AUTH_RESEND_ACK_MESSAGE };
   }
 
   async resetPassword(body: ResetPasswordBody): Promise<void> {

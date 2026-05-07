@@ -5,8 +5,6 @@ process.env['JWT_ACCESS_EXPIRES_IN'] =
   process.env['JWT_ACCESS_EXPIRES_IN'] ?? '15m';
 process.env['JWT_REFRESH_EXPIRES_IN'] =
   process.env['JWT_REFRESH_EXPIRES_IN'] ?? '7d';
-process.env['AUTH_DEBUG_EMAIL_TOKENS'] =
-  process.env['AUTH_DEBUG_EMAIL_TOKENS'] ?? 'true';
 process.env['AUTH_EMAIL_VERIFICATION_EXPIRES_IN'] =
   process.env['AUTH_EMAIL_VERIFICATION_EXPIRES_IN'] ?? '15m';
 process.env['AUTH_PASSWORD_RESET_EXPIRES_IN'] =

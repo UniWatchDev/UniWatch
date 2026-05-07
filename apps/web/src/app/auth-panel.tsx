@@ -115,11 +115,8 @@ export function AuthPanel() {
       );
       setVerificationEmail(data.email);
       setLoginIdentifier(data.email);
-      if (data.debug !== undefined) {
-        setVerificationCode(data.debug.emailVerificationCode);
-      }
       setStatus(
-        `Registered as ${data.userName}. Enter the 6-digit code for ${data.email}, then log in.`
+        `Registered as ${data.userName}. Use the 6-digit code from your email for ${data.email}, then log in.`
       );
     } catch (err) {
       setError(formatErr(err));
@@ -175,9 +172,6 @@ export function AuthPanel() {
       const ack = authNonEnumeratingAckSchema.parse(
         JSON.parse(await response.text()) as unknown
       );
-      if (ack.debug !== undefined) {
-        setVerificationCode(ack.debug.emailVerificationCode);
-      }
       setStatus(ack.message);
     } catch (err) {
       setError(formatErr(err));
@@ -205,9 +199,6 @@ export function AuthPanel() {
       const ack = forgotPasswordAckSchema.parse(
         JSON.parse(await response.text()) as unknown
       );
-      if (ack.debug !== undefined) {
-        setResetToken(ack.debug.passwordResetToken);
-      }
       setStatus(ack.message);
     } catch (err) {
       setError(formatErr(err));
@@ -434,9 +425,8 @@ export function AuthPanel() {
             Verify email
           </p>
           <p className="mono mt-1 text-[10px] text-[color:var(--color-mute)]">
-            With <code className="text-[color:var(--color-ink)]">AUTH_DEBUG_EMAIL_TOKENS</code>{' '}
-            on the API, code may be prefilled. Production uses a mailer, not{' '}
-            <code className="text-[color:var(--color-ink)]">debug</code>.
+            The API does not return the code in JSON. Set <code className="text-[color:var(--color-ink)]">SMTP_*</code> on the
+            backend so the code is delivered, then paste it here.
           </p>
           <div className="mt-2 grid gap-2 border-b border-dotted border-[color:var(--color-rule)] pb-2">
             <label className="grid gap-0.5">
@@ -494,10 +484,8 @@ export function AuthPanel() {
             Forgot / reset password
           </p>
           <p className="mono mt-1 text-[10px] text-[color:var(--color-mute)]">
-            Non-enumerating forgot. With{' '}
-            <code className="text-[color:var(--color-ink)]">AUTH_DEBUG_EMAIL_TOKENS</code>, the API
-            may return <code className="text-[color:var(--color-ink)]">debug.passwordResetToken</code>{' '}
-            for local demos only.
+            Non-enumerating forgot. Configure <code className="text-[color:var(--color-ink)]">SMTP_*</code> so the reset token is
+            emailed; paste it below (or follow the link from the email).
           </p>
           <div className="mt-2 grid gap-2 border-b border-dotted border-[color:var(--color-rule)] pb-2">
             <label className="grid gap-0.5">

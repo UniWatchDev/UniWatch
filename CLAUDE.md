@@ -10,10 +10,9 @@
 | backend  | `JWT_SECRET`               | —             | Required, ≥32 chars                                                                                        |
 | backend  | `JWT_ACCESS_EXPIRES_IN`    | `15m`         | Zod-validated                                                                                              |
 | backend  | `JWT_REFRESH_EXPIRES_IN`   | `7d`          | Zod-validated                                                                                              |
-| backend  | `AUTH_DEBUG_EMAIL_TOKENS`  | `false`       | When `true` **and SMTP is off**, register/resend may include `debug.emailVerificationCode`; forgot may include `debug.passwordResetToken`. When **SMTP is on**, codes/tokens are email-only (never in JSON). |
 | backend  | `AUTH_EMAIL_VERIFICATION_EXPIRES_IN` | `15m` | TTL for 6-digit email verification codes                                                            |
 | backend  | `AUTH_PASSWORD_RESET_EXPIRES_IN` | `1h` | TTL for opaque forgot-password reset tokens                                                            |
-| backend  | `SMTP_HOST` / `SMTP_PORT` / `SMTP_SECURE` / `SMTP_USER` / `SMTP_PASS` / `SMTP_FROM` | (optional) | When `SMTP_HOST` is set, verification + reset emails are sent via `nodemailer`; `SMTP_FROM` + `SMTP_PORT` required. |
+| backend  | `SMTP_HOST` / `SMTP_PORT` / `SMTP_SECURE` / `SMTP_USER` / `SMTP_PASS` / `SMTP_FROM` | (optional) | When `SMTP_HOST` is set, verification + reset email is sent via **nodemailer** over **Resend SMTP** by default (`smtp.resend.com`, user `resend`, pass = Resend API key). See [Resend + Nodemailer](https://resend.com/docs/send-with-nodemailer-smtp). Codes/tokens are never in JSON. |
 | backend  | `APP_PUBLIC_ORIGIN`        | empty         | Optional `https://…` base for password-reset links in email (no trailing slash). |
 | frontend | `VITE_PORT`                | `5173`        | Read in `vite.config.ts`                                                                                   |
 | frontend | `VITE_API_BASE_URL`        | —             | Defined in `.env` examples but **not wired** — call sites use hardcoded `API_BASE_URL` from `@repo/consts` |

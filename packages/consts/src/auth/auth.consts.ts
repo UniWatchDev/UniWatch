@@ -29,11 +29,11 @@ export const AUTH_LOGOUT_ENDPOINT = '/api/auth/logout' as const;
 /** POST — `{ email, code }` (6-digit); marks email verified when valid. */
 export const AUTH_VERIFY_EMAIL_ENDPOINT = '/api/auth/verify-email' as const;
 
-/** POST — `{ email }`; non-enumerating ack; optional `debug` when `AUTH_DEBUG_EMAIL_TOKENS`. */
+/** POST — `{ email }`; non-enumerating ack. */
 export const AUTH_RESEND_VERIFICATION_ENDPOINT =
   '/api/auth/resend-verification' as const;
 
-/** POST — `{ email }`; non-enumerating ack; optional reset `debug` when `AUTH_DEBUG_EMAIL_TOKENS`. */
+/** POST — `{ email }`; non-enumerating ack. */
 export const AUTH_FORGOT_PASSWORD_ENDPOINT =
   '/api/auth/forgot-password' as const;
 
