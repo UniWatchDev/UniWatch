@@ -15,7 +15,7 @@ import {
   refreshAuthContract,
   registerAuthContract
 } from '@repo/contracts/auth';
-import type { LoginResponse, RegisterResponse } from '@repo/schemas/auth';
+import type { LoginResponse } from '@repo/schemas/auth';
 import {
   authNonEnumeratingAckSchema,
   forgotPasswordAckSchema,
@@ -32,6 +32,34 @@ const JSON_HEADERS = {
 };
 
 const FETCH_INIT = { credentials: 'include' as const };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object';
+}
+
+function getEmailVerificationCode(value: unknown): string | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const debug = value['debug'];
+  if (!isRecord(debug)) {
+    return undefined;
+  }
+  const code = debug['emailVerificationCode'];
+  return typeof code === 'string' ? code : undefined;
+}
+
+function getPasswordResetToken(value: unknown): string | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const debug = value['debug'];
+  if (!isRecord(debug)) {
+    return undefined;
+  }
+  const token = debug['passwordResetToken'];
+  return typeof token === 'string' ? token : undefined;
+}
 
 function formatErr(err: unknown): string {
   if (err instanceof Error) return err.message;
@@ -67,12 +95,10 @@ export function AuthPanel() {
   const [phoneNumber, setPhoneNumber] = useState(
     () => `05${String(Math.floor(Math.random() * 100_000_000)).padStart(8, '0')}`
   );
-  const [email, setEmail] = useState(
-    () => `u${String(Date.now())}@example.com`
-  );
+  const [email, setEmail] = useState(() => `u${String(Date.now())}@example.com`);
   const [password, setPassword] = useState('Secret1a');
-  const [loginIdentifier, setLoginIdentifier] = useState(
-    () => `u${String(Date.now())}@example.com`
+  const [loginIdentifier, setLoginIdentifier] = useState(() =>
+    `u${String(Date.now())}@example.com`
   );
   const [loginPassword, setLoginPassword] = useState('Secret1a');
   const [verificationEmail, setVerificationEmail] = useState('');
@@ -110,13 +136,25 @@ export function AuthPanel() {
       if (!response.ok) {
         throw new Error(await readHttpErrorMessage(response));
       }
-      const data: RegisterResponse = registerAuthContract.responseSchema.parse(
+      const data: unknown = registerAuthContract.responseSchema.parse(
         JSON.parse(await response.text()) as unknown
       );
-      setVerificationEmail(data.email);
-      setLoginIdentifier(data.email);
+      if (!isRecord(data)) {
+        throw new Error('Register response was missing expected fields');
+      }
+      const registeredEmail = data['email'];
+      const registeredUserName = data['userName'];
+      if (typeof registeredEmail !== 'string' || typeof registeredUserName !== 'string') {
+        throw new Error('Register response was missing expected fields');
+      }
+      setVerificationEmail(registeredEmail);
+      setLoginIdentifier(registeredEmail);
+      const verificationCodeFromResponse = getEmailVerificationCode(data);
+      if (verificationCodeFromResponse !== undefined) {
+        setVerificationCode(verificationCodeFromResponse);
+      }
       setStatus(
-        `Registered as ${data.userName}. Use the 6-digit code from your email for ${data.email}, then log in.`
+        `Registered as ${registeredUserName}. Use the 6-digit code from JSON for ${registeredEmail}, then log in.`
       );
     } catch (err) {
       setError(formatErr(err));
@@ -169,10 +207,17 @@ export function AuthPanel() {
       if (!response.ok) {
         throw new Error(await readHttpErrorMessage(response));
       }
-      const ack = authNonEnumeratingAckSchema.parse(
+      const ack: unknown = authNonEnumeratingAckSchema.parse(
         JSON.parse(await response.text()) as unknown
       );
-      setStatus(ack.message);
+      const verificationCodeFromResponse = getEmailVerificationCode(ack);
+      if (verificationCodeFromResponse !== undefined) {
+        setVerificationCode(verificationCodeFromResponse);
+      }
+      if (!isRecord(ack) || typeof ack['message'] !== 'string') {
+        throw new Error('Resend response was missing a message');
+      }
+      setStatus(ack['message']);
     } catch (err) {
       setError(formatErr(err));
     }
@@ -196,10 +241,17 @@ export function AuthPanel() {
       if (!response.ok) {
         throw new Error(await readHttpErrorMessage(response));
       }
-      const ack = forgotPasswordAckSchema.parse(
+      const ack: unknown = forgotPasswordAckSchema.parse(
         JSON.parse(await response.text()) as unknown
       );
-      setStatus(ack.message);
+      const resetTokenFromResponse = getPasswordResetToken(ack);
+      if (resetTokenFromResponse !== undefined) {
+        setResetToken(resetTokenFromResponse);
+      }
+      if (!isRecord(ack) || typeof ack['message'] !== 'string') {
+        throw new Error('Forgot-password response was missing a message');
+      }
+      setStatus(ack['message']);
     } catch (err) {
       setError(formatErr(err));
     }
@@ -425,8 +477,7 @@ export function AuthPanel() {
             Verify email
           </p>
           <p className="mono mt-1 text-[10px] text-[color:var(--color-mute)]">
-            The API does not return the code in JSON. Set <code className="text-[color:var(--color-ink)]">SMTP_*</code> on the
-            backend so the code is delivered, then paste it here.
+            The API returns the code in JSON and can also send email when real delivery is enabled. Paste the JSON code here or from your inbox.
           </p>
           <div className="mt-2 grid gap-2 border-b border-dotted border-[color:var(--color-rule)] pb-2">
             <label className="grid gap-0.5">
@@ -484,8 +535,7 @@ export function AuthPanel() {
             Forgot / reset password
           </p>
           <p className="mono mt-1 text-[10px] text-[color:var(--color-mute)]">
-            Non-enumerating forgot. Configure <code className="text-[color:var(--color-ink)]">SMTP_*</code> so the reset token is
-            emailed; paste it below (or follow the link from the email).
+            Non-enumerating flow. The API returns the reset token in JSON and can also send email when real delivery is enabled.
           </p>
           <div className="mt-2 grid gap-2 border-b border-dotted border-[color:var(--color-rule)] pb-2">
             <label className="grid gap-0.5">

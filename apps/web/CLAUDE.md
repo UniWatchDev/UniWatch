@@ -62,7 +62,7 @@ All mapped to Tailwind via `@theme inline` in `globals.css`.
 
 - `NEXT_PUBLIC_API_BASE_URL` — defined in `.env` examples but not yet wired into call sites; today every `fetch` uses the hardcoded `API_BASE_URL` from `@repo/consts/api`.
 - `NEXT_PUBLIC_FRONTEND_URL` — defined in `.env` examples, not used in code.
-- Port is hardcoded as `5172` via `cross-env PORT=5172` in package.json scripts.
+- Port is pinned to `5172` via `cross-env PORT=5172` in `dev`, `start`, `preview`, and `start:prod` in `package.json` (override with `PORT` in the host env if your platform requires it).
 
 ## Commands
 
@@ -72,6 +72,6 @@ All mapped to Tailwind via `@theme inline` in `globals.css`.
 | `pnpm --filter web build`       | `next build`                                                                                      |
 | `pnpm --filter web start`       | `next start` on port 5172 (no `NODE_ENV=production` — matches dev-style local start)              |
 | `pnpm --filter web preview`     | Local prod rehearsal — `NODE_ENV=production`, port pinned to 5172                                 |
-| `pnpm --filter web start:prod`  | Pure production — `NODE_ENV=production`, expects `PORT` from env                                  |
+| `pnpm --filter web start:prod`  | Pure production — `NODE_ENV=production`, `PORT=5172` (override with `PORT` in the host env)      |
 | `pnpm --filter web lint`        | ESLint (zero warnings)                                                                            |
 | `pnpm --filter web check-types` | `tsc --noEmit`                                                                                    |

@@ -1,3 +1,5 @@
+import { join } from 'node:path';
+
 import { MiddlewareConsumer, Module, type NestModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_FILTER, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
@@ -14,12 +16,11 @@ import { JwtModule } from '@nestjs/jwt';
 import { AuthModule } from '@/auth/auth.module';
 
 const nodeEnv = process.env['NODE_ENV'] ?? 'development';
-const envFilePath = [
-  `.env.${nodeEnv}.local`,
-  nodeEnv === 'test' ? undefined : '.env.local',
-  `.env.${nodeEnv}`,
-  '.env'
-].filter((value): value is string => Boolean(value));
+const backendRoot = process.cwd().endsWith('/apps/backend')
+  ? process.cwd()
+  : join(process.cwd(), 'apps/backend');
+/** One file per mode: `apps/backend/.env.development` | `.env.production` | `.env.test` (gitignored except in CI via env vars). */
+const envFilePath = [join(backendRoot, `.env.${nodeEnv}`)];
 
 @Module({
   imports: [

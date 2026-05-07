@@ -28,37 +28,34 @@ import {
   type LoginResponse
 } from '@/auth/auth.dto';
 import { configureApp } from '@/bootstrap';
-import { MailService } from '@/mail/mail.service';
 import type { Env } from '@/utils/env.validation';
 
-/** Captured by e2e MailService mock (`overrideProvider`) — never exposed via HTTP. */
-const e2eVerificationCodeByEmail = new Map<string, string>();
-const e2ePasswordResetTokenByEmail = new Map<string, string>();
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object';
+}
 
-function createE2eMailService(): MailService {
-  return {
-    isSmtpConfigured(): boolean {
-      return true;
-    },
-    sendEmailVerification(
-      to: string,
-      code: string,
-      expiresAtIso: string
-    ): Promise<void> {
-      void expiresAtIso;
-      e2eVerificationCodeByEmail.set(to.toLowerCase(), code);
-      return Promise.resolve();
-    },
-    sendPasswordReset(
-      to: string,
-      token: string,
-      expiresAtIso: string
-    ): Promise<void> {
-      void expiresAtIso;
-      e2ePasswordResetTokenByEmail.set(to.toLowerCase(), token);
-      return Promise.resolve();
-    }
-  } as MailService;
+function getEmailVerificationCode(value: unknown): string | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const debug = value['debug'];
+  if (!isRecord(debug)) {
+    return undefined;
+  }
+  const code = debug['emailVerificationCode'];
+  return typeof code === 'string' ? code : undefined;
+}
+
+function getPasswordResetToken(value: unknown): string | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const debug = value['debug'];
+  if (!isRecord(debug)) {
+    return undefined;
+  }
+  const token = debug['passwordResetToken'];
+  return typeof token === 'string' ? token : undefined;
 }
 
 function uniqueRegisterBody(prefix: string): {
@@ -85,12 +82,16 @@ async function registerAndVerifyEmail(
     .post(AUTH_REGISTER_ENDPOINT)
     .send(registerBody)
     .expect(201);
-  const parsed = registerResponseSchema.parse(regRes.body as unknown);
-  expect(parsed.emailVerified).toBe(false);
-  const code = e2eVerificationCodeByEmail.get(registerBody.email.toLowerCase());
-  if (code === undefined) {
-    throw new Error('e2e mail mock should have captured verification code');
+  const parsed: unknown = registerResponseSchema.parse(regRes.body as unknown);
+  if (!isRecord(parsed) || typeof parsed['emailVerified'] !== 'boolean') {
+    throw new Error('register response should include emailVerified');
   }
+  const code = getEmailVerificationCode(parsed);
+  if (code === undefined) {
+    throw new Error('register response should include a debug verification code');
+  }
+  const emailVerified = parsed['emailVerified'];
+  expect(emailVerified).toBe(false);
   const verifyRes = await agent
     .post(AUTH_VERIFY_EMAIL_ENDPOINT)
     .send({ email: registerBody.email, code })
@@ -104,10 +105,7 @@ describe('Backend bootstrap (e2e)', () => {
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule]
-    })
-      .overrideProvider(MailService)
-      .useValue(createE2eMailService())
-      .compile();
+    }).compile();
 
     app = moduleFixture.createNestApplication();
     const configService = app.get(ConfigService<Env, true>);
@@ -320,12 +318,10 @@ describe('Backend bootstrap (e2e)', () => {
       .post(AUTH_FORGOT_PASSWORD_ENDPOINT)
       .send({ email: registerBody.email })
       .expect(202);
-    forgotPasswordAckSchema.parse(forgotRes.body as unknown);
-    const resetToken = e2ePasswordResetTokenByEmail.get(
-      registerBody.email.toLowerCase()
-    );
+    const forgotParsed: unknown = forgotPasswordAckSchema.parse(forgotRes.body as unknown);
+    const resetToken = getPasswordResetToken(forgotParsed);
     if (resetToken === undefined) {
-      throw new Error('e2e mail mock should have captured password reset token');
+      throw new Error('forgot-password response should include a debug reset token');
     }
 
     await agent
@@ -358,10 +354,7 @@ describe('Backend bootstrap (e2e, production mode)', () => {
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule]
-    })
-      .overrideProvider(MailService)
-      .useValue(createE2eMailService())
-      .compile();
+    }).compile();
 
     app = moduleFixture.createNestApplication();
     const realConfig = app.get(ConfigService<Env, true>);
@@ -369,6 +362,9 @@ describe('Backend bootstrap (e2e, production mode)', () => {
       get: (key: keyof Env): Env[keyof Env] => {
         if (key === 'NODE_ENV') {
           return 'production';
+        }
+        if (key === 'AUTH_USE_REAL_EMAILS') {
+          return false;
         }
         return realConfig.get(key, { infer: true });
       }

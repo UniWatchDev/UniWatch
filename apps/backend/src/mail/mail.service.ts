@@ -61,9 +61,11 @@ export class MailService {
         text
       });
     } catch (error) {
+      const detail =
+        error instanceof Error ? `${error.message}\n${error.stack ?? ''}` : String(error);
       this.logger.error(
-        `Failed to send verification email to ${to}`,
-        error instanceof Error ? error.stack : undefined
+        `Failed to send verification email to ${to}: ${error instanceof Error ? error.message : String(error)}`,
+        detail
       );
       throw error;
     }
@@ -102,9 +104,11 @@ export class MailService {
         text
       });
     } catch (error) {
+      const detail =
+        error instanceof Error ? `${error.message}\n${error.stack ?? ''}` : String(error);
       this.logger.error(
-        `Failed to send password reset email to ${to}`,
-        error instanceof Error ? error.stack : undefined
+        `Failed to send password reset email to ${to}: ${error instanceof Error ? error.message : String(error)}`,
+        detail
       );
       throw error;
     }

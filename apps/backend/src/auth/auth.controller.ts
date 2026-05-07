@@ -114,7 +114,7 @@ export class AuthController {
   @HttpCode(201)
   @ZodResponse({
     status: 201,
-    description: 'User registered',
+    description: 'User registered; response includes verification debug code',
     type: RegisterResponseDto
   })
   register(@Body() body: RegisterDto): Promise<RegisterResponse> {
@@ -213,7 +213,7 @@ export class AuthController {
   @HttpCode(202)
   @ZodResponse({
     status: 202,
-    description: 'Non-enumerating ack',
+    description: 'Non-enumerating ack with debug code when applicable',
     type: AuthNonEnumeratingAckDto
   })
   async resendVerification(
@@ -226,7 +226,7 @@ export class AuthController {
   @HttpCode(202)
   @ZodResponse({
     status: 202,
-    description: 'Non-enumerating ack',
+    description: 'Non-enumerating ack with debug token when applicable',
     type: ForgotPasswordAckDto
   })
   async forgotPassword(@Body() body: ForgotPasswordDto): Promise<ForgotPasswordAck> {

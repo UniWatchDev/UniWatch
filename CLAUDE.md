@@ -12,14 +12,15 @@
 | backend  | `JWT_REFRESH_EXPIRES_IN`   | `7d`          | Zod-validated                                                                                              |
 | backend  | `AUTH_EMAIL_VERIFICATION_EXPIRES_IN` | `15m` | TTL for 6-digit email verification codes                                                            |
 | backend  | `AUTH_PASSWORD_RESET_EXPIRES_IN` | `1h` | TTL for opaque forgot-password reset tokens                                                            |
-| backend  | `SMTP_HOST` / `SMTP_PORT` / `SMTP_SECURE` / `SMTP_USER` / `SMTP_PASS` / `SMTP_FROM` | (optional) | When `SMTP_HOST` is set, verification + reset email is sent via **nodemailer** over **Resend SMTP** by default (`smtp.resend.com`, user `resend`, pass = Resend API key). See [Resend + Nodemailer](https://resend.com/docs/send-with-nodemailer-smtp). Codes/tokens are never in JSON. |
+| backend  | `AUTH_USE_REAL_EMAILS` | `false` in development / `true` in production | Enables real Resend delivery when `true`; JSON responses always include the verification/reset debug payloads. Set to `false` to skip SMTP delivery and save API calls. |
+| backend  | `SMTP_HOST` / `SMTP_PORT` / `SMTP_SECURE` / `SMTP_USER` / `SMTP_PASS` / `SMTP_FROM` | (optional when `AUTH_USE_REAL_EMAILS=false`) | When real delivery is enabled, verification + reset email is sent via **nodemailer** over **Resend SMTP** by default (`smtp.resend.com`, user `resend`, pass = Resend API key). See [Resend + Nodemailer](https://resend.com/docs/send-with-nodemailer-smtp). |
 | backend  | `APP_PUBLIC_ORIGIN`        | empty         | Optional `https://…` base for password-reset links in email (no trailing slash). |
 | frontend | `VITE_PORT`                | `5173`        | Read in `vite.config.ts`                                                                                   |
 | frontend | `VITE_API_BASE_URL`        | —             | Defined in `.env` examples but **not wired** — call sites use hardcoded `API_BASE_URL` from `@repo/consts` |
 | web      | `NEXT_PUBLIC_API_BASE_URL` | —             | Defined in `.env` examples but **not wired** — same hardcoded constant                                     |
 | web      | `NEXT_PUBLIC_FRONTEND_URL` | —             | Defined in `.env` examples, not used in code                                                               |
 
-**Note:** `API_BASE_URL` is hardcoded as `http://localhost:3000` in `@repo/consts/api.ts`. The env vars in `.env.*.example` files are placeholders for when the starter is productionized.
+**Note:** `API_BASE_URL` is hardcoded as `http://localhost:3000` in `@repo/consts/api.ts`. Backend env shape lives in `apps/backend/env.*.template` (copy to gitignored `.env.development` / `.env.production`) when you productionize.
 
 ## Verification
 

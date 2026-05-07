@@ -76,13 +76,24 @@ export const emailVerificationCodeSchema = z
   .string()
   .regex(/^\d{6}$/, 'Enter the 6-digit code from your email');
 
+const emailVerificationDebugSchema = z.strictObject({
+  emailVerificationCode: emailVerificationCodeSchema,
+  emailVerificationExpiresAt: z.string()
+});
+
+const passwordResetDebugSchema = z.strictObject({
+  passwordResetToken: z.string().min(32),
+  passwordResetExpiresAt: z.string()
+});
+
 export const registerResponseSchema = z.strictObject({
   userId: z.number().int().positive(),
   userName: z.string(),
   phoneNumber: z.string().regex(/^\+9725\d{8}$/),
   email: email(),
   createdAt: z.string(),
-  emailVerified: z.boolean()
+  emailVerified: z.boolean(),
+  debug: emailVerificationDebugSchema
 });
 
 export type RegisterResponse = z.infer<typeof registerResponseSchema>;
@@ -151,7 +162,8 @@ export type ResendVerificationBody = z.infer<typeof resendVerificationBodySchema
 /** Non-enumerating ack for resend (and future forgot-password). */
 export const authNonEnumeratingAckSchema = z.strictObject({
   ok: z.literal(true),
-  message: z.string()
+  message: z.string(),
+  debug: emailVerificationDebugSchema.optional()
 });
 
 export type AuthNonEnumeratingAck = z.infer<typeof authNonEnumeratingAckSchema>;
@@ -172,7 +184,8 @@ export type ForgotPasswordBody = z.infer<typeof forgotPasswordBodySchema>;
 
 export const forgotPasswordAckSchema = z.strictObject({
   ok: z.literal(true),
-  message: z.string()
+  message: z.string(),
+  debug: passwordResetDebugSchema.optional()
 });
 
 export type ForgotPasswordAck = z.infer<typeof forgotPasswordAckSchema>;

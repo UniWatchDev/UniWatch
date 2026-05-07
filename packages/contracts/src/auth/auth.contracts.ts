@@ -35,7 +35,7 @@ import {
 import { z } from 'zod';
 import type { EndpointContract } from '../shared/endpoint.js';
 
-/** POST `/api/auth/register` — JSON body; 201 + user profile (no cookies). */
+/** POST `/api/auth/register` — JSON body; 201 + user profile + verification debug code (no cookies). */
 export const registerAuthContract: EndpointContract<
   RegisterResponse,
   RegisterBody
@@ -85,7 +85,7 @@ export const verifyEmailAuthContract: EndpointContract<
 };
 
 /**
- * POST `/api/auth/resend-verification` — `{ email }`; 202 + non-enumerating ack.
+ * POST `/api/auth/resend-verification` — `{ email }`; 202 + non-enumerating ack (debug code when applicable).
  */
 export const resendVerificationAuthContract: EndpointContract<
   AuthNonEnumeratingAck,
@@ -98,7 +98,7 @@ export const resendVerificationAuthContract: EndpointContract<
 };
 
 /**
- * POST `/api/auth/forgot-password` — `{ email }`; 202 + non-enumerating ack.
+ * POST `/api/auth/forgot-password` — `{ email }`; 202 + non-enumerating ack (debug token when applicable).
  */
 export const forgotPasswordAuthContract: EndpointContract<
   ForgotPasswordAck,

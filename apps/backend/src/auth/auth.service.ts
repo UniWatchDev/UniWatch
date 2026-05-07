@@ -11,21 +11,18 @@ import * as bcrypt from 'bcrypt';
 import { randomBytes, randomInt } from 'node:crypto';
 
 import type {
-  ForgotPasswordAck,
   ForgotPasswordBody,
-  ResetPasswordBody
-} from '@repo/schemas/auth';
-
-import type {
-  AuthNonEnumeratingAck,
-  LoginBody,
-  LoginResponse,
-  LoginWithTokens,
   RegisterBody,
-  RegisterResponse,
+  ResetPasswordBody,
   ResendVerificationBody,
   VerifyEmailBody,
   VerifyEmailResponse
+} from '@repo/schemas/auth';
+
+import type {
+  LoginBody,
+  LoginResponse,
+  LoginWithTokens
 } from '@/auth/auth.dto';
 import type { JwtAccessPayload } from '@/auth/auth.types';
 import { MailService } from '@/mail/mail.service';
@@ -61,6 +58,38 @@ type PasswordResetChallenge = {
 const AUTH_RESEND_ACK_MESSAGE =
   'If an account exists for that email, next steps were recorded where applicable.';
 
+type EmailVerificationDebug = {
+  emailVerificationCode: string;
+  emailVerificationExpiresAt: string;
+};
+
+type PasswordResetDebug = {
+  passwordResetToken: string;
+  passwordResetExpiresAt: string;
+};
+
+type RegisterResponseWithDebug = {
+  userId: number;
+  userName: string;
+  phoneNumber: string;
+  email: string;
+  createdAt: string;
+  emailVerified: boolean;
+  debug: EmailVerificationDebug;
+};
+
+type AuthNonEnumeratingAckWithDebug = {
+  ok: true;
+  message: string;
+  debug?: EmailVerificationDebug;
+};
+
+type ForgotPasswordAckWithDebug = {
+  ok: true;
+  message: string;
+  debug?: PasswordResetDebug;
+};
+
 function generateSixDigitCode(): string {
   return String(randomInt(0, 1_000_000)).padStart(6, '0');
 }
@@ -88,6 +117,10 @@ export class AuthService {
     private readonly config: ConfigService<Env, true>,
     private readonly mail: MailService
   ) {}
+
+  private useRealEmails(): boolean {
+    return this.config.get('AUTH_USE_REAL_EMAILS', { infer: true });
+  }
 
   private putEmailVerification(emailKey: string): {
     code: string;
@@ -149,7 +182,7 @@ export class AuthService {
     }
   }
 
-  async register(body: RegisterBody): Promise<RegisterResponse> {
+  async register(body: RegisterBody): Promise<RegisterResponseWithDebug> {
     const emailKey = body.email;
     const userNameKey = body.userName.toLowerCase();
 
@@ -181,7 +214,7 @@ export class AuthService {
 
     const { code, expiresAtIso } = this.putEmailVerification(emailKey);
 
-    if (this.mail.isSmtpConfigured()) {
+    if (this.useRealEmails()) {
       try {
         await this.mail.sendEmailVerification(row.email, code, expiresAtIso);
       } catch {
@@ -197,7 +230,11 @@ export class AuthService {
       phoneNumber: row.phoneNumber,
       email: row.email,
       createdAt: createdAt.toISOString(),
-      emailVerified: false
+      emailVerified: false,
+      debug: {
+        emailVerificationCode: code,
+        emailVerificationExpiresAt: expiresAtIso
+      }
     };
   }
 
@@ -238,7 +275,7 @@ export class AuthService {
     };
   }
 
-  async resendVerification(body: ResendVerificationBody): Promise<AuthNonEnumeratingAck> {
+  async resendVerification(body: ResendVerificationBody): Promise<AuthNonEnumeratingAckWithDebug> {
     const emailKey = body.email;
     const userId = this.userIdByEmail.get(emailKey);
     if (userId === undefined) {
@@ -251,7 +288,7 @@ export class AuthService {
 
     const { code, expiresAtIso } = this.putEmailVerification(emailKey);
 
-    if (this.mail.isSmtpConfigured()) {
+    if (this.useRealEmails()) {
       try {
         await this.mail.sendEmailVerification(user.email, code, expiresAtIso);
       } catch {
@@ -261,10 +298,17 @@ export class AuthService {
       }
     }
 
-    return { ok: true, message: AUTH_RESEND_ACK_MESSAGE };
+    return {
+      ok: true,
+      message: AUTH_RESEND_ACK_MESSAGE,
+      debug: {
+        emailVerificationCode: code,
+        emailVerificationExpiresAt: expiresAtIso
+      }
+    };
   }
 
-  async forgotPassword(body: ForgotPasswordBody): Promise<ForgotPasswordAck> {
+  async forgotPassword(body: ForgotPasswordBody): Promise<ForgotPasswordAckWithDebug> {
     const emailKey = body.email;
     const userId = this.userIdByEmail.get(emailKey);
     if (userId === undefined) {
@@ -278,7 +322,7 @@ export class AuthService {
     this.clearPasswordResetForUser(userId);
     const { token, expiresAtIso } = this.putPasswordReset(userId);
 
-    if (this.mail.isSmtpConfigured()) {
+    if (this.useRealEmails()) {
       try {
         await this.mail.sendPasswordReset(user.email, token, expiresAtIso);
       } catch {
@@ -288,7 +332,14 @@ export class AuthService {
       }
     }
 
-    return { ok: true, message: AUTH_RESEND_ACK_MESSAGE };
+    return {
+      ok: true,
+      message: AUTH_RESEND_ACK_MESSAGE,
+      debug: {
+        passwordResetToken: token,
+        passwordResetExpiresAt: expiresAtIso
+      }
+    };
   }
 
   async resetPassword(body: ResetPasswordBody): Promise<void> {

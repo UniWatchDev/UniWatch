@@ -3,6 +3,8 @@
 
 # Backend — NestJS 11
 
+Committed env shape: `env.development.template` / `env.production.template` (copy to gitignored `.env.development` / `.env.production`). Nest loads only `.env.${NODE_ENV}`.
+
 ## File structure
 
 ```
@@ -10,7 +12,7 @@ src/
   main.ts                — entrypoint: creates the app, calls configureApp(), listens on PORT
   bootstrap.ts           — configureApp(app, configService): full-strength helmet (including strict CSP), cookie-parser, /api prefix, CORS; mounts Swagger at /docs only when NODE_ENV !== 'production'. Shared by main.ts and the e2e suite so tests run against the same configured app.
   app/
-    app.module.ts          — root module: ConfigModule (isGlobal), global JwtModule (`global: true`), global pipe/interceptor/filter, NestModule.configure() wires RequestIdMiddleware via consumer.apply(...).forRoutes('{*splat}')
+    app.module.ts          — root module: ConfigModule loads `apps/backend/.env.${NODE_ENV}` only (isGlobal), global JwtModule (`global: true`), global pipe/interceptor/filter, NestModule.configure() wires RequestIdMiddleware via consumer.apply(...).forRoutes('{*splat}')
     app.controller.ts      — GET / → { message: "agentbase backend is running" } (RootResponseDto)
     app.controller.spec.ts — unit test for AppController.getRoot()
     app.service.ts         — getHello()
@@ -79,12 +81,7 @@ Always check Context7 for current NestJS + nestjs-zod patterns before writing va
 
 ## Env config
 
-`ConfigModule.forRoot` loads env files in this order (first match wins):
-
-1. `.env.${NODE_ENV}.local`
-2. `.env.local` (skipped when `NODE_ENV=test`)
-3. `.env.${NODE_ENV}`
-4. `.env`
+`ConfigModule.forRoot` loads a single file: `apps/backend/.env.${NODE_ENV}` (e.g. `.env.development`, `.env.production`). E2E sets `process.env` in `test/jest-e2e.setup.ts` when no `.env.test` is present.
 
 `utils/env.validation.ts` validates with Zod:
 

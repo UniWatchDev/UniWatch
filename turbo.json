@@ -15,6 +15,7 @@
     "SMTP_USER",
     "SMTP_PASS",
     "SMTP_FROM",
+    "AUTH_USE_REAL_EMAILS",
     "APP_PUBLIC_ORIGIN",
     "NEXT_PUBLIC_*",
     "VITE_*"
@@ -25,10 +26,8 @@
       "dependsOn": ["^build"],
       "inputs": [
         "$TURBO_DEFAULT$",
-        ".env",
-        ".env.local",
-        ".env.production",
-        ".env.production.local"
+        ".env.development",
+        ".env.production"
       ],
       "outputs": [".next/**", "!.next/cache/**", "!.next/dev/**", "dist/**"]
     },
@@ -43,10 +42,8 @@
       "persistent": true,
       "inputs": [
         "$TURBO_DEFAULT$",
-        ".env",
-        ".env.local",
         ".env.development",
-        ".env.development.local"
+        ".env.production"
       ]
     },
     "preview": {
@@ -55,10 +52,8 @@
       "persistent": true,
       "inputs": [
         "$TURBO_DEFAULT$",
-        ".env",
-        ".env.local",
-        ".env.production",
-        ".env.production.local"
+        ".env.development",
+        ".env.production"
       ]
     },
     "start:prod": {
@@ -67,9 +62,8 @@
       "persistent": true,
       "inputs": [
         "$TURBO_DEFAULT$",
-        ".env",
-        ".env.production",
-        ".env.production.local"
+        ".env.development",
+        ".env.production"
       ]
     }
   }

@@ -9,3 +9,4 @@ process.env['AUTH_EMAIL_VERIFICATION_EXPIRES_IN'] =
   process.env['AUTH_EMAIL_VERIFICATION_EXPIRES_IN'] ?? '15m';
 process.env['AUTH_PASSWORD_RESET_EXPIRES_IN'] =
   process.env['AUTH_PASSWORD_RESET_EXPIRES_IN'] ?? '1h';
+process.env['AUTH_USE_REAL_EMAILS'] = process.env['AUTH_USE_REAL_EMAILS'] ?? 'false';
