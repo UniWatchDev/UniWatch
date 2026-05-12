@@ -5,9 +5,12 @@
     "^@repo/schemas/notes$": "<rootDir>/../../../packages/schemas/src/notes/notes.schemas.ts",
     "^@repo/schemas/health$": "<rootDir>/../../../packages/schemas/src/health/health.schemas.ts",
     "^@repo/schemas/root$": "<rootDir>/../../../packages/schemas/src/root/root.schemas.ts",
-    "^@repo/schemas/errors$": "<rootDir>/../../../packages/schemas/src/errors/problem-details.schemas.ts"
+    "^@repo/schemas/errors$": "<rootDir>/../../../packages/schemas/src/errors/problem-details.schemas.ts",
+    "^@repo/schemas/auth$": "<rootDir>/../../../packages/schemas/src/auth/auth.schemas.ts",
+    "^@repo/consts/auth$": "<rootDir>/../../../packages/consts/src/auth/auth.consts.ts"
   },
   "rootDir": ".",
+  "setupFiles": ["<rootDir>/jest-e2e.setup.ts"],
   "testEnvironment": "node",
   "testRegex": ".e2e-spec.ts$",
   "forceExit": true,

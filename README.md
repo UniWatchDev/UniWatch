@@ -55,7 +55,7 @@ Two modes exist for non-dev runs:
 
 ```sh
 pnpm preview     # build + run every app with NODE_ENV=production on localhost ports (prod rehearsal)
-pnpm start:prod  # build + run every app in pure prod mode (no port defaults — expects env vars)
+pnpm start:prod  # build + run every app in production mode (backend uses PORT from apps/backend/.env.production; web on 5172; Vite preview on 5173)
 ```
 
 Filter to a single app:

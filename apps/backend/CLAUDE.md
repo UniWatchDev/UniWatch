@@ -3,20 +3,23 @@
 
 # Backend — NestJS 11
 
+Committed env shape: `env.development.template` / `env.production.template` (copy to gitignored `.env.development` / `.env.production`). Nest loads only `.env.${NODE_ENV}`.
+
 ## File structure
 
 ```
 src/
   main.ts                — entrypoint: creates the app, calls configureApp(), listens on PORT
-  bootstrap.ts           — configureApp(app, configService): full-strength helmet (including strict CSP), /api prefix, CORS; mounts Swagger at /docs only when NODE_ENV !== 'production'. Shared by main.ts and the e2e suite so tests run against the same configured app.
+  bootstrap.ts           — configureApp(app, configService): full-strength helmet (including strict CSP), cookie-parser, /api prefix, CORS; mounts Swagger at /docs only when NODE_ENV !== 'production'. Shared by main.ts and the e2e suite so tests run against the same configured app.
   app/
-    app.module.ts          — root module: ConfigModule (isGlobal), global pipe/interceptor/filter, NestModule.configure() wires RequestIdMiddleware via consumer.apply(...).forRoutes('{*splat}')
+    app.module.ts          — root module: ConfigModule loads `apps/backend/.env.${NODE_ENV}` only (isGlobal), global JwtModule (`global: true`), global pipe/interceptor/filter, NestModule.configure() wires RequestIdMiddleware via consumer.apply(...).forRoutes('{*splat}')
     app.controller.ts      — GET / → { message: "agentbase backend is running" } (RootResponseDto)
     app.controller.spec.ts — unit test for AppController.getRoot()
     app.service.ts         — getHello()
     app.dto.ts             — RootResponseDto extends createZodDto(rootResponseSchema)
   utils/
-    env.validation.ts    — Zod schema for NODE_ENV + PORT + CORS_ORIGIN, used by ConfigModule
+    env.validation.ts      — Zod schema for NODE_ENV, PORT, CORS_ORIGIN, JWT_* env, used by ConfigModule
+    parse-duration-ms.ts   — parses compact duration strings (`15m`, `7d`) to milliseconds (cookie maxAge)
   consts/
     errors.consts.ts            — GENERIC_500_TITLE/DETAIL, VALIDATION_FAILED_TITLE + DEV/PROD_DETAIL, ZOD_SERIALIZATION_DEV_DETAIL
     problem-types.consts.ts     — stable RFC 7807 `type` URIs (`/problems/validation-failed`, `/problems/internal-error`, `/problems/http-error`)
@@ -36,8 +39,16 @@ src/
     notes.controller.ts  — 6 CRUD endpoints at /api/notes
     notes.service.ts     — in-memory Map<string, Note>, UUID keys, ISO timestamps
     notes.dto.ts         — CreateNoteDto, UpdateNoteDto, PatchNoteDto, NoteDto, DeleteNoteResponseDto, NoteIdParamsDto
+  auth/
+    auth.module.ts       — AuthModule
+    auth.controller.ts   — POST register, login, refresh, logout; GET me; paths from `@repo/consts/auth`; HttpOnly cookies + JwtAuthGuard
+    auth.service.ts      — in-memory users + refresh sessions; bcrypt + JwtService
+    auth.dto.ts          — nestjs-zod DTOs wrapping `@repo/schemas/auth`
+    auth.consts.ts       — cookie names for access / refresh tokens
+    auth.types.ts        — JwtAccessPayload + global `Express.Request` merge (`authPayload`)
 test/
-  app.e2e-spec.ts        — supertest e2e suite: verifies /api prefix, x-request-id echo + UUID fallback + unsafe-id rejection, ProblemDetails shape + traceId propagation, Swagger served at /docs
+  app.e2e-spec.ts        — supertest e2e suite: verifies /api prefix, x-request-id echo + UUID fallback + unsafe-id rejection, ProblemDetails shape + traceId propagation, Swagger served at /docs, auth register/login/refresh/me/logout
+  jest-e2e.setup.ts      — sets JWT_* env defaults so e2e can boot without a real `.env`
   jest-e2e.json          — Jest config for the e2e suite (forceExit, moduleNameMapper for @repo/schemas/* subpaths, ts-jest via tsconfig.spec.json)
 ```
 
@@ -70,18 +81,16 @@ Always check Context7 for current NestJS + nestjs-zod patterns before writing va
 
 ## Env config
 
-`ConfigModule.forRoot` loads env files in this order (first match wins):
-
-1. `.env.${NODE_ENV}.local`
-2. `.env.local` (skipped when `NODE_ENV=test`)
-3. `.env.${NODE_ENV}`
-4. `.env`
+`ConfigModule.forRoot` loads a single file: `apps/backend/.env.${NODE_ENV}` (e.g. `.env.development`, `.env.production`). E2E sets `process.env` in `test/jest-e2e.setup.ts` when no `.env.test` is present.
 
 `utils/env.validation.ts` validates with Zod:
 
 - `NODE_ENV` — enum `'development' | 'production' | 'test'` (default: `'development'`)
 - `PORT` — coerced integer, 1–65535 (default: `3000`)
 - `CORS_ORIGIN` — string, default `'*'` (allow all). Comma-separated allowlist for production, e.g. `https://app.example.com,https://admin.example.com`.
+- `JWT_SECRET` — string, min length 32 (symmetric signing key for access JWTs)
+- `JWT_ACCESS_EXPIRES_IN` — string, default `15m` (passed to `JwtService.signAsync`)
+- `JWT_REFRESH_EXPIRES_IN` — string, default `7d` (opaque refresh cookie TTL)
 
 Fails fast at startup with formatted error messages on invalid config.
 
@@ -110,6 +119,11 @@ Fails fast at startup with formatted error messages on invalid config.
 | ------ | ---------------- | ---------------------------- | --------------------------------------------- |
 | GET    | `/api`           | `AppController.getRoot`      | `{ message: 'agentbase backend is running' }` |
 | GET    | `/api/health`    | `HealthController.getHealth` | `{ status: 'ok' \| 'error' }` (random demo)   |
+| POST   | `/api/auth/register` | `AuthController.register` | Register user (`email` + `userName` unique; **phone may repeat**); returns public profile JSON |
+| POST   | `/api/auth/login`    | `AuthController.login`    | Body `{ identifier, password }` where `identifier` is **email or username**; JSON user + HttpOnly `access_token` + `refresh_token` cookies |
+| POST   | `/api/auth/refresh`  | `AuthController.refresh`  | Reads `refresh_token` cookie; returns JSON user + new cookies; **rotates** refresh (old token invalid) |
+| GET    | `/api/auth/me`       | `AuthController.getMe`    | Requires HttpOnly `access_token` cookie; returns `{ userId, userName, email }` |
+| POST   | `/api/auth/logout`   | `AuthController.logout`   | Revokes refresh session when cookie present; clears auth cookies (`204`) |
 | GET    | `/api/notes`     | `NotesController.list`       | List all notes (sorted by createdAt desc)     |
 | GET    | `/api/notes/:id` | `NotesController.get`        | Get note by UUID                              |
 | POST   | `/api/notes`     | `NotesController.create`     | Create note (`{ title, content }`)            |
@@ -117,7 +131,7 @@ Fails fast at startup with formatted error messages on invalid config.
 | PATCH  | `/api/notes/:id` | `NotesController.patch`      | Partial update (optional title/content)       |
 | DELETE | `/api/notes/:id` | `NotesController.delete`     | Delete, returns `{ success: true }`           |
 
-Notes storage is an in-memory `Map` — resets on restart.
+Notes storage is an in-memory `Map` — resets on restart. Auth users and refresh sessions are in-memory `Map`s — resets on restart.
 
 ## Commands
 

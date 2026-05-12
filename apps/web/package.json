@@ -8,7 +8,7 @@
     "check-types": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
     "start": "cross-env PORT=5172 next start",
-    "start:prod": "cross-env NODE_ENV=production next start",
+    "start:prod": "cross-env NODE_ENV=production PORT=5172 next start",
     "preview": "cross-env NODE_ENV=production PORT=5172 next start",
     "typecheck": "pnpm check-types"
   },

@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import {
   STARTER_BYLINE,
   STARTER_DECK,
@@ -14,9 +15,9 @@ import {
   STARTER_VOLUME
 } from '@repo/consts/starter';
 
+import { AuthPanel } from './auth-panel';
 import { EndpointExplorer } from './endpoint-explorer';
 import { HealthCheck } from './health-check';
-import { NotesPanel } from './notes-panel';
 import { PackageVerification } from './package-verification';
 
 export default function Home() {
@@ -33,6 +34,12 @@ export default function Home() {
           </span>
         </div>
         <div className="mono small-caps flex items-baseline gap-6 text-[12px] text-[color:var(--color-mute)]">
+          <Link
+            className="text-[color:var(--color-accent)] underline-offset-2 hover:underline"
+            href="/app"
+          >
+            app
+          </Link>
           <span>{STARTER_VOLUME}</span>
           <span>{STARTER_ISSUE}</span>
           <span>{STARTER_ISSUE_DATE}</span>
@@ -114,13 +121,13 @@ export default function Home() {
         </div>
       </aside>
 
-      {/* Lower row: endpoint explorer + notes */}
+      {/* Lower row: endpoint explorer + session */}
       <section className="col-span-7 col-start-1 row-start-3 flex min-h-0 flex-col border-t-2 border-[color:var(--color-ink)] pt-3">
         <EndpointExplorer />
       </section>
 
       <section className="col-span-5 col-start-8 row-start-3 flex min-h-0 flex-col border-t-2 border-[color:var(--color-ink)] pt-3">
-        <NotesPanel />
+        <AuthPanel />
       </section>
 
       {/* Footer strip */}
