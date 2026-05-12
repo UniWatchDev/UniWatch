@@ -53,7 +53,7 @@ export function NotesPanel() {
     try {
       const body = createNoteContract.bodySchema.parse({
         title: newTitle,
-        content: newContent || '—'
+        content: newContent || ' - '
       });
       const response = await fetch(
         `${API_BASE_URL}${createNoteContract.path}`,

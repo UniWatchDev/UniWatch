@@ -1,13 +1,21 @@
 import { Route, Routes } from 'react-router-dom';
 
-import HomePage from '@/home-page';
-import { ProtectedAppPage } from '@/protected-app-page';
+import { NavBar } from '@/components/nav-bar';
+import { Lobby } from '@/pages/lobby';
+import { RoomPage } from '@/pages/room';
+import { CreateRoom } from '@/pages/create-room';
+import { EditRoom } from '@/pages/edit-room';
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/" element={<HomePage />} />
-      <Route path="/app" element={<ProtectedAppPage />} />
-    </Routes>
+    <>
+      <NavBar />
+      <Routes>
+        <Route path="/" element={<Lobby />} />
+        <Route path="/room/:id" element={<RoomPage />} />
+        <Route path="/rooms/new" element={<CreateRoom />} />
+        <Route path="/rooms/:id/edit" element={<EditRoom />} />
+      </Routes>
+    </>
   );
 }
