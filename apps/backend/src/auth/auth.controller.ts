@@ -183,7 +183,7 @@ export class AuthController {
       'Current user from access JWT (HttpOnly access_token cookie set at login/refresh)',
     type: LoginResponseDto
   })
-  getMe(@Req() req: Request): LoginResponse {
+  getMe(@Req() req: Request): Promise<LoginResponse> {
     const payload = req.authPayload;
     if (payload === undefined) {
       throw new UnauthorizedException('Missing or invalid access token');
@@ -205,7 +205,7 @@ export class AuthController {
     description: 'Email verified when code matches',
     type: VerifyEmailResponseDto
   })
-  verifyEmail(@Body() body: VerifyEmailDto): VerifyEmailResponse {
+  verifyEmail(@Body() body: VerifyEmailDto): Promise<VerifyEmailResponse> {
     return this.authService.verifyEmail(body);
   }
 

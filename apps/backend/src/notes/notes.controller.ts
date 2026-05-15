@@ -30,20 +30,20 @@ export class NotesController {
 
   @Get()
   @ZodResponse({ status: 200, description: 'List all notes', type: [NoteDto] })
-  list(): Note[] {
+  list(): Promise<Note[]> {
     return this.notesService.list();
   }
 
   @Get(':id')
   @ZodResponse({ status: 200, description: 'Get a note by id', type: NoteDto })
-  get(@Param() params: NoteIdParamsDto): Note {
+  get(@Param() params: NoteIdParamsDto): Promise<Note> {
     return this.notesService.get(params.id);
   }
 
   @Post()
   @HttpCode(201)
   @ZodResponse({ status: 201, description: 'Create a note', type: NoteDto })
-  create(@Body() body: CreateNoteDto): Note {
+  create(@Body() body: CreateNoteDto): Promise<Note> {
     return this.notesService.create(body);
   }
 
@@ -52,7 +52,7 @@ export class NotesController {
   update(
     @Param() params: NoteIdParamsDto,
     @Body() body: UpdateNoteDto
-  ): Note {
+  ): Promise<Note> {
     return this.notesService.update(params.id, body);
   }
 
@@ -61,7 +61,7 @@ export class NotesController {
   patch(
     @Param() params: NoteIdParamsDto,
     @Body() body: PatchNoteDto
-  ): Note {
+  ): Promise<Note> {
     return this.notesService.patch(params.id, body);
   }
 
@@ -71,7 +71,7 @@ export class NotesController {
     description: 'Delete a note',
     type: DeleteNoteResponseDto
   })
-  delete(@Param() params: NoteIdParamsDto): DeleteNoteResponse {
+  delete(@Param() params: NoteIdParamsDto): Promise<DeleteNoteResponse> {
     return this.notesService.delete(params.id);
   }
 }

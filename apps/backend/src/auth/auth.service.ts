@@ -19,29 +19,15 @@ import type {
   VerifyEmailResponse
 } from '@repo/schemas/auth';
 
-import type {
-  LoginBody,
-  LoginResponse,
-  LoginWithTokens
-} from '@/auth/auth.dto';
+import type { LoginBody, LoginResponse, LoginWithTokens } from '@/auth/auth.dto';
 import type { JwtAccessPayload } from '@/auth/auth.types';
+import { UserRepository } from '@/auth/user.repository';
 import { MailService } from '@/mail/mail.service';
 import type { Env } from '@/utils/env.validation';
 import { parseDurationToMs } from '@/utils/parse-duration-ms';
 
-type StoredUser = {
-  userId: number;
-  userName: string;
-  phoneNumber: string;
-  email: string;
-  passwordHash: string;
-  passwordVersion: number;
-  createdAt: Date;
-  emailVerified: boolean;
-};
-
 type RefreshSession = {
-  userId: number;
+  userId: string;
   expiresAtMs: number;
 };
 
@@ -51,7 +37,7 @@ type EmailVerificationChallenge = {
 };
 
 type PasswordResetChallenge = {
-  userId: number;
+  userId: string;
   expiresAtMs: number;
 };
 
@@ -69,7 +55,7 @@ type PasswordResetDebug = {
 };
 
 type RegisterResponseWithDebug = {
-  userId: number;
+  userId: string;
   userName: string;
   phoneNumber: string;
   email: string;
@@ -96,23 +82,19 @@ function generateSixDigitCode(): string {
 
 @Injectable()
 export class AuthService {
-  private nextUserId = 1;
-  private readonly userByUserId = new Map<number, StoredUser>();
-  /** lowercase userName → userId */
-  private readonly userIdByUserName = new Map<string, number>();
-  /** email → userId */
-  private readonly userIdByEmail = new Map<string, number>();
-  /** opaque refresh token → session */
+  // Ephemeral session state stays in memory (expires, not worth persisting)
   private readonly refreshByToken = new Map<string, RefreshSession>();
-  /** lowercase email → pending verification */
   private readonly emailVerificationByEmail = new Map<
     string,
     EmailVerificationChallenge
   >();
-  /** opaque password-reset token → challenge */
-  private readonly passwordResetByToken = new Map<string, PasswordResetChallenge>();
+  private readonly passwordResetByToken = new Map<
+    string,
+    PasswordResetChallenge
+  >();
 
   constructor(
+    private readonly users: UserRepository,
     private readonly jwtService: JwtService,
     private readonly config: ConfigService<Env, true>,
     private readonly mail: MailService
@@ -135,7 +117,7 @@ export class AuthService {
     return { code, expiresAtIso: new Date(expiresAtMs).toISOString() };
   }
 
-  private revokeAllRefreshSessionsForUser(userId: number): void {
+  private revokeAllRefreshSessionsForUser(userId: string): void {
     for (const [token, session] of this.refreshByToken) {
       if (session.userId === userId) {
         this.refreshByToken.delete(token);
@@ -143,7 +125,7 @@ export class AuthService {
     }
   }
 
-  private clearPasswordResetForUser(userId: number): void {
+  private clearPasswordResetForUser(userId: string): void {
     for (const [token, challenge] of this.passwordResetByToken) {
       if (challenge.userId === userId) {
         this.passwordResetByToken.delete(token);
@@ -151,7 +133,10 @@ export class AuthService {
     }
   }
 
-  private putPasswordReset(userId: number): { token: string; expiresAtIso: string } {
+  private putPasswordReset(userId: string): {
+    token: string;
+    expiresAtIso: string;
+  } {
     const ttlMs = parseDurationToMs(
       this.config.get('AUTH_PASSWORD_RESET_EXPIRES_IN', { infer: true })
     );
@@ -161,19 +146,15 @@ export class AuthService {
     return { token, expiresAtIso: new Date(expiresAtMs).toISOString() };
   }
 
-  /**
-   * Ensures the JWT was issued for the current password generation.
-   * Call after signature verification (e.g. in `JwtAuthGuard`).
-   */
-  assertAccessTokenClaims(payload: JwtAccessPayload): void {
-    if (typeof payload.pv !== 'number' || !Number.isFinite(payload.pv) || payload.pv < 0) {
+  async assertAccessTokenClaims(payload: JwtAccessPayload): Promise<void> {
+    if (
+      typeof payload.pv !== 'number' ||
+      !Number.isFinite(payload.pv) ||
+      payload.pv < 0
+    ) {
       throw new UnauthorizedException('Invalid token');
     }
-    const userId = Number(payload.sub);
-    if (!Number.isFinite(userId) || userId < 1) {
-      throw new UnauthorizedException('Invalid token');
-    }
-    const user = this.userByUserId.get(userId);
+    const user = await this.users.findById(payload.sub);
     if (!user || user.email !== payload.email) {
       throw new UnauthorizedException('Invalid token');
     }
@@ -183,40 +164,26 @@ export class AuthService {
   }
 
   async register(body: RegisterBody): Promise<RegisterResponseWithDebug> {
-    const emailKey = body.email;
-    const userNameKey = body.userName.toLowerCase();
+    const existingEmail = await this.users.findByEmail(body.email);
+    if (existingEmail) throw new ConflictException('Email already registered');
 
-    if (this.userIdByEmail.has(emailKey)) {
-      throw new ConflictException('Email already registered');
-    }
-    if (this.userIdByUserName.has(userNameKey)) {
-      throw new ConflictException('Username already taken');
-    }
+    const existingUserName = await this.users.findByUserName(body.userName);
+    if (existingUserName) throw new ConflictException('Username already taken');
 
     const passwordHash = await bcrypt.hash(body.password, 12);
-    const userId = this.nextUserId++;
-    const createdAt = new Date();
-
-    const row: StoredUser = {
-      userId,
+    const user = await this.users.create({
+      email: body.email,
       userName: body.userName,
       phoneNumber: body.phoneNumber,
-      email: body.email,
-      passwordHash,
-      passwordVersion: 0,
-      createdAt,
-      emailVerified: false
-    };
+      passwordHash
+    });
 
-    this.userByUserId.set(userId, row);
-    this.userIdByEmail.set(emailKey, userId);
-    this.userIdByUserName.set(userNameKey, userId);
-
-    const { code, expiresAtIso } = this.putEmailVerification(emailKey);
+    const userId = user._id.toString();
+    const { code, expiresAtIso } = this.putEmailVerification(body.email);
 
     if (this.useRealEmails()) {
       try {
-        await this.mail.sendEmailVerification(row.email, code, expiresAtIso);
+        await this.mail.sendEmailVerification(user.email, code, expiresAtIso);
       } catch {
         throw new ServiceUnavailableException(
           'Could not send verification email; try again later'
@@ -226,10 +193,10 @@ export class AuthService {
 
     return {
       userId,
-      userName: row.userName,
-      phoneNumber: row.phoneNumber,
-      email: row.email,
-      createdAt: createdAt.toISOString(),
+      userName: user.userName,
+      phoneNumber: user.phoneNumber,
+      email: user.email,
+      createdAt: user.createdAt.toISOString(),
       emailVerified: false,
       debug: {
         emailVerificationCode: code,
@@ -238,55 +205,45 @@ export class AuthService {
     };
   }
 
-  verifyEmail(body: VerifyEmailBody): VerifyEmailResponse {
-    const emailKey = body.email;
-    const pending = this.emailVerificationByEmail.get(emailKey);
+  async verifyEmail(body: VerifyEmailBody): Promise<VerifyEmailResponse> {
+    const pending = this.emailVerificationByEmail.get(body.email);
     if (
       pending === undefined ||
       Date.now() > pending.expiresAtMs ||
       pending.code !== body.code
     ) {
       if (pending !== undefined && Date.now() > pending.expiresAtMs) {
-        this.emailVerificationByEmail.delete(emailKey);
+        this.emailVerificationByEmail.delete(body.email);
       }
       throw new BadRequestException('Invalid or expired verification code');
     }
 
-    const userId = this.userIdByEmail.get(emailKey);
-    if (userId === undefined) {
-      this.emailVerificationByEmail.delete(emailKey);
+    const user = await this.users.findByEmail(body.email);
+    if (!user) {
+      this.emailVerificationByEmail.delete(body.email);
       throw new BadRequestException('Invalid or expired verification code');
     }
 
-    const user = this.userByUserId.get(userId);
-    if (!user || user.email !== emailKey) {
-      this.emailVerificationByEmail.delete(emailKey);
-      throw new BadRequestException('Invalid or expired verification code');
-    }
-
-    this.emailVerificationByEmail.delete(emailKey);
-    user.emailVerified = true;
+    this.emailVerificationByEmail.delete(body.email);
+    await this.users.markEmailVerified(user._id.toString());
 
     return {
       emailVerified: true,
-      userId: user.userId,
+      userId: user._id.toString(),
       userName: user.userName,
       email: user.email
     };
   }
 
-  async resendVerification(body: ResendVerificationBody): Promise<AuthNonEnumeratingAckWithDebug> {
-    const emailKey = body.email;
-    const userId = this.userIdByEmail.get(emailKey);
-    if (userId === undefined) {
-      return { ok: true, message: AUTH_RESEND_ACK_MESSAGE };
-    }
-    const user = this.userByUserId.get(userId);
+  async resendVerification(
+    body: ResendVerificationBody
+  ): Promise<AuthNonEnumeratingAckWithDebug> {
+    const user = await this.users.findByEmail(body.email);
     if (!user || user.emailVerified) {
       return { ok: true, message: AUTH_RESEND_ACK_MESSAGE };
     }
 
-    const { code, expiresAtIso } = this.putEmailVerification(emailKey);
+    const { code, expiresAtIso } = this.putEmailVerification(body.email);
 
     if (this.useRealEmails()) {
       try {
@@ -308,17 +265,15 @@ export class AuthService {
     };
   }
 
-  async forgotPassword(body: ForgotPasswordBody): Promise<ForgotPasswordAckWithDebug> {
-    const emailKey = body.email;
-    const userId = this.userIdByEmail.get(emailKey);
-    if (userId === undefined) {
-      return { ok: true, message: AUTH_RESEND_ACK_MESSAGE };
-    }
-    const user = this.userByUserId.get(userId);
+  async forgotPassword(
+    body: ForgotPasswordBody
+  ): Promise<ForgotPasswordAckWithDebug> {
+    const user = await this.users.findByEmail(body.email);
     if (!user || !user.emailVerified) {
       return { ok: true, message: AUTH_RESEND_ACK_MESSAGE };
     }
 
+    const userId = user._id.toString();
     this.clearPasswordResetForUser(userId);
     const { token, expiresAtIso } = this.putPasswordReset(userId);
 
@@ -335,10 +290,7 @@ export class AuthService {
     return {
       ok: true,
       message: AUTH_RESEND_ACK_MESSAGE,
-      debug: {
-        passwordResetToken: token,
-        passwordResetExpiresAt: expiresAtIso
-      }
+      debug: { passwordResetToken: token, passwordResetExpiresAt: expiresAtIso }
     };
   }
 
@@ -351,27 +303,14 @@ export class AuthService {
       throw new BadRequestException('Invalid or expired reset token');
     }
 
-    const user = this.userByUserId.get(challenge.userId);
-    if (!user) {
-      this.passwordResetByToken.delete(body.token);
-      throw new BadRequestException('Invalid or expired reset token');
-    }
-
     this.passwordResetByToken.delete(body.token);
-    user.passwordHash = await bcrypt.hash(body.newPassword, 12);
-    user.passwordVersion += 1;
-    this.revokeAllRefreshSessionsForUser(user.userId);
+    const newHash = await bcrypt.hash(body.newPassword, 12);
+    await this.users.updatePassword(challenge.userId, newHash);
+    this.revokeAllRefreshSessionsForUser(challenge.userId);
   }
 
   async login(body: LoginBody): Promise<LoginWithTokens> {
-    const key = body.identifier;
-    const userId = key.includes('@')
-      ? this.userIdByEmail.get(key)
-      : this.userIdByUserName.get(key);
-    if (userId === undefined) {
-      throw new UnauthorizedException('Invalid email, username, or password');
-    }
-    const user = this.userByUserId.get(userId);
+    const user = await this.users.findByIdentifier(body.identifier);
     if (!user) {
       throw new UnauthorizedException('Invalid email, username, or password');
     }
@@ -383,15 +322,10 @@ export class AuthService {
       throw new UnauthorizedException('Email not verified');
     }
 
+    const userId = user._id.toString();
     const accessToken = await this.jwtService.signAsync(
-      {
-        sub: String(user.userId),
-        email: user.email,
-        pv: user.passwordVersion
-      },
-      {
-        expiresIn: this.config.get('JWT_ACCESS_EXPIRES_IN', { infer: true })
-      }
+      { sub: userId, email: user.email, pv: user.passwordVersion },
+      { expiresIn: this.config.get('JWT_ACCESS_EXPIRES_IN', { infer: true }) }
     );
 
     const refreshToken = randomBytes(32).toString('hex');
@@ -399,28 +333,22 @@ export class AuthService {
       this.config.get('JWT_REFRESH_EXPIRES_IN', { infer: true })
     );
     this.refreshByToken.set(refreshToken, {
-      userId: user.userId,
+      userId,
       expiresAtMs: Date.now() + refreshMs
     });
-
-    const userPayload: LoginResponse = {
-      userId: user.userId,
-      userName: user.userName,
-      email: user.email,
-      emailVerified: user.emailVerified
-    };
 
     return {
       accessToken,
       refreshToken,
-      user: userPayload
+      user: {
+        userId,
+        userName: user.userName,
+        email: user.email,
+        emailVerified: user.emailVerified
+      }
     };
   }
 
-  /**
-   * Rotates the refresh token and issues a new access JWT.
-   * The previous refresh token is invalidated (one-time use).
-   */
   async refresh(oldRefreshToken: string): Promise<LoginWithTokens> {
     const session = this.refreshByToken.get(oldRefreshToken);
     if (!session) {
@@ -433,23 +361,15 @@ export class AuthService {
 
     this.refreshByToken.delete(oldRefreshToken);
 
-    const user = this.userByUserId.get(session.userId);
-    if (!user) {
+    const user = await this.users.findById(session.userId);
+    if (!user || !user.emailVerified) {
       throw new UnauthorizedException('Invalid or expired session');
     }
-    if (!user.emailVerified) {
-      throw new UnauthorizedException('Email not verified');
-    }
 
+    const userId = user._id.toString();
     const accessToken = await this.jwtService.signAsync(
-      {
-        sub: String(user.userId),
-        email: user.email,
-        pv: user.passwordVersion
-      },
-      {
-        expiresIn: this.config.get('JWT_ACCESS_EXPIRES_IN', { infer: true })
-      }
+      { sub: userId, email: user.email, pv: user.passwordVersion },
+      { expiresIn: this.config.get('JWT_ACCESS_EXPIRES_IN', { infer: true }) }
     );
 
     const refreshToken = randomBytes(32).toString('hex');
@@ -457,44 +377,36 @@ export class AuthService {
       this.config.get('JWT_REFRESH_EXPIRES_IN', { infer: true })
     );
     this.refreshByToken.set(refreshToken, {
-      userId: user.userId,
+      userId,
       expiresAtMs: Date.now() + refreshMs
     });
-
-    const userPayload: LoginResponse = {
-      userId: user.userId,
-      userName: user.userName,
-      email: user.email,
-      emailVerified: user.emailVerified
-    };
 
     return {
       accessToken,
       refreshToken,
-      user: userPayload
+      user: {
+        userId,
+        userName: user.userName,
+        email: user.email,
+        emailVerified: user.emailVerified
+      }
     };
   }
 
-  /** Revokes the refresh session when the client sends a known refresh token. */
   logout(refreshToken: string | undefined): void {
     if (typeof refreshToken === 'string' && refreshToken.length > 0) {
       this.refreshByToken.delete(refreshToken);
     }
   }
 
-  /** Resolves the current user from an access JWT payload (must match stored user). */
-  getMeForJwtPayload(payload: JwtAccessPayload): LoginResponse {
-    this.assertAccessTokenClaims(payload);
-    const userId = Number(payload.sub);
-    const user = this.userByUserId.get(userId);
-    if (!user || user.email !== payload.email) {
+  async getMeForJwtPayload(payload: JwtAccessPayload): Promise<LoginResponse> {
+    await this.assertAccessTokenClaims(payload);
+    const user = await this.users.findById(payload.sub);
+    if (!user || !user.emailVerified) {
       throw new UnauthorizedException('Invalid token');
     }
-    if (!user.emailVerified) {
-      throw new UnauthorizedException('Email not verified');
-    }
     return {
-      userId: user.userId,
+      userId: user._id.toString(),
       userName: user.userName,
       email: user.email,
       emailVerified: user.emailVerified
