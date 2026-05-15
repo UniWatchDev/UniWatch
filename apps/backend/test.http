@@ -20,8 +20,8 @@ Content-Type: application/json
 {
   "userName": "testuser2",
   "email": "test2@test.com",
-  "phoneNumber": "0501234568",
-  "password": "Password1"
+  "phoneNumber": "0501234569",
+  "password": "Password2"
 }
 
 ###
@@ -97,13 +97,12 @@ Content-Type: application/json
 # MOVIES
 # ─────────────────────────────────────────
 
-### Create a movie
-# @name createMovie
+### Create a movie  (only needed once — name is unique, skip if already exists)
 POST {{baseUrl}}/movies
 Content-Type: application/json
 
 {
-  "name": "Inception",
+  "name": "Inception 3",
   "movie_actors": ["Leonardo DiCaprio", "Joseph Gordon-Levitt"],
   "director": "Christopher Nolan",
   "rating": 8.8,
@@ -114,7 +113,8 @@ Content-Type: application/json
 
 ###
 
-### List all movies
+### List all movies  (run this before creating a room — captures the first movie id)
+# @name listMovies
 GET {{baseUrl}}/movies
 
 ###
@@ -140,7 +140,9 @@ DELETE {{baseUrl}}/movies/PASTE_MOVIE_ID_HERE
 
 # ─────────────────────────────────────────
 # ROOMS
-# (requires being logged in to create)
+# NOTE: auth is in-memory (userId is a number), so creator uses a
+# placeholder ObjectId. Replace with a real user _id once auth is
+# wired to MongoDB.
 # ─────────────────────────────────────────
 
 ### Create a room
@@ -149,8 +151,8 @@ Content-Type: application/json
 
 {
   "name": "Friday Night Watch",
-  "creator": "{{register.response.body.userId}}",
-  "movie": "{{createMovie.response.body.id}}",
+  "creator": "000000000000000000000001",
+  "movie": "{{listMovies.response.body[0].id}}",
   "room_type": "public",
   "deactivate_at": "2026-12-31T23:59:59.000Z",
   "description": "Watching Inception together"
@@ -164,8 +166,8 @@ Content-Type: application/json
 
 {
   "name": "Private Screening",
-  "creator": "{{register.response.body.userId}}",
-  "movie": "{{createMovie.response.body.id}}",
+  "creator": "000000000000000000000001",
+  "movie": "{{listMovies.response.body[0].id}}",
   "room_type": "private",
   "password": "secret123",
   "deactivate_at": "2026-12-31T23:59:59.000Z"

@@ -87,7 +87,7 @@ const passwordResetDebugSchema = z.strictObject({
 });
 
 export const registerResponseSchema = z.strictObject({
-  userId: z.string(),
+  userId: z.number().int().positive(),
   userName: z.string(),
   phoneNumber: z.string().regex(/^\+9725\d{8}$/),
   email: email(),
@@ -130,7 +130,7 @@ export const loginBodySchema = z.strictObject({
 export type LoginBody = z.infer<typeof loginBodySchema>;
 
 export const loginResponseSchema = z.strictObject({
-  userId: z.string(),
+  userId: z.number().int().positive(),
   userName: z.string(),
   email: email(),
   emailVerified: z.boolean()
@@ -170,7 +170,7 @@ export type AuthNonEnumeratingAck = z.infer<typeof authNonEnumeratingAckSchema>;
 
 export const verifyEmailResponseSchema = z.strictObject({
   emailVerified: z.literal(true),
-  userId: z.string(),
+  userId: z.number().int().positive(),
   userName: z.string(),
   email: email()
 });
