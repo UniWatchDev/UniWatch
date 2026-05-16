@@ -25,6 +25,7 @@ import type {
   LoginWithTokens
 } from '@/auth/auth.dto';
 import type { JwtAccessPayload } from '@/auth/auth.types';
+import { UserRepository } from '@/auth/user.repository';
 import { MailService } from '@/mail/mail.service';
 import type { Env } from '@/utils/env.validation';
 import { parseDurationToMs } from '@/utils/parse-duration-ms';
@@ -113,6 +114,7 @@ export class AuthService {
   private readonly passwordResetByToken = new Map<string, PasswordResetChallenge>();
 
   constructor(
+    private readonly users: UserRepository,
     private readonly jwtService: JwtService,
     private readonly config: ConfigService<Env, true>,
     private readonly mail: MailService
@@ -212,6 +214,10 @@ export class AuthService {
     this.userIdByEmail.set(emailKey, userId);
     this.userIdByUserName.set(userNameKey, userId);
 
+    void this.users
+      .create({ email: row.email, userName: row.userName, phoneNumber: row.phoneNumber, passwordHash })
+      .catch(() => { /* ignore duplicate key on restart */ });
+
     const { code, expiresAtIso } = this.putEmailVerification(emailKey);
 
     if (this.useRealEmails()) {
@@ -266,6 +272,10 @@ export class AuthService {
 
     this.emailVerificationByEmail.delete(emailKey);
     user.emailVerified = true;
+
+    void this.users.findByEmail(emailKey)
+      .then(doc => doc && this.users.markEmailVerified(doc._id.toString()))
+      .catch(() => { /* best-effort */ });
 
     return {
       emailVerified: true,
