@@ -2,10 +2,13 @@
   "name": "@repo/schemas",
   "type": "module",
   "exports": {
+    "./auth": "./dist/auth/auth.schemas.js",
     "./health": "./dist/health/health.schemas.js",
     "./notes": "./dist/notes/notes.schemas.js",
     "./errors": "./dist/errors/problem-details.schemas.js",
-    "./root": "./dist/root/root.schemas.js"
+    "./root": "./dist/root/root.schemas.js",
+    "./movies": "./dist/movies/movie.schemas.js",
+    "./rooms": "./dist/rooms/room.schemas.js"
   },
   "scripts": {
     "dev": "tsc --watch --preserveWatchOutput",

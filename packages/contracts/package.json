@@ -2,6 +2,7 @@
   "name": "@repo/contracts",
   "type": "module",
   "exports": {
+    "./auth": "./dist/auth/auth.contracts.js",
     "./health": "./dist/health/health.contracts.js",
     "./notes": "./dist/notes/notes.contracts.js",
     "./root": "./dist/root/root.contracts.js",

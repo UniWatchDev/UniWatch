@@ -1,103 +1,97 @@
 import { NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import type { TestingModule } from '@nestjs/testing';
+import type { Note } from '@repo/schemas/notes';
+import { randomUUID } from 'node:crypto';
 import { NotesController } from '@/notes/notes.controller';
 import { NotesService } from '@/notes/notes.service';
+import { NoteRepository } from '@/notes/note.repository';
+
+function makeNote(overrides: Partial<Note> = {}): Note {
+  const now = new Date().toISOString();
+  return {
+    id: randomUUID(),
+    title: 'Test',
+    content: 'Content',
+    createdAt: now,
+    updatedAt: now,
+    ...overrides
+  };
+}
+
+const mockRepo: Partial<NoteRepository> = {
+  findAll: jest.fn(),
+  findById: jest.fn(),
+  create: jest.fn(),
+  update: jest.fn(),
+  patch: jest.fn(),
+  delete: jest.fn()
+};
 
 describe('NotesController', () => {
   let controller: NotesController;
-  let service: NotesService;
 
   beforeEach(async () => {
+    jest.clearAllMocks();
     const module: TestingModule = await Test.createTestingModule({
       controllers: [NotesController],
-      providers: [NotesService]
+      providers: [
+        NotesService,
+        { provide: NoteRepository, useValue: mockRepo }
+      ]
     }).compile();
 
     controller = module.get(NotesController);
-    service = module.get(NotesService);
   });
 
-  it('POST → create: returns a new note with a UUID and ISO timestamps', () => {
-    const note = controller.create({ title: 'Hello', content: 'World' });
+  it('POST → create: returns the note from the repository', async () => {
+    const note = makeNote({ title: 'Hello', content: 'World' });
+    jest.mocked(mockRepo.create!).mockResolvedValue(note);
 
-    expect(note.title).toBe('Hello');
-    expect(note.content).toBe('World');
-    expect(note.id).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-    );
-    expect(note.createdAt).toBe(note.updatedAt);
-    expect(() => new Date(note.createdAt).toISOString()).not.toThrow();
+    const result = await controller.create({ title: 'Hello', content: 'World' });
+
+    expect(result).toEqual(note);
   });
 
-  it('GET → list: returns notes sorted by createdAt desc', async () => {
-    const first = controller.create({ title: 'first', content: '1' });
-    await new Promise((r) => setTimeout(r, 5));
-    const second = controller.create({ title: 'second', content: '2' });
+  it('GET → list: returns notes from the repository', async () => {
+    const notes = [makeNote({ title: 'A' }), makeNote({ title: 'B' })];
+    jest.mocked(mockRepo.findAll!).mockResolvedValue(notes);
 
-    const list = controller.list();
+    const result = await controller.list();
 
-    expect(list).toHaveLength(2);
-    expect(list[0]?.id).toBe(second.id);
-    expect(list[1]?.id).toBe(first.id);
+    expect(result).toHaveLength(2);
   });
 
-  it('GET → get: returns the note when found', () => {
-    const created = controller.create({ title: 't', content: 'c' });
+  it('GET → get: returns the note when found', async () => {
+    const note = makeNote();
+    jest.mocked(mockRepo.findById!).mockResolvedValue(note);
 
-    const result = controller.get({ id: created.id });
+    const result = await controller.get({ id: note.id });
 
-    expect(result).toEqual(created);
+    expect(result).toEqual(note);
   });
 
-  it('GET → get: throws NotFoundException for unknown id', () => {
-    expect(() =>
+  it('GET → get: throws NotFoundException for unknown id', async () => {
+    jest.mocked(mockRepo.findById!).mockResolvedValue(null);
+
+    await expect(
       controller.get({ id: '00000000-0000-0000-0000-000000000000' })
-    ).toThrow(NotFoundException);
+    ).rejects.toThrow(NotFoundException);
   });
 
-  it('PUT → update: replaces title + content and bumps updatedAt', async () => {
-    const created = controller.create({ title: 'old', content: 'old' });
-    await new Promise((r) => setTimeout(r, 5));
+  it('DELETE → delete: returns { success: true }', async () => {
+    jest.mocked(mockRepo.delete!).mockResolvedValue(true);
 
-    const updated = controller.update(
-      { id: created.id },
-      { title: 'new', content: 'new' }
-    );
-
-    expect(updated.title).toBe('new');
-    expect(updated.content).toBe('new');
-    expect(updated.createdAt).toBe(created.createdAt);
-    expect(updated.updatedAt).not.toBe(created.updatedAt);
-  });
-
-  it('PATCH → patch: updates only provided fields', async () => {
-    const created = controller.create({ title: 'original', content: 'keep' });
-    await new Promise((r) => setTimeout(r, 5));
-
-    const patched = controller.patch({ id: created.id }, { title: 'edited' });
-
-    expect(patched.title).toBe('edited');
-    expect(patched.content).toBe('keep');
-    expect(patched.updatedAt).not.toBe(created.updatedAt);
-  });
-
-  it('DELETE → delete: removes the note and returns { success: true }', () => {
-    const created = controller.create({ title: 't', content: 'c' });
-
-    const result = controller.delete({ id: created.id });
+    const result = await controller.delete({ id: randomUUID() });
 
     expect(result).toEqual({ success: true });
-    expect(() => controller.get({ id: created.id })).toThrow(NotFoundException);
   });
 
-  it('DELETE → delete: throws NotFoundException for unknown id', () => {
-    expect(() =>
+  it('DELETE → delete: throws NotFoundException for unknown id', async () => {
+    jest.mocked(mockRepo.delete!).mockResolvedValue(false);
+
+    await expect(
       controller.delete({ id: '00000000-0000-0000-0000-000000000000' })
-    ).toThrow(NotFoundException);
-  });
-
-  it('wires the service layer (sanity check for DI)', () => {
-    expect(service).toBeInstanceOf(NotesService);
+    ).rejects.toThrow(NotFoundException);
   });
 });

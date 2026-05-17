@@ -10,7 +10,7 @@ src/
   main.tsx                 — entry point (createRoot, StrictMode)
   App.tsx                  — glassmorphic single-viewport layout
   health-check.tsx         — frosted pill: gradient-ring + glow on ok
-  notes-panel.tsx          — frosted card: full CRUD, hover-reveal row actions
+  auth-panel.tsx           — cookie auth: register / login / refresh / me / logout via contracts
   package-verification.tsx — frosted card: static probes of every @repo/* export + backend
   endpoint-explorer.tsx    — frosted card: EndpointContract rows with gradient method badges
   index.css                — Tailwind v4 + @theme inline (glassmorphic tokens + keyframes + .glass utility)
@@ -51,7 +51,7 @@ index.html                 — loads Cabinet Grotesk + Satoshi (Fontshare) + Jet
   ```
 
 - For routes with `:id`, validate params then substitute: `const params = contract.paramsSchema.parse({ id }); const path = contract.path.replace(':id', encodeURIComponent(params.id));`.
-- Contracts imported from `@repo/contracts/health`, `@repo/contracts/notes`, `@repo/contracts/root`.
+- Contracts imported from `@repo/contracts/health`, `@repo/contracts/notes`, `@repo/contracts/root`, `@repo/contracts/auth`.
 - Types imported from `@repo/schemas/notes` (e.g. `Note`).
 - Base URL hardcoded as `http://localhost:3000` in `@repo/consts/api.ts`.
 

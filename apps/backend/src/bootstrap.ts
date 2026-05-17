@@ -1,6 +1,7 @@
 import type { INestApplication } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { cleanupOpenApiDoc } from 'nestjs-zod';
 import type { Env } from '@/utils/env.validation';
@@ -15,6 +16,7 @@ export function configureApp(
   // Default helmet includes a strict CSP. We can keep it on because Swagger UI
   // (which ships inline scripts/styles) is never mounted in production.
   app.use(helmet());
+  app.use(cookieParser());
 
   app.setGlobalPrefix('api');
   app.enableCors({

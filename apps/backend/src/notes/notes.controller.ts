@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
   Param,
   Patch,
   Post,
@@ -11,6 +12,7 @@ import {
 import { ApiTags } from '@nestjs/swagger';
 import { ZodResponse } from 'nestjs-zod';
 import type { Note, DeleteNoteResponse } from '@repo/schemas/notes';
+
 import {
   CreateNoteDto,
   UpdateNoteDto,
@@ -28,31 +30,38 @@ export class NotesController {
 
   @Get()
   @ZodResponse({ status: 200, description: 'List all notes', type: [NoteDto] })
-  list(): Note[] {
+  list(): Promise<Note[]> {
     return this.notesService.list();
   }
 
   @Get(':id')
   @ZodResponse({ status: 200, description: 'Get a note by id', type: NoteDto })
-  get(@Param() params: NoteIdParamsDto): Note {
+  get(@Param() params: NoteIdParamsDto): Promise<Note> {
     return this.notesService.get(params.id);
   }
 
   @Post()
+  @HttpCode(201)
   @ZodResponse({ status: 201, description: 'Create a note', type: NoteDto })
-  create(@Body() body: CreateNoteDto): Note {
+  create(@Body() body: CreateNoteDto): Promise<Note> {
     return this.notesService.create(body);
   }
 
   @Put(':id')
-  @ZodResponse({ status: 200, description: 'Replace a note', type: NoteDto })
-  update(@Param() params: NoteIdParamsDto, @Body() body: UpdateNoteDto): Note {
+  @ZodResponse({ status: 200, description: 'Update a note', type: NoteDto })
+  update(
+    @Param() params: NoteIdParamsDto,
+    @Body() body: UpdateNoteDto
+  ): Promise<Note> {
     return this.notesService.update(params.id, body);
   }
 
   @Patch(':id')
   @ZodResponse({ status: 200, description: 'Patch a note', type: NoteDto })
-  patch(@Param() params: NoteIdParamsDto, @Body() body: PatchNoteDto): Note {
+  patch(
+    @Param() params: NoteIdParamsDto,
+    @Body() body: PatchNoteDto
+  ): Promise<Note> {
     return this.notesService.patch(params.id, body);
   }
 
@@ -62,7 +71,7 @@ export class NotesController {
     description: 'Delete a note',
     type: DeleteNoteResponseDto
   })
-  delete(@Param() params: NoteIdParamsDto): DeleteNoteResponse {
+  delete(@Param() params: NoteIdParamsDto): Promise<DeleteNoteResponse> {
     return this.notesService.delete(params.id);
   }
 }

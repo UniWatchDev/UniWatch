@@ -8,11 +8,14 @@ Vite 8 + React 19 client-side starter surface. Keep it polished, generic, and us
 
 ## Structure
 
-- `src/App.tsx` — glassmorphic single-viewport layout (gradient canvas + ambient blobs + frosted cards: hero, package verification, endpoint explorer, notes, health + pitch footer).
+- `src/App.tsx` — `react-router-dom` routes: `/` → `HomePage`, `/app` → `ProtectedAppPage` (cookie session gate via `GET /api/auth/me`).
+- `src/home-page.tsx` — glassmorphic single-viewport layout (gradient canvas + ambient blobs + frosted cards: hero, package verification, endpoint explorer, auth, health + pitch footer).
+- `src/protected-app-page.tsx` — minimal shell: fetches `getAuthMeContract` with `credentials: 'include'`; redirects to `/` on `401`.
+- `src/main.tsx` — wraps the tree in `BrowserRouter`.
 - `src/health-check.tsx` — frosted pill: auto-pings `healthContract`, gradient-ring glow on ok, latency display.
-- `src/notes-panel.tsx` — frosted card with full CRUD against notes contracts. Hover-reveal row actions.
+- `src/auth-panel.tsx` — frosted card: register (email verification), verify + resend, forgot + reset password, login (blocked until verified), refresh + `/me` + logout; `credentials: 'include'` + `@repo/contracts/auth`.
 - `src/package-verification.tsx` — frosted card with runtime probes against each `@repo/*` export + live backend health with latency. Uses static imports (no dynamic import() at runtime, which Vite cannot resolve from variable paths).
-- `src/endpoint-explorer.tsx` — frosted card listing every `EndpointContract` with gradient method badges + "Try" button; auto-runs GETs on mount, shows JSON response drawer inline.
+- `src/endpoint-explorer.tsx` — frosted card listing `EndpointContract`s; auto-runs GETs on mount.
 - `src/index.css` — Tailwind v4 via `@import 'tailwindcss'`. Gradient canvas + ambient blurred blobs + frosted-glass card utility (`.glass`) + keyframes (`gradient-drift`, `float-*`, `check-pop`, `glow-pulse`).
 - `index.html` — loads Cabinet Grotesk + Satoshi from Fontshare and JetBrains Mono from Google Fonts via `<link>` tags.
 

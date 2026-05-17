@@ -9,15 +9,15 @@ Reusable monorepo baseline — not a product-specific app. Keep the starter gene
 ### Apps
 
 - `apps/frontend` — Vite 8 + React 19 client (port 5173 via `VITE_PORT`)
-- `apps/web` — Next.js 16 App Router (port 5172 hardcoded in scripts)
-- `apps/backend` — NestJS 11 API under `/api` prefix (port 3000 via `PORT` env, Swagger UI at `/docs`)
+- `apps/web` — Next.js 16 App Router (port 5172 hardcoded in scripts); home at `/`, cookie-gated **`/app`** (client `GET /api/auth/me`, redirect on `401`), auth panel includes forgot/reset like Vite.
+- `apps/backend` — NestJS 11 API under `/api` prefix (port 3000 via `PORT` env, Swagger UI at `/docs`). Loads `apps/backend/.env.${NODE_ENV}` only; copy `env.development.template` / `env.production.template` into gitignored `.env.development` / `.env.production` when bootstrapping.
 - `apps/mobile` — empty placeholder
 
 ### Shared packages
 
-- `@repo/consts` — string constants: `API_BASE_URL`, endpoint paths (`/api`, `/api/health`, `/api/notes`, `/api/notes/:id`), starter copy. Leaf package, no internal deps.
-- `@repo/schemas` — Zod 4 schemas and inferred types. Subpaths: `/health`, `/notes`, `/root`, `/errors` (RFC 7807 `problemDetailsSchema`). Notes exports include `noteIdParamsSchema` for UUID path params.
-- `@repo/contracts` — typed `EndpointContract<TResponse, TBody, TParams, TQuery>` objects. Each contract attaches `responseSchema` plus any of `bodySchema`/`paramsSchema`/`querySchema` as real Zod schemas from `@repo/schemas`. Depends on `@repo/consts`, `@repo/schemas`, `zod`.
+- `@repo/consts` — string constants: `API_BASE_URL`, endpoint paths (`/api`, `/api/auth/*` including register/login/refresh/me/logout/verify/resend/forgot/reset, `/api/health`, `/api/notes`, `/api/notes/:id`), starter copy. Leaf package, no internal deps.
+- `@repo/schemas` — Zod 4 schemas and inferred types. Subpaths: `/auth`, `/health`, `/notes`, `/root`, `/errors` (RFC 7807 `problemDetailsSchema`). Notes exports include `noteIdParamsSchema` for UUID path params.
+- `@repo/contracts` — typed `EndpointContract<TResponse, TBody, TParams, TQuery>` objects. Each contract attaches `responseSchema` plus any of `bodySchema`/`paramsSchema`/`querySchema` as real Zod schemas from `@repo/schemas`. Subpaths: `/auth`, `/health`, `/notes`, `/root`. Depends on `@repo/consts`, `@repo/schemas`, `zod`.
 - `@repo/ui` — React components (button, card, code). Not currently consumed by any app.
 - `@repo/eslint-config` — ESLint 9 flat configs: `base`, `node`, `react-internal`, `next-js`.
 - `@repo/typescript-config` — TS configs: `base.json`, `node.json`, `nextjs.json`, `vite.json`, `react-library.json`.
@@ -38,9 +38,9 @@ Packages build bottom-up. Turbo handles ordering via `^build` task deps.
 
 The full-stack contract chain works like this:
 
-1. `@repo/consts` defines endpoint path strings (`/api`, `/api/health`, `/api/notes`, `/api/notes/:id`).
-2. `@repo/schemas` defines Zod schemas and infers types (`Note`, `HealthResponse`, `CreateNoteInput`, `NoteIdParams`, `RootResponse`, `ProblemDetails`).
-3. `@repo/contracts` combines consts + schemas into `EndpointContract` objects with `method`, `path`, `responseSchema`, and optional `bodySchema`/`paramsSchema`/`querySchema`.
+1. `@repo/consts` defines endpoint path strings (`/api`, `/api/auth/*`, `/api/health`, `/api/notes`, `/api/notes/:id`).
+2. `@repo/schemas` defines Zod schemas and infers types (`Note`, `HealthResponse`, auth register/login/verify/resend shapes, `CreateNoteInput`, `NoteIdParams`, `RootResponse`, `ProblemDetails`).
+3. `@repo/contracts` combines consts + schemas into `EndpointContract` objects with `method`, `path`, `responseSchema`, and optional `bodySchema`/`paramsSchema`/`querySchema` (see `/auth`, `/health`, `/notes`, `/root` subpaths).
 4. Backend: DTOs extend `createZodDto(schema)` from `nestjs-zod`, reusing the same `@repo/schemas`. Global `ZodValidationPipe` validates `@Body()` and `@Param()` with those DTOs; `ZodSerializerInterceptor` validates responses. `HttpExceptionFilter` emits all errors as `ProblemDetails`.
 5. Frontend + web: each call site uses native `fetch()` and validates directly against the contract's schemas — e.g. `contract.bodySchema.parse(input)` before `JSON.stringify`, then `contract.responseSchema.parse(await response.json())`. No shared fetch wrapper — keeps the path clear for integrating React Query / RTK Query / SWR later.
 
