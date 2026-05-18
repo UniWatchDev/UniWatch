@@ -55,6 +55,7 @@ const ROWS: readonly EndpointRow[] = [
     run: async () => {
       const response = await fetch(`${API_BASE_URL}${listNotesContract.path}`, {
         method: listNotesContract.method,
+        credentials: 'include',
         headers: { Accept: 'application/json' }
       });
       if (!response.ok) throw new Error(`HTTP ${String(response.status)}`);
@@ -77,6 +78,7 @@ const ROWS: readonly EndpointRow[] = [
         `${API_BASE_URL}${createNoteContract.path}`,
         {
           method: createNoteContract.method,
+          credentials: 'include',
           headers: {
             'Content-Type': 'application/json',
             Accept: 'application/json'
@@ -107,6 +109,7 @@ const ROWS: readonly EndpointRow[] = [
       );
       const response = await fetch(`${API_BASE_URL}${path}`, {
         method: patchNoteContract.method,
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
           Accept: 'application/json'
@@ -133,6 +136,7 @@ const ROWS: readonly EndpointRow[] = [
       );
       const response = await fetch(`${API_BASE_URL}${path}`, {
         method: deleteNoteContract.method,
+        credentials: 'include',
         headers: { Accept: 'application/json' }
       });
       if (!response.ok) throw new Error(`HTTP ${String(response.status)}`);

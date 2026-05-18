@@ -7,7 +7,9 @@
 | backend  | `NODE_ENV`                 | `development` | Zod-validated at startup (`env.validation.ts`)                                                             |
 | backend  | `PORT`                     | `3000`        | Zod-validated at startup                                                                                   |
 | backend  | `CORS_ORIGIN`              | `*`           | Zod-validated. `*` allows all; comma-separated list for production (e.g. `https://app.example.com`)         |
+| backend  | `MONGODB_URI`              | —             | **Required** at startup. `mongodb://` or `mongodb+srv://`. Copy `apps/backend/env.development.template` → `.env.development`. |
 | backend  | `JWT_SECRET`               | —             | Required, ≥32 chars                                                                                        |
+| backend  | Auth `userId` in JSON      | —             | Responses use Mongo **ObjectId** string (24 hex chars), not numeric ids. |
 | backend  | `JWT_ACCESS_EXPIRES_IN`    | `15m`         | Zod-validated                                                                                              |
 | backend  | `JWT_REFRESH_EXPIRES_IN`   | `7d`          | Zod-validated                                                                                              |
 | backend  | `AUTH_EMAIL_VERIFICATION_EXPIRES_IN` | `15m` | TTL for 6-digit email verification codes                                                            |
@@ -20,7 +22,7 @@
 | web      | `NEXT_PUBLIC_API_BASE_URL` | —             | Defined in `.env` examples but **not wired** — same hardcoded constant                                     |
 | web      | `NEXT_PUBLIC_FRONTEND_URL` | —             | Defined in `.env` examples, not used in code                                                               |
 
-**Note:** `API_BASE_URL` is hardcoded as `http://localhost:3000` in `@repo/consts/api.ts`. Backend env shape lives in `apps/backend/env.*.template` (copy to gitignored `.env.development` / `.env.production`) when you productionize.
+**Note:** `API_BASE_URL` is hardcoded as `http://localhost:3000` in `@repo/consts/api.ts`. Backend env shape lives in `apps/backend/env.development.template` and `apps/backend/env.production.template` (copy to gitignored `.env.development` / `.env.production`).
 
 ## Verification
 

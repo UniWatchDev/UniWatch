@@ -23,6 +23,20 @@ const baseEnvSchema = z.object({
   AUTH_EMAIL_VERIFICATION_EXPIRES_IN: z.string().default('15m'),
   /** TTL for opaque password-reset tokens (e.g. `1h`, `24h`). */
   AUTH_PASSWORD_RESET_EXPIRES_IN: z.string().default('1h'),
+  MONGODB_URI: z
+    .string()
+    .min(1)
+    .refine(
+      (value) => {
+        try {
+          const u = new URL(value);
+          return u.protocol === 'mongodb:' || u.protocol === 'mongodb+srv:';
+        } catch {
+          return false;
+        }
+      },
+      { message: 'Must be a valid mongodb:// or mongodb+srv:// URL' }
+    ),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   /**
    * CORS allowed origins. `*` allows all (dev default). For production, set a

@@ -37,8 +37,12 @@ Each app call site uses **native `fetch`** and validates directly against the co
 
 ```sh
 pnpm install
+# Backend requires Mongo env — first time only (file is gitignored):
+cp apps/backend/env.development.template apps/backend/.env.development
 pnpm dev
 ```
+
+If you already have `apps/backend/.env.development`, add a valid **`MONGODB_URI`** (`mongodb://` or `mongodb+srv://`) instead of replacing the whole file. Tracked reference: `apps/backend/env.development.template`.
 
 Common commands:
 

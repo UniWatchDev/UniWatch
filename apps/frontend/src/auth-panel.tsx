@@ -1,5 +1,3 @@
-'use client';
-
 import { useState } from 'react';
 import { API_BASE_URL } from '@repo/consts/api';
 import {
@@ -87,9 +85,6 @@ async function readHttpErrorMessage(response: Response): Promise<string> {
   return `HTTP ${String(response.status)}`;
 }
 
-const inputClass =
-  'w-full border-b border-[color:var(--color-rule)] bg-transparent px-0 py-1 text-[12px] text-[color:var(--color-ink)] placeholder:text-[color:var(--color-mute)] focus:border-[color:var(--color-ink)] focus:outline-none';
-
 export function AuthPanel() {
   const [firstName, setFirstName] = useState('Test');
   const [lastName, setLastName] = useState('');
@@ -158,7 +153,7 @@ export function AuthPanel() {
         setVerificationCode(verificationCodeFromResponse);
       }
       setStatus(
-        `Registered as ${registeredUserName}. Use the 6-digit code from JSON for ${registeredEmail}, then log in.`
+        `Registered as ${registeredUserName}. Use the 6-digit code from JSON for ${registeredEmail}. Login stays blocked until verified.`
       );
     } catch (err) {
       setError(formatErr(err));
@@ -325,7 +320,7 @@ export function AuthPanel() {
         JSON.parse(raw) as unknown
       );
       setSessionUser(user);
-      setStatus('Logged in — HttpOnly cookies set. Try Refresh or Me.');
+      setStatus('Logged in — cookies set. Try Refresh or Me.');
     } catch (err) {
       setError(formatErr(err));
     }
@@ -349,7 +344,7 @@ export function AuthPanel() {
         await response.json()
       );
       setSessionUser(user);
-      setStatus('Session refreshed.');
+      setStatus('Session refreshed (new access + refresh cookies).');
     } catch (err) {
       setError(formatErr(err));
     }
@@ -387,41 +382,40 @@ export function AuthPanel() {
       if (response.status !== 204) {
         throw new Error(`logout HTTP ${String(response.status)}`);
       }
-      setStatus('Logged out.');
+      setStatus('Logged out — cookies cleared.');
     } catch (err) {
       setError(formatErr(err));
     }
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-baseline justify-between">
-        <p className="mono small-caps text-[10px] text-[color:var(--color-accent)]">
-          / Session
+    <div className="flex h-full min-h-0 flex-col gap-3">
+      <div>
+        <p className="display text-[13px] font-semibold uppercase tracking-wider text-[color:var(--color-violet)]">
+          Auth (cookie session)
+        </p>
+        <p className="mono mt-1 text-[11px] leading-snug text-[color:var(--color-mute)]">
+          Uses <code className="text-[color:var(--color-ink)]">credentials: include</code>{' '}
+          + shared contracts. Backend on {API_BASE_URL}. Login requires verified email.
         </p>
       </div>
-      <div className="mt-2 h-px w-full origin-left bg-[color:var(--color-ink)] rule-draw" />
-      <p className="mono mt-2 text-[10px] leading-snug text-[color:var(--color-mute)]">
-        <code className="text-[color:var(--color-ink)]">credentials: include</code>
-        . Login requires verified email. API {API_BASE_URL}.
-      </p>
 
-      <div className="mt-3 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1 editorial-scroll">
-        <div>
-          <p className="mono small-caps text-[10px] text-[color:var(--color-mute)]">
+      <div className="soft-scroll flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
+        <div className="rounded-2xl border border-white/15 bg-white/5 p-4">
+          <p className="mono mb-2 text-[11px] font-semibold uppercase tracking-wider text-[color:var(--color-mute)]">
             Register
           </p>
-          <p className="mono mt-1 text-[10px] text-[color:var(--color-mute)]">
-            Unique email and username; phone may repeat across accounts. First name is required; last
-            name optional.
+          <p className="mono mb-2 text-[10px] leading-snug text-[color:var(--color-mute)]">
+            Email and username must be unique. First name required; last name optional. Several
+            accounts may use the same phone number.
           </p>
-          <div className="mt-2 grid gap-2 border-b border-dotted border-[color:var(--color-rule)] pb-2">
+          <div className="grid gap-2">
             <label className="grid gap-0.5">
-              <span className="mono text-[9px] text-[color:var(--color-mute)]">
+              <span className="mono text-[10px] text-[color:var(--color-mute)]">
                 firstName
               </span>
               <input
-                className={inputClass}
+                className="rounded-xl border border-white/20 bg-white/80 px-3 py-2 text-[13px] text-[color:var(--color-ink)] outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-violet)]"
                 value={firstName}
                 onChange={(e) => {
                   setFirstName(e.target.value);
@@ -429,11 +423,11 @@ export function AuthPanel() {
               />
             </label>
             <label className="grid gap-0.5">
-              <span className="mono text-[9px] text-[color:var(--color-mute)]">
+              <span className="mono text-[10px] text-[color:var(--color-mute)]">
                 lastName (optional)
               </span>
               <input
-                className={inputClass}
+                className="rounded-xl border border-white/20 bg-white/80 px-3 py-2 text-[13px] text-[color:var(--color-ink)] outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-violet)]"
                 value={lastName}
                 onChange={(e) => {
                   setLastName(e.target.value);
@@ -441,11 +435,11 @@ export function AuthPanel() {
               />
             </label>
             <label className="grid gap-0.5">
-              <span className="mono text-[9px] text-[color:var(--color-mute)]">
+              <span className="mono text-[10px] text-[color:var(--color-mute)]">
                 userName
               </span>
               <input
-                className={inputClass}
+                className="rounded-xl border border-white/20 bg-white/80 px-3 py-2 text-[13px] text-[color:var(--color-ink)] outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-violet)]"
                 value={userName}
                 onChange={(e) => {
                   setUserName(e.target.value);
@@ -453,11 +447,11 @@ export function AuthPanel() {
               />
             </label>
             <label className="grid gap-0.5">
-              <span className="mono text-[9px] text-[color:var(--color-mute)]">
+              <span className="mono text-[10px] text-[color:var(--color-mute)]">
                 phone (IL mobile)
               </span>
               <input
-                className={inputClass}
+                className="rounded-xl border border-white/20 bg-white/80 px-3 py-2 text-[13px] text-[color:var(--color-ink)] outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-violet)]"
                 value={phoneNumber}
                 onChange={(e) => {
                   setPhoneNumber(e.target.value);
@@ -465,11 +459,11 @@ export function AuthPanel() {
               />
             </label>
             <label className="grid gap-0.5">
-              <span className="mono text-[9px] text-[color:var(--color-mute)]">
+              <span className="mono text-[10px] text-[color:var(--color-mute)]">
                 email
               </span>
               <input
-                className={inputClass}
+                className="rounded-xl border border-white/20 bg-white/80 px-3 py-2 text-[13px] text-[color:var(--color-ink)] outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-violet)]"
                 value={email}
                 onChange={(e) => {
                   setEmail(e.target.value);
@@ -477,12 +471,12 @@ export function AuthPanel() {
               />
             </label>
             <label className="grid gap-0.5">
-              <span className="mono text-[9px] text-[color:var(--color-mute)]">
-                password
+              <span className="mono text-[10px] text-[color:var(--color-mute)]">
+                password (8+, uppercase, digit)
               </span>
               <input
                 type="password"
-                className={inputClass}
+                className="rounded-xl border border-white/20 bg-white/80 px-3 py-2 text-[13px] text-[color:var(--color-ink)] outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-violet)]"
                 value={password}
                 onChange={(e) => {
                   setPassword(e.target.value);
@@ -491,30 +485,30 @@ export function AuthPanel() {
             </label>
             <button
               type="button"
-              className="mono mt-1 w-fit border border-[color:var(--color-ink)] bg-[color:var(--color-ink)] px-3 py-1 text-[11px] text-[color:var(--color-paper)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--color-accent)]"
+              className="lift mt-1 rounded-xl bg-gradient-to-r from-[color:var(--color-violet)] to-[color:var(--color-coral)] px-4 py-2.5 text-[13px] font-semibold text-white focus-visible:ring-2 focus-visible:ring-white/80"
               onClick={() => {
                 void register();
               }}
             >
-              Register →
+              Register
             </button>
           </div>
         </div>
 
-        <div>
-          <p className="mono small-caps text-[10px] text-[color:var(--color-mute)]">
+        <div className="rounded-2xl border border-white/15 bg-white/5 p-4">
+          <p className="mono mb-2 text-[11px] font-semibold uppercase tracking-wider text-[color:var(--color-mute)]">
             Verify email
           </p>
-          <p className="mono mt-1 text-[10px] text-[color:var(--color-mute)]">
+          <p className="mono mb-2 text-[10px] leading-snug text-[color:var(--color-mute)]">
             The API returns the code in JSON and can also send email when real delivery is enabled. Paste the JSON code here or from your inbox.
           </p>
-          <div className="mt-2 grid gap-2 border-b border-dotted border-[color:var(--color-rule)] pb-2">
+          <div className="grid gap-2">
             <label className="grid gap-0.5">
-              <span className="mono text-[9px] text-[color:var(--color-mute)]">
+              <span className="mono text-[10px] text-[color:var(--color-mute)]">
                 email
               </span>
               <input
-                className={inputClass}
+                className="rounded-xl border border-white/20 bg-white/80 px-3 py-2 text-[13px] text-[color:var(--color-ink)] outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-violet)]"
                 value={verificationEmail}
                 onChange={(e) => {
                   setVerificationEmail(e.target.value);
@@ -522,11 +516,11 @@ export function AuthPanel() {
               />
             </label>
             <label className="grid gap-0.5">
-              <span className="mono text-[9px] text-[color:var(--color-mute)]">
+              <span className="mono text-[10px] text-[color:var(--color-mute)]">
                 6-digit code
               </span>
               <input
-                className={inputClass}
+                className="rounded-xl border border-white/20 bg-white/80 px-3 py-2 text-[13px] text-[color:var(--color-ink)] outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-violet)]"
                 value={verificationCode}
                 onChange={(e) => {
                   setVerificationCode(e.target.value);
@@ -539,40 +533,40 @@ export function AuthPanel() {
             <div className="mt-1 flex flex-wrap gap-2">
               <button
                 type="button"
-                className="mono border border-[color:var(--color-ink)] bg-[color:var(--color-ink)] px-2 py-1 text-[10px] text-[color:var(--color-paper)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--color-accent)]"
+                className="lift rounded-xl bg-gradient-to-r from-[color:var(--color-violet)] to-[color:var(--color-coral)] px-4 py-2 text-[12px] font-semibold text-white focus-visible:ring-2 focus-visible:ring-white/80"
                 onClick={() => {
                   void verifyEmail();
                 }}
               >
-                Verify →
+                Verify email
               </button>
               <button
                 type="button"
-                className="mono border border-[color:var(--color-rule)] bg-transparent px-2 py-1 text-[10px] text-[color:var(--color-ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--color-accent)]"
+                className="lift rounded-xl border border-white/25 bg-white/10 px-3 py-2 text-[12px] font-medium text-[color:var(--color-ink)] focus-visible:ring-2 focus-visible:ring-[color:var(--color-violet)]"
                 onClick={() => {
                   void resendVerification();
                 }}
               >
-                Resend
+                Resend code
               </button>
             </div>
           </div>
         </div>
 
-        <div>
-          <p className="mono small-caps text-[10px] text-[color:var(--color-mute)]">
+        <div className="rounded-2xl border border-white/15 bg-white/5 p-4">
+          <p className="mono mb-2 text-[11px] font-semibold uppercase tracking-wider text-[color:var(--color-mute)]">
             Forgot / reset password
           </p>
-          <p className="mono mt-1 text-[10px] text-[color:var(--color-mute)]">
+          <p className="mono mb-2 text-[10px] leading-snug text-[color:var(--color-mute)]">
             Non-enumerating flow. The API returns the reset token in JSON and can also send email when real delivery is enabled.
           </p>
-          <div className="mt-2 grid gap-2 border-b border-dotted border-[color:var(--color-rule)] pb-2">
+          <div className="grid gap-2">
             <label className="grid gap-0.5">
-              <span className="mono text-[9px] text-[color:var(--color-mute)]">
+              <span className="mono text-[10px] text-[color:var(--color-mute)]">
                 email (forgot)
               </span>
               <input
-                className={inputClass}
+                className="rounded-xl border border-white/20 bg-white/80 px-3 py-2 text-[13px] text-[color:var(--color-ink)] outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-violet)]"
                 value={forgotEmail}
                 onChange={(e) => {
                   setForgotEmail(e.target.value);
@@ -581,19 +575,19 @@ export function AuthPanel() {
             </label>
             <button
               type="button"
-              className="mono mt-1 w-fit border border-[color:var(--color-ink)] bg-[color:var(--color-ink)] px-3 py-1 text-[11px] text-[color:var(--color-paper)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--color-accent)]"
+              className="lift rounded-xl bg-gradient-to-r from-[color:var(--color-violet)] to-[color:var(--color-coral)] px-4 py-2 text-[12px] font-semibold text-white focus-visible:ring-2 focus-visible:ring-white/80"
               onClick={() => {
                 void requestPasswordReset();
               }}
             >
-              Request reset →
+              Request reset link
             </button>
             <label className="grid gap-0.5">
-              <span className="mono text-[9px] text-[color:var(--color-mute)]">
+              <span className="mono text-[10px] text-[color:var(--color-mute)]">
                 reset token
               </span>
               <input
-                className={`${inputClass} font-mono text-[10px]`}
+                className="rounded-xl border border-white/20 bg-white/80 px-3 py-2 font-mono text-[11px] text-[color:var(--color-ink)] outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-violet)]"
                 value={resetToken}
                 onChange={(e) => {
                   setResetToken(e.target.value);
@@ -603,12 +597,12 @@ export function AuthPanel() {
               />
             </label>
             <label className="grid gap-0.5">
-              <span className="mono text-[9px] text-[color:var(--color-mute)]">
+              <span className="mono text-[10px] text-[color:var(--color-mute)]">
                 new password
               </span>
               <input
                 type="password"
-                className={inputClass}
+                className="rounded-xl border border-white/20 bg-white/80 px-3 py-2 text-[13px] text-[color:var(--color-ink)] outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-violet)]"
                 value={resetNewPassword}
                 onChange={(e) => {
                   setResetNewPassword(e.target.value);
@@ -617,7 +611,7 @@ export function AuthPanel() {
             </label>
             <button
               type="button"
-              className="mono border border-[color:var(--color-rule)] bg-transparent px-2 py-1 text-[10px] text-[color:var(--color-ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--color-accent)]"
+              className="lift rounded-xl border border-white/25 bg-white/10 px-3 py-2 text-[12px] font-medium text-[color:var(--color-ink)] focus-visible:ring-2 focus-visible:ring-[color:var(--color-violet)]"
               onClick={() => {
                 void resetPasswordWithToken();
               }}
@@ -627,17 +621,17 @@ export function AuthPanel() {
           </div>
         </div>
 
-        <div>
-          <p className="mono small-caps text-[10px] text-[color:var(--color-mute)]">
-            Login
+        <div className="rounded-2xl border border-white/15 bg-white/5 p-4">
+          <p className="mono mb-2 text-[11px] font-semibold uppercase tracking-wider text-[color:var(--color-mute)]">
+            Login / session
           </p>
-          <div className="mt-2 grid gap-2 border-b border-dotted border-[color:var(--color-rule)] pb-2">
+          <div className="grid gap-2">
             <label className="grid gap-0.5">
-              <span className="mono text-[9px] text-[color:var(--color-mute)]">
+              <span className="mono text-[10px] text-[color:var(--color-mute)]">
                 email or username
               </span>
               <input
-                className={inputClass}
+                className="rounded-xl border border-white/20 bg-white/80 px-3 py-2 text-[13px] text-[color:var(--color-ink)] outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-violet)]"
                 value={loginIdentifier}
                 onChange={(e) => {
                   setLoginIdentifier(e.target.value);
@@ -645,12 +639,12 @@ export function AuthPanel() {
               />
             </label>
             <label className="grid gap-0.5">
-              <span className="mono text-[9px] text-[color:var(--color-mute)]">
+              <span className="mono text-[10px] text-[color:var(--color-mute)]">
                 password
               </span>
               <input
                 type="password"
-                className={inputClass}
+                className="rounded-xl border border-white/20 bg-white/80 px-3 py-2 text-[13px] text-[color:var(--color-ink)] outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-violet)]"
                 value={loginPassword}
                 onChange={(e) => {
                   setLoginPassword(e.target.value);
@@ -660,16 +654,16 @@ export function AuthPanel() {
             <div className="mt-1 flex flex-wrap gap-2">
               <button
                 type="button"
-                className="mono border border-[color:var(--color-ink)] bg-[color:var(--color-ink)] px-2 py-1 text-[10px] text-[color:var(--color-paper)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--color-accent)]"
+                className="lift rounded-xl bg-gradient-to-r from-[color:var(--color-violet)] to-[color:var(--color-coral)] px-4 py-2 text-[12px] font-semibold text-white focus-visible:ring-2 focus-visible:ring-white/80"
                 onClick={() => {
                   void login();
                 }}
               >
-                Login →
+                Login
               </button>
               <button
                 type="button"
-                className="mono border border-[color:var(--color-rule)] bg-transparent px-2 py-1 text-[10px] text-[color:var(--color-ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--color-accent)]"
+                className="lift rounded-xl border border-white/25 bg-white/10 px-3 py-2 text-[12px] font-medium text-[color:var(--color-ink)] focus-visible:ring-2 focus-visible:ring-[color:var(--color-violet)]"
                 onClick={() => {
                   void refreshSession();
                 }}
@@ -678,7 +672,7 @@ export function AuthPanel() {
               </button>
               <button
                 type="button"
-                className="mono border border-[color:var(--color-rule)] bg-transparent px-2 py-1 text-[10px] text-[color:var(--color-ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--color-accent)]"
+                className="lift rounded-xl border border-white/25 bg-white/10 px-3 py-2 text-[12px] font-medium text-[color:var(--color-ink)] focus-visible:ring-2 focus-visible:ring-[color:var(--color-violet)]"
                 onClick={() => {
                   void loadMe();
                 }}
@@ -687,27 +681,29 @@ export function AuthPanel() {
               </button>
               <button
                 type="button"
-                className="mono text-[10px] text-[color:var(--color-mute)] underline-offset-2 hover:text-[color:var(--color-ink)] hover:underline"
+                className="lift rounded-xl border border-white/25 bg-white/10 px-3 py-2 text-[12px] font-medium text-[color:var(--color-mute)] focus-visible:ring-2 focus-visible:ring-[color:var(--color-coral)]"
                 onClick={() => {
                   void logout();
                 }}
               >
-                Log out
+                Logout
               </button>
             </div>
           </div>
         </div>
 
         {error !== null ? (
-          <p className="mono text-[10px] text-[color:var(--color-fail)]" role="alert">
+          <p className="mono rounded-xl border border-red-200/60 bg-red-50/90 px-3 py-2 text-[12px] text-red-900">
             {error}
           </p>
         ) : null}
         {status !== null ? (
-          <p className="mono text-[10px] text-[color:var(--color-ok)]">{status}</p>
+          <p className="mono rounded-xl border border-emerald-200/60 bg-emerald-50/90 px-3 py-2 text-[12px] text-emerald-900">
+            {status}
+          </p>
         ) : null}
         {sessionUser !== null ? (
-          <pre className="mono max-h-28 overflow-auto border border-[color:var(--color-rule)] bg-[color:var(--color-paper)] p-2 text-[10px] leading-relaxed text-[color:var(--color-ink)]">
+          <pre className="mono soft-scroll max-h-32 overflow-auto rounded-xl border border-white/15 bg-black/30 p-3 text-[11px] leading-relaxed text-emerald-100/95">
             {JSON.stringify(sessionUser, null, 2)}
           </pre>
         ) : null}

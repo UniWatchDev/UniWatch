@@ -9,6 +9,7 @@ import {
   STARTER_STATS
 } from '@repo/consts/starter';
 
+import { AuthPanel } from '@/auth-panel';
 import { EndpointExplorer } from '@/endpoint-explorer';
 import { HealthCheck } from '@/health-check';
 import { PackageVerification } from '@/package-verification';
@@ -128,17 +129,18 @@ export default function HomePage() {
           className="fade-up glass col-span-5 col-start-8 row-start-3 flex min-h-0 flex-col rounded-3xl p-5"
           style={{ animationDelay: '240ms' }}
         >
-          <p className="mono text-[12px] leading-relaxed text-[color:var(--color-mute)]">
-            Cookie auth flows for this starter live on the Vite app at{' '}
+          <p className="mono mb-3 text-[12px] leading-relaxed text-[color:var(--color-mute)]">
+            Full-page auth flows:{' '}
             <Link to="/login" className="text-[color:var(--color-violet)]">
               /login
-            </Link>{' '}
-            and{' '}
+            </Link>
+            ,{' '}
             <Link to="/register" className="text-[color:var(--color-violet)]">
               /register
             </Link>
             .
           </p>
+          <AuthPanel />
         </section>
 
         <footer className="col-span-12 row-start-4 grid grid-cols-4 gap-3">

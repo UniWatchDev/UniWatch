@@ -185,7 +185,7 @@ export class AuthController {
       'Current user from access JWT (HttpOnly access_token cookie set at login/refresh)',
     type: LoginResponseDto
   })
-  getMe(@Req() req: Request): LoginResponse {
+  async getMe(@Req() req: Request): Promise<LoginResponse> {
     const payload = req.authPayload;
     if (payload === undefined) {
       throw new UnauthorizedException('Missing or invalid access token');
@@ -195,8 +195,8 @@ export class AuthController {
 
   @Post(AUTH_ROUTE_LOGOUT)
   @HttpCode(204)
-  logout(@Req() req: Request, @Res({ passthrough: true }) res: Response): void {
-    this.authService.logout(this.readRefreshCookie(req));
+  async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response): Promise<void> {
+    await this.authService.logout(this.readRefreshCookie(req));
     this.clearAuthCookies(res);
   }
 
@@ -207,7 +207,7 @@ export class AuthController {
     description: 'Email verified when code matches',
     type: VerifyEmailResponseDto
   })
-  verifyEmail(@Body() body: VerifyEmailDto): VerifyEmailResponse {
+  verifyEmail(@Body() body: VerifyEmailDto): Promise<VerifyEmailResponse> {
     return this.authService.verifyEmail(body);
   }
 

@@ -1,5 +1,11 @@
 import { email, z } from 'zod';
 
+/** MongoDB ObjectId as 24 hex chars (used for `userId` / JWT `sub`). */
+export const mongoObjectIdStringSchema = z
+  .string()
+  .length(24)
+  .regex(/^[a-f0-9]+$/i, 'Invalid user id');
+
 function stripNullBytes(value: string): string {
   return value.replace(/\u0000/g, '');
 }
@@ -109,7 +115,7 @@ const passwordResetDebugSchema = z.strictObject({
 });
 
 export const registerResponseSchema = z.strictObject({
-  userId: z.number().int().positive(),
+  userId: mongoObjectIdStringSchema,
   userName: z.string(),
   firstName: z.string(),
   lastName: z.string().optional(),
@@ -154,7 +160,7 @@ export const loginBodySchema = z.strictObject({
 export type LoginBody = z.infer<typeof loginBodySchema>;
 
 export const loginResponseSchema = z.strictObject({
-  userId: z.number().int().positive(),
+  userId: mongoObjectIdStringSchema,
   userName: z.string(),
   firstName: z.string(),
   lastName: z.string().optional(),
@@ -196,7 +202,7 @@ export type AuthNonEnumeratingAck = z.infer<typeof authNonEnumeratingAckSchema>;
 
 export const verifyEmailResponseSchema = z.strictObject({
   emailVerified: z.literal(true),
-  userId: z.number().int().positive(),
+  userId: mongoObjectIdStringSchema,
   userName: z.string(),
   email: email()
 });

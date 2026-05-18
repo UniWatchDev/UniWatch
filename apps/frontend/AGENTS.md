@@ -8,16 +8,18 @@ Vite 8 + React 19 client-side starter surface. Keep it polished, generic, and us
 
 ## Structure
 
-- `src/App.tsx` — `CookieAuthProvider` + `react-router-dom` routes: `/` lobby, `/room/:id`, `/rooms/new`, `/rooms/:id/edit`, `/login`, `/register`, `/verify-email`, `/forgot-password`, `/reset-password`, `/change-password`.
+- `src/App.tsx` — `CookieAuthProvider` + `react-router-dom` routes: `/` lobby, `/app` (protected shell), `/room/:id`, `/rooms/new`, `/rooms/:id/edit`, `/login`, `/register`, `/verify-email`, `/forgot-password`, `/reset-password`, `/change-password`.
 - `src/auth/` — cookie session auth: `cookie-auth-provider.tsx` (provider), `use-cookie-auth.ts` (`useCookieAuth` hook), `cookie-auth-context-internal.ts`, `use-cookie-auth-model.ts` (state + `fetch` via `@repo/contracts/auth`), `auth-fetch-helpers.ts`.
 - `src/pages/` — route screens: lobby, room, create/edit room, plus auth routes (`login`, `registration`, `verify-email-page`, `forgot-password-page`, `reset-password-page`, `change-password`) and shared `auth-page-shell.tsx` for those auth layouts.
-- `src/home-page.tsx` — optional glassmorphic starter layout (not mounted by default `App.tsx`); links to `/login` / `/register` for auth.
-- `src/protected-app-page.tsx` — minimal shell: fetches `getAuthMeContract` with `credentials: 'include'`; redirects to `/` on `401` (not wired in current `App.tsx`).
+- `src/home-page.tsx` — optional glassmorphic starter layout (gradient canvas, package verification, endpoint explorer, `auth-panel.tsx` demo + links to `/login` / `/register`); not the default `/` route in `App.tsx`.
+- `src/auth-panel.tsx` — frosted card: register (with first/last name), verify + resend, forgot + reset, login, refresh + `/me` + logout; `credentials: 'include'` + `@repo/contracts/auth`.
+- `src/protected-app-page.tsx` — minimal shell: fetches `getAuthMeContract` with `credentials: 'include'`; redirects on `401`. Routed at **`/app`** from `App.tsx`.
 - `src/main.tsx` — wraps the tree in `BrowserRouter`.
 - `src/health-check.tsx` — frosted pill: auto-pings `healthContract`, gradient-ring glow on ok, latency display.
 - `src/package-verification.tsx` — frosted card with runtime probes against each `@repo/*` export + live backend health with latency. Uses static imports (no dynamic import() at runtime, which Vite cannot resolve from variable paths).
-- `src/endpoint-explorer.tsx` — frosted card listing `EndpointContract`s; auto-runs GETs on mount.
-- `src/index.css` — Tailwind v4 via `@import 'tailwindcss'`. Uni-watch theme tokens (`.card`, `.input`, `.btn-*`, auth feedback) + optional glass utilities from the starter.
+- `src/endpoint-explorer.tsx` — frosted card listing `EndpointContract`s; auto-runs GETs on mount; note calls use `credentials: 'include'` for JWT-guarded APIs.
+- `src/notes-panel.tsx` — notes CRUD against live API; uses `credentials: 'include'` so cookies reach **`/api/notes`** (JWT-guarded).
+- `src/index.css` — Tailwind v4 via `@import 'tailwindcss'`. Uni-watch theme tokens (`.card`, `.input`, `.btn-*`, auth feedback) plus glass / ambient utilities where used.
 - `index.html` — loads Cabinet Grotesk + Satoshi from Fontshare and JetBrains Mono from Google Fonts via `<link>` tags.
 
 ## Conventions

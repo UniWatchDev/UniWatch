@@ -11,14 +11,15 @@ src/
   App.tsx                  — CookieAuthProvider + routes (lobby, rooms, auth pages)
   auth/                    — cookie auth: provider, context, useCookieAuth model, fetch helpers
   pages/                   — lobby, room, create/edit room, auth route screens + auth-page-shell
-  home-page.tsx            — optional starter glass layout (not default route)
+  home-page.tsx            — optional starter glass layout + `AuthPanel` + links to full auth routes
   protected-app-page.tsx   — cookie gate example (optional route)
   health-check.tsx         — frosted pill: gradient-ring + glow on ok
+  auth-panel.tsx           — inline cookie auth demo (register / login / refresh / me / logout via contracts)
   package-verification.tsx — static probes of @repo/* + backend
   endpoint-explorer.tsx    — EndpointContract rows
-  index.css                — Tailwind v4 + theme tokens + shared UI classes
+  index.css                — Tailwind v4 + theme tokens + shared UI / glass utilities
   assets/
-index.html
+index.html                 — loads Cabinet Grotesk + Satoshi (Fontshare) + JetBrains Mono (Google)
 ```
 
 ## React 19

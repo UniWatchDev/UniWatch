@@ -2,13 +2,15 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   ServiceUnavailableException,
   UnauthorizedException
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
-import { randomBytes, randomInt } from 'node:crypto';
+import { createHash, randomBytes, randomInt } from 'node:crypto';
+import { Types } from 'mongoose';
 
 import type {
   ChangePasswordBody,
@@ -23,40 +25,16 @@ import type {
 import type {
   LoginBody,
   LoginResponse,
-  LoginWithTokens
+  LoginWithTokens,
+  RegisterResponse
 } from '@/auth/auth.dto';
 import type { JwtAccessPayload } from '@/auth/auth.types';
+import { RefreshSessionRepository } from '@/auth/refresh-session.repository';
+import { UserRepository } from '@/auth/user.repository';
+import type { UserDocument } from '@/auth/user.schema';
 import { MailService } from '@/mail/mail.service';
 import type { Env } from '@/utils/env.validation';
 import { parseDurationToMs } from '@/utils/parse-duration-ms';
-
-type StoredUser = {
-  userId: number;
-  userName: string;
-  firstName: string;
-  lastName?: string;
-  phoneNumber: string;
-  email: string;
-  passwordHash: string;
-  passwordVersion: number;
-  createdAt: Date;
-  emailVerified: boolean;
-};
-
-type RefreshSession = {
-  userId: number;
-  expiresAtMs: number;
-};
-
-type EmailVerificationChallenge = {
-  code: string;
-  expiresAtMs: number;
-};
-
-type PasswordResetChallenge = {
-  userId: number;
-  expiresAtMs: number;
-};
 
 const AUTH_RESEND_ACK_MESSAGE =
   'If an account exists for that email, next steps were recorded where applicable.';
@@ -71,17 +49,7 @@ type PasswordResetDebug = {
   passwordResetExpiresAt: string;
 };
 
-type RegisterResponseWithDebug = {
-  userId: number;
-  userName: string;
-  firstName: string;
-  lastName?: string;
-  phoneNumber: string;
-  email: string;
-  createdAt: string;
-  emailVerified: boolean;
-  debug: EmailVerificationDebug;
-};
+type RegisterResponseWithDebug = RegisterResponse & { debug: EmailVerificationDebug };
 
 type AuthNonEnumeratingAckWithDebug = {
   ok: true;
@@ -103,36 +71,60 @@ function normalizedRegisterLastName(last: string | undefined): string | undefine
   return last !== undefined && last.length > 0 ? last : undefined;
 }
 
+function hashOpaqueToken(token: string): string {
+  return createHash('sha256').update(token, 'utf8').digest('hex');
+}
+
+function isValidObjectIdString(value: string): boolean {
+  return Types.ObjectId.isValid(value) && new Types.ObjectId(value).toString() === value;
+}
+
+function userToLoginResponse(doc: UserDocument): LoginResponse {
+  const userId = doc._id.toString();
+  return {
+    userId,
+    userName: doc.userName,
+    firstName: doc.firstName,
+    ...(doc.lastName !== undefined && doc.lastName.length > 0
+      ? { lastName: doc.lastName }
+      : {}),
+    email: doc.email,
+    emailVerified: doc.emailVerified
+  };
+}
+
+function isDuplicateKeyError(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    'code' in err &&
+    (err as { code: number }).code === 11000
+  );
+}
+
 @Injectable()
 export class AuthService {
-  private nextUserId = 1;
-  private readonly userByUserId = new Map<number, StoredUser>();
-  /** lowercase userName → userId */
-  private readonly userIdByUserName = new Map<string, number>();
-  /** email → userId */
-  private readonly userIdByEmail = new Map<string, number>();
-  /** opaque refresh token → session */
-  private readonly refreshByToken = new Map<string, RefreshSession>();
-  /** lowercase email → pending verification */
-  private readonly emailVerificationByEmail = new Map<
-    string,
-    EmailVerificationChallenge
-  >();
-  /** opaque password-reset token → challenge */
-  private readonly passwordResetByToken = new Map<string, PasswordResetChallenge>();
+  private readonly logger = new Logger(AuthService.name);
 
   constructor(
+    private readonly users: UserRepository,
+    private readonly refreshSessions: RefreshSessionRepository,
     private readonly jwtService: JwtService,
     private readonly config: ConfigService<Env, true>,
     private readonly mail: MailService
   ) {}
 
-  private async issueNewSession(user: StoredUser): Promise<LoginWithTokens> {
+  private useRealEmails(): boolean {
+    return this.config.get('AUTH_USE_REAL_EMAILS', { infer: true });
+  }
+
+  private async issueNewSession(doc: UserDocument): Promise<LoginWithTokens> {
+    const userId = doc._id.toString();
     const accessToken = await this.jwtService.signAsync(
       {
-        sub: String(user.userId),
-        email: user.email,
-        pv: user.passwordVersion
+        sub: userId,
+        email: doc.email,
+        pv: doc.passwordVersion
       },
       {
         expiresIn: this.config.get('JWT_ACCESS_EXPIRES_IN', { infer: true })
@@ -143,83 +135,29 @@ export class AuthService {
     const refreshMs = parseDurationToMs(
       this.config.get('JWT_REFRESH_EXPIRES_IN', { infer: true })
     );
-    this.refreshByToken.set(refreshToken, {
-      userId: user.userId,
-      expiresAtMs: Date.now() + refreshMs
-    });
-
-    const userPayload: LoginResponse = {
-      userId: user.userId,
-      userName: user.userName,
-      firstName: user.firstName,
-      ...(user.lastName !== undefined ? { lastName: user.lastName } : {}),
-      email: user.email,
-      emailVerified: user.emailVerified
-    };
+    const expiresAt = new Date(Date.now() + refreshMs);
+    await this.refreshSessions.createSession(userId, hashOpaqueToken(refreshToken), expiresAt);
 
     return {
       accessToken,
       refreshToken,
-      user: userPayload
+      user: userToLoginResponse(doc)
     };
-  }
-
-  private useRealEmails(): boolean {
-    return this.config.get('AUTH_USE_REAL_EMAILS', { infer: true });
-  }
-
-  private putEmailVerification(emailKey: string): {
-    code: string;
-    expiresAtIso: string;
-  } {
-    const code = generateSixDigitCode();
-    const ttlMs = parseDurationToMs(
-      this.config.get('AUTH_EMAIL_VERIFICATION_EXPIRES_IN', { infer: true })
-    );
-    const expiresAtMs = Date.now() + ttlMs;
-    this.emailVerificationByEmail.set(emailKey, { code, expiresAtMs });
-    return { code, expiresAtIso: new Date(expiresAtMs).toISOString() };
-  }
-
-  private revokeAllRefreshSessionsForUser(userId: number): void {
-    for (const [token, session] of this.refreshByToken) {
-      if (session.userId === userId) {
-        this.refreshByToken.delete(token);
-      }
-    }
-  }
-
-  private clearPasswordResetForUser(userId: number): void {
-    for (const [token, challenge] of this.passwordResetByToken) {
-      if (challenge.userId === userId) {
-        this.passwordResetByToken.delete(token);
-      }
-    }
-  }
-
-  private putPasswordReset(userId: number): { token: string; expiresAtIso: string } {
-    const ttlMs = parseDurationToMs(
-      this.config.get('AUTH_PASSWORD_RESET_EXPIRES_IN', { infer: true })
-    );
-    const token = randomBytes(32).toString('hex');
-    const expiresAtMs = Date.now() + ttlMs;
-    this.passwordResetByToken.set(token, { userId, expiresAtMs });
-    return { token, expiresAtIso: new Date(expiresAtMs).toISOString() };
   }
 
   /**
    * Ensures the JWT was issued for the current password generation.
    * Call after signature verification (e.g. in `JwtAuthGuard`).
    */
-  assertAccessTokenClaims(payload: JwtAccessPayload): void {
+  async assertAccessTokenClaims(payload: JwtAccessPayload): Promise<void> {
     if (typeof payload.pv !== 'number' || !Number.isFinite(payload.pv) || payload.pv < 0) {
       throw new UnauthorizedException('Invalid token');
     }
-    const userId = Number(payload.sub);
-    if (!Number.isFinite(userId) || userId < 1) {
+    const sub = payload.sub;
+    if (!isValidObjectIdString(sub)) {
       throw new UnauthorizedException('Invalid token');
     }
-    const user = this.userByUserId.get(userId);
+    const user = await this.users.findById(sub);
     if (!user || user.email !== payload.email) {
       throw new UnauthorizedException('Invalid token');
     }
@@ -232,55 +170,67 @@ export class AuthService {
     const emailKey = body.email;
     const userNameKey = body.userName.toLowerCase();
 
-    if (this.userIdByEmail.has(emailKey)) {
+    const existingEmail = await this.users.findByEmail(emailKey);
+    if (existingEmail) {
       throw new ConflictException('Email already registered');
     }
-    if (this.userIdByUserName.has(userNameKey)) {
+    const existingUserName = await this.users.findByUserName(userNameKey);
+    if (existingUserName) {
       throw new ConflictException('Username already taken');
     }
 
     const passwordHash = await bcrypt.hash(body.password, 12);
-    const userId = this.nextUserId++;
-    const createdAt = new Date();
     const lastNameStored = normalizedRegisterLastName(body.lastName);
+    const code = generateSixDigitCode();
+    const ttlMs = parseDurationToMs(
+      this.config.get('AUTH_EMAIL_VERIFICATION_EXPIRES_IN', { infer: true })
+    );
+    const emailVerificationExpiresAt = new Date(Date.now() + ttlMs);
 
-    const row: StoredUser = {
-      userId,
-      userName: body.userName,
-      firstName: body.firstName,
-      ...(lastNameStored !== undefined ? { lastName: lastNameStored } : {}),
-      phoneNumber: body.phoneNumber,
-      email: body.email,
-      passwordHash,
-      passwordVersion: 0,
-      createdAt,
-      emailVerified: false
-    };
+    let doc: UserDocument;
+    try {
+      doc = await this.users.create({
+        email: emailKey,
+        userName: body.userName,
+        firstName: body.firstName,
+        ...(lastNameStored !== undefined ? { lastName: lastNameStored } : {}),
+        phoneNumber: body.phoneNumber,
+        passwordHash,
+        emailVerificationCode: code,
+        emailVerificationExpiresAt
+      });
+    } catch (err) {
+      if (isDuplicateKeyError(err)) {
+        throw new ConflictException('Email or username already in use');
+      }
+      this.logger.error(err instanceof Error ? err.message : 'User create failed');
+      throw new ServiceUnavailableException('Could not complete registration; try again later');
+    }
 
-    this.userByUserId.set(userId, row);
-    this.userIdByEmail.set(emailKey, userId);
-    this.userIdByUserName.set(userNameKey, userId);
-
-    const { code, expiresAtIso } = this.putEmailVerification(emailKey);
+    const expiresAtIso = emailVerificationExpiresAt.toISOString();
 
     if (this.useRealEmails()) {
       try {
-        await this.mail.sendEmailVerification(row.email, code, expiresAtIso);
-      } catch {
+        await this.mail.sendEmailVerification(doc.email, code, expiresAtIso);
+      } catch (err) {
+        this.logger.error(
+          err instanceof Error ? err.message : 'sendEmailVerification failed'
+        );
         throw new ServiceUnavailableException(
           'Could not send verification email; try again later'
         );
       }
     }
 
+    const userId = doc._id.toString();
     return {
       userId,
-      userName: row.userName,
-      firstName: row.firstName,
+      userName: doc.userName,
+      firstName: doc.firstName,
       ...(lastNameStored !== undefined ? { lastName: lastNameStored } : {}),
-      phoneNumber: row.phoneNumber,
-      email: row.email,
-      createdAt: createdAt.toISOString(),
+      phoneNumber: doc.phoneNumber,
+      email: doc.email,
+      createdAt: doc.createdAt.toISOString(),
       emailVerified: false,
       debug: {
         emailVerificationCode: code,
@@ -289,60 +239,66 @@ export class AuthService {
     };
   }
 
-  verifyEmail(body: VerifyEmailBody): VerifyEmailResponse {
+  async verifyEmail(body: VerifyEmailBody): Promise<VerifyEmailResponse> {
     const emailKey = body.email;
-    const pending = this.emailVerificationByEmail.get(emailKey);
+    const user = await this.users.findByEmail(emailKey);
     if (
-      pending === undefined ||
-      Date.now() > pending.expiresAtMs ||
-      pending.code !== body.code
+      user === null ||
+      user.emailVerificationCode === undefined ||
+      user.emailVerificationExpiresAt === undefined
     ) {
-      if (pending !== undefined && Date.now() > pending.expiresAtMs) {
-        this.emailVerificationByEmail.delete(emailKey);
-      }
+      throw new BadRequestException('Invalid or expired verification code');
+    }
+    if (Date.now() > user.emailVerificationExpiresAt.getTime()) {
+      throw new BadRequestException('Invalid or expired verification code');
+    }
+    if (user.emailVerificationCode !== body.code) {
       throw new BadRequestException('Invalid or expired verification code');
     }
 
-    const userId = this.userIdByEmail.get(emailKey);
-    if (userId === undefined) {
-      this.emailVerificationByEmail.delete(emailKey);
+    const updated = await this.users.markEmailVerified(user._id.toString());
+    if (!updated) {
       throw new BadRequestException('Invalid or expired verification code');
     }
-
-    const user = this.userByUserId.get(userId);
-    if (!user || user.email !== emailKey) {
-      this.emailVerificationByEmail.delete(emailKey);
-      throw new BadRequestException('Invalid or expired verification code');
-    }
-
-    this.emailVerificationByEmail.delete(emailKey);
-    user.emailVerified = true;
 
     return {
       emailVerified: true,
-      userId: user.userId,
-      userName: user.userName,
-      email: user.email
+      userId: updated._id.toString(),
+      userName: updated.userName,
+      email: updated.email
     };
   }
 
   async resendVerification(body: ResendVerificationBody): Promise<AuthNonEnumeratingAckWithDebug> {
     const emailKey = body.email;
-    const userId = this.userIdByEmail.get(emailKey);
-    if (userId === undefined) {
-      return { ok: true, message: AUTH_RESEND_ACK_MESSAGE };
-    }
-    const user = this.userByUserId.get(userId);
-    if (!user || user.emailVerified) {
+    const user = await this.users.findByEmail(emailKey);
+    if (user === null || user.emailVerified) {
       return { ok: true, message: AUTH_RESEND_ACK_MESSAGE };
     }
 
-    const { code, expiresAtIso } = this.putEmailVerification(emailKey);
+    const code = generateSixDigitCode();
+    const ttlMs = parseDurationToMs(
+      this.config.get('AUTH_EMAIL_VERIFICATION_EXPIRES_IN', { infer: true })
+    );
+    const expiresAt = new Date(Date.now() + ttlMs);
+    const updated = await this.users.setEmailVerificationChallenge(
+      user._id.toString(),
+      code,
+      expiresAt
+    );
+    if (!updated) {
+      return { ok: true, message: AUTH_RESEND_ACK_MESSAGE };
+    }
+
+    const expiresAtIso = expiresAt.toISOString();
 
     if (this.useRealEmails()) {
       try {
-        await this.mail.sendEmailVerification(user.email, code, expiresAtIso);
-      } catch {
+        await this.mail.sendEmailVerification(updated.email, code, expiresAtIso);
+      } catch (err) {
+        this.logger.error(
+          err instanceof Error ? err.message : 'sendEmailVerification failed'
+        );
         throw new ServiceUnavailableException(
           'Could not send verification email; try again later'
         );
@@ -361,22 +317,33 @@ export class AuthService {
 
   async forgotPassword(body: ForgotPasswordBody): Promise<ForgotPasswordAckWithDebug> {
     const emailKey = body.email;
-    const userId = this.userIdByEmail.get(emailKey);
-    if (userId === undefined) {
-      return { ok: true, message: AUTH_RESEND_ACK_MESSAGE };
-    }
-    const user = this.userByUserId.get(userId);
-    if (!user || !user.emailVerified) {
+    const user = await this.users.findByEmail(emailKey);
+    if (user === null || !user.emailVerified) {
       return { ok: true, message: AUTH_RESEND_ACK_MESSAGE };
     }
 
-    this.clearPasswordResetForUser(userId);
-    const { token, expiresAtIso } = this.putPasswordReset(userId);
+    const ttlMs = parseDurationToMs(
+      this.config.get('AUTH_PASSWORD_RESET_EXPIRES_IN', { infer: true })
+    );
+    const token = randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + ttlMs);
+    const tokenHash = hashOpaqueToken(token);
+    const updated = await this.users.setPasswordResetChallenge(
+      user._id.toString(),
+      tokenHash,
+      expiresAt
+    );
+    if (!updated) {
+      return { ok: true, message: AUTH_RESEND_ACK_MESSAGE };
+    }
+
+    const expiresAtIso = expiresAt.toISOString();
 
     if (this.useRealEmails()) {
       try {
-        await this.mail.sendPasswordReset(user.email, token, expiresAtIso);
-      } catch {
+        await this.mail.sendPasswordReset(updated.email, token, expiresAtIso);
+      } catch (err) {
+        this.logger.error(err instanceof Error ? err.message : 'sendPasswordReset failed');
         throw new ServiceUnavailableException(
           'Could not send password reset email; try again later'
         );
@@ -394,36 +361,28 @@ export class AuthService {
   }
 
   async resetPassword(body: ResetPasswordBody): Promise<void> {
-    const challenge = this.passwordResetByToken.get(body.token);
-    if (challenge === undefined || Date.now() > challenge.expiresAtMs) {
-      if (challenge !== undefined && Date.now() > challenge.expiresAtMs) {
-        this.passwordResetByToken.delete(body.token);
-      }
+    const tokenHash = hashOpaqueToken(body.token);
+    const user = await this.users.findByPasswordResetTokenHash(tokenHash);
+    if (
+      user === null ||
+      user.passwordResetExpiresAt === undefined ||
+      Date.now() > user.passwordResetExpiresAt.getTime()
+    ) {
       throw new BadRequestException('Invalid or expired reset token');
     }
 
-    const user = this.userByUserId.get(challenge.userId);
-    if (!user) {
-      this.passwordResetByToken.delete(body.token);
+    const newHash = await bcrypt.hash(body.newPassword, 12);
+    const updated = await this.users.completePasswordReset(user._id.toString(), newHash);
+    if (!updated) {
       throw new BadRequestException('Invalid or expired reset token');
     }
 
-    this.passwordResetByToken.delete(body.token);
-    user.passwordHash = await bcrypt.hash(body.newPassword, 12);
-    user.passwordVersion += 1;
-    this.revokeAllRefreshSessionsForUser(user.userId);
+    await this.refreshSessions.deleteAllForUser(user._id.toString());
   }
 
   async login(body: LoginBody): Promise<LoginWithTokens> {
-    const key = body.identifier;
-    const userId = key.includes('@')
-      ? this.userIdByEmail.get(key)
-      : this.userIdByUserName.get(key);
-    if (userId === undefined) {
-      throw new UnauthorizedException('Invalid email, username, or password');
-    }
-    const user = this.userByUserId.get(userId);
-    if (!user) {
+    const user = await this.users.findByIdentifier(body.identifier);
+    if (user === null) {
       throw new UnauthorizedException('Invalid email, username, or password');
     }
     const passwordOk = await bcrypt.compare(body.password, user.passwordHash);
@@ -441,9 +400,9 @@ export class AuthService {
     payload: JwtAccessPayload,
     body: ChangePasswordBody
   ): Promise<LoginWithTokens> {
-    this.assertAccessTokenClaims(payload);
-    const userId = Number(payload.sub);
-    const user = this.userByUserId.get(userId);
+    await this.assertAccessTokenClaims(payload);
+    const sub = payload.sub;
+    const user = await this.users.findById(sub);
     if (!user) {
       throw new UnauthorizedException('Invalid token');
     }
@@ -452,12 +411,15 @@ export class AuthService {
       throw new UnauthorizedException('Current password is incorrect');
     }
 
-    user.passwordHash = await bcrypt.hash(body.newPassword, 12);
-    user.passwordVersion += 1;
-    this.revokeAllRefreshSessionsForUser(user.userId);
-    this.clearPasswordResetForUser(user.userId);
+    const newPasswordHash = await bcrypt.hash(body.newPassword, 12);
+    const updated = await this.users.updatePassword(user._id.toString(), newPasswordHash);
+    if (!updated) {
+      throw new UnauthorizedException('Invalid token');
+    }
 
-    return this.issueNewSession(user);
+    await this.refreshSessions.deleteAllForUser(user._id.toString());
+
+    return this.issueNewSession(updated);
   }
 
   /**
@@ -465,19 +427,20 @@ export class AuthService {
    * The previous refresh token is invalidated (one-time use).
    */
   async refresh(oldRefreshToken: string): Promise<LoginWithTokens> {
-    const session = this.refreshByToken.get(oldRefreshToken);
-    if (!session) {
+    const tokenHash = hashOpaqueToken(oldRefreshToken);
+    const session = await this.refreshSessions.findByTokenHash(tokenHash);
+    if (session === null) {
       throw new UnauthorizedException('Invalid or expired session');
     }
-    if (Date.now() > session.expiresAtMs) {
-      this.refreshByToken.delete(oldRefreshToken);
+    if (Date.now() > session.expiresAt.getTime()) {
+      await this.refreshSessions.deleteByTokenHash(tokenHash);
       throw new UnauthorizedException('Invalid or expired session');
     }
 
-    this.refreshByToken.delete(oldRefreshToken);
+    await this.refreshSessions.deleteByTokenHash(tokenHash);
 
-    const user = this.userByUserId.get(session.userId);
-    if (!user) {
+    const user = await this.users.findById(session.userId.toString());
+    if (user === null) {
       throw new UnauthorizedException('Invalid or expired session');
     }
     if (!user.emailVerified) {
@@ -488,30 +451,22 @@ export class AuthService {
   }
 
   /** Revokes the refresh session when the client sends a known refresh token. */
-  logout(refreshToken: string | undefined): void {
+  async logout(refreshToken: string | undefined): Promise<void> {
     if (typeof refreshToken === 'string' && refreshToken.length > 0) {
-      this.refreshByToken.delete(refreshToken);
+      await this.refreshSessions.deleteByTokenHash(hashOpaqueToken(refreshToken));
     }
   }
 
   /** Resolves the current user from an access JWT payload (must match stored user). */
-  getMeForJwtPayload(payload: JwtAccessPayload): LoginResponse {
-    this.assertAccessTokenClaims(payload);
-    const userId = Number(payload.sub);
-    const user = this.userByUserId.get(userId);
+  async getMeForJwtPayload(payload: JwtAccessPayload): Promise<LoginResponse> {
+    await this.assertAccessTokenClaims(payload);
+    const user = await this.users.findById(payload.sub);
     if (!user || user.email !== payload.email) {
       throw new UnauthorizedException('Invalid token');
     }
     if (!user.emailVerified) {
       throw new UnauthorizedException('Email not verified');
     }
-    return {
-      userId: user.userId,
-      userName: user.userName,
-      firstName: user.firstName,
-      ...(user.lastName !== undefined ? { lastName: user.lastName } : {}),
-      email: user.email,
-      emailVerified: user.emailVerified
-    };
+    return userToLoginResponse(user);
   }
 }

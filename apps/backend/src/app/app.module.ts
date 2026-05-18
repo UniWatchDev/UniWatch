@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { MiddlewareConsumer, Module, type NestModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_FILTER, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
+import { MongooseModule } from '@nestjs/mongoose';
 import { ZodSerializerInterceptor, ZodValidationPipe } from 'nestjs-zod';
 import { AppController } from '@/app/app.controller';
 import { AppService } from '@/app/app.service';
@@ -14,6 +15,8 @@ import { HttpExceptionFilter } from '@/filters/http-exception.filter';
 import { RequestIdMiddleware } from '@/middleware/request-id.middleware';
 import { JwtModule } from '@nestjs/jwt';
 import { AuthModule } from '@/auth/auth.module';
+import { MoviesModule } from '@/movies/movies.module';
+import { RoomsModule } from '@/rooms/rooms.module';
 
 const nodeEnv = process.env['NODE_ENV'] ?? 'development';
 const backendRoot = process.cwd().endsWith('/apps/backend')
@@ -29,6 +32,13 @@ const envFilePath = [join(backendRoot, `.env.${nodeEnv}`)];
       envFilePath,
       validate: validateEnv
     }),
+    MongooseModule.forRootAsync({
+      imports: [ConfigModule],
+      useFactory: (configService: ConfigService<Env, true>) => ({
+        uri: configService.get('MONGODB_URI')
+      }),
+      inject: [ConfigService<Env, true>]
+    }),
     JwtModule.registerAsync({
       global: true,
       imports: [ConfigModule],
@@ -41,7 +51,9 @@ const envFilePath = [join(backendRoot, `.env.${nodeEnv}`)];
     HealthModule,
     NotesModule,
     RealtimeModule,
-    AuthModule
+    AuthModule,
+    MoviesModule,
+    RoomsModule
   ],
   controllers: [AppController],
   providers: [

@@ -1,0 +1,238 @@
+@baseUrl = http://localhost:3000/api
+
+# ─────────────────────────────────────────
+# HEALTH
+# ─────────────────────────────────────────
+
+### Health check
+GET {{baseUrl}}/health
+
+
+# ─────────────────────────────────────────
+# AUTH
+# ─────────────────────────────────────────
+
+### 1. Register a new user
+# @name register
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "userName": "testuser2",
+  "email": "test2@test.com",
+  "phoneNumber": "0501234569",
+  "password": "Password2"
+}
+
+###
+
+### 2. Verify email
+POST {{baseUrl}}/auth/verify-email
+Content-Type: application/json
+
+{
+  "email": "test@test.com",
+  "code": "{{register.response.body.debug.emailVerificationCode}}"
+}
+
+###
+
+### 3. Login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "identifier": "test@test.com",
+  "password": "Password1"
+}
+
+###
+
+### 4. Get current user  (requires being logged in)
+GET {{baseUrl}}/auth/me
+
+###
+
+### 5. Refresh session
+POST {{baseUrl}}/auth/refresh
+
+###
+
+### 6. Logout
+POST {{baseUrl}}/auth/logout
+
+###
+
+### 7. Forgot password  (returns a reset token in debug field)
+POST {{baseUrl}}/auth/forgot-password
+Content-Type: application/json
+
+{
+  "email": "test@test.com"
+}
+
+###
+
+### 8. Reset password  (paste the passwordResetToken from forgot response)
+POST {{baseUrl}}/auth/reset-password
+Content-Type: application/json
+
+{
+  "token": "PASTE_RESET_TOKEN_HERE",
+  "newPassword": "NewPassword1"
+}
+
+###
+
+### 9. Resend verification email
+POST {{baseUrl}}/auth/resend-verification
+Content-Type: application/json
+
+{
+  "email": "test@test.com"
+}
+
+
+# ─────────────────────────────────────────
+# MOVIES
+# ─────────────────────────────────────────
+
+### Create a movie  (only needed once — name is unique, skip if already exists)
+POST {{baseUrl}}/movies
+Content-Type: application/json
+
+{
+  "name": "Inception 3",
+  "movie_actors": ["Leonardo DiCaprio", "Joseph Gordon-Levitt"],
+  "director": "Christopher Nolan",
+  "rating": 8.8,
+  "length": 148,
+  "genre": "sci-fi",
+  "language": "english"
+}
+
+###
+
+### List all movies  (run this before creating a room — captures the first movie id)
+# @name listMovies
+GET {{baseUrl}}/movies
+
+###
+
+### Get a movie by id  (paste an id from the list response)
+GET {{baseUrl}}/movies/PASTE_MOVIE_ID_HERE
+
+###
+
+### Update a movie (partial update)
+PATCH {{baseUrl}}/movies/PASTE_MOVIE_ID_HERE
+Content-Type: application/json
+
+{
+  "rating": 9.0
+}
+
+###
+
+### Delete a movie (soft delete)
+DELETE {{baseUrl}}/movies/PASTE_MOVIE_ID_HERE
+
+
+# ─────────────────────────────────────────
+# ROOMS
+# NOTE: `creator` must be a real user Mongo ObjectId (24 hex chars) from
+# `GET /api/auth/me` or register response after login (rooms API requires auth).
+# ─────────────────────────────────────────
+
+### Create a room
+POST {{baseUrl}}/rooms
+Content-Type: application/json
+
+{
+  "name": "Friday Night Watch",
+  "creator": "000000000000000000000001",
+  "movie": "{{listMovies.response.body[0].id}}",
+  "room_type": "public",
+  "deactivate_at": "2026-12-31T23:59:59.000Z",
+  "description": "Watching Inception together"
+}
+
+###
+
+### Create a private room with password
+POST {{baseUrl}}/rooms
+Content-Type: application/json
+
+{
+  "name": "Private Screening",
+  "creator": "000000000000000000000001",
+  "movie": "{{listMovies.response.body[0].id}}",
+  "room_type": "private",
+  "password": "secret123",
+  "deactivate_at": "2026-12-31T23:59:59.000Z"
+}
+
+###
+
+### List all rooms
+GET {{baseUrl}}/rooms
+
+###
+
+### Get a room by id  (paste an id from the list response)
+GET {{baseUrl}}/rooms/PASTE_ROOM_ID_HERE
+
+###
+
+### Delete a room (soft delete)
+DELETE {{baseUrl}}/rooms/PASTE_ROOM_ID_HERE
+
+
+# ─────────────────────────────────────────
+# NOTES
+# ─────────────────────────────────────────
+
+### Create a note
+POST {{baseUrl}}/notes
+Content-Type: application/json
+
+{
+  "title": "My first note",
+  "content": "This is stored in MongoDB!"
+}
+
+###
+
+### List all notes
+GET {{baseUrl}}/notes
+
+###
+
+### Get a note by id  (paste an id from the list response)
+GET {{baseUrl}}/notes/PASTE_NOTE_ID_HERE
+
+###
+
+### Update a note (full replace)
+PUT {{baseUrl}}/notes/PASTE_NOTE_ID_HERE
+Content-Type: application/json
+
+{
+  "title": "Updated title",
+  "content": "Updated content"
+}
+
+###
+
+### Patch a note (partial update)
+PATCH {{baseUrl}}/notes/PASTE_NOTE_ID_HERE
+Content-Type: application/json
+
+{
+  "title": "Only title changed"
+}
+
+###
+
+### Delete a note
+DELETE {{baseUrl}}/notes/PASTE_NOTE_ID_HERE

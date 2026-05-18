@@ -29,6 +29,7 @@ export function NotesPanel() {
     try {
       const response = await fetch(`${API_BASE_URL}${listNotesContract.path}`, {
         method: listNotesContract.method,
+        credentials: 'include',
         headers: { Accept: 'application/json' }
       });
       if (!response.ok) throw new Error(`HTTP ${String(response.status)}`);
@@ -59,6 +60,7 @@ export function NotesPanel() {
         `${API_BASE_URL}${createNoteContract.path}`,
         {
           method: createNoteContract.method,
+          credentials: 'include',
           headers: JSON_HEADERS,
           body: JSON.stringify(body)
         }
@@ -87,6 +89,7 @@ export function NotesPanel() {
       );
       const response = await fetch(`${API_BASE_URL}${path}`, {
         method: updateNoteContract.method,
+        credentials: 'include',
         headers: JSON_HEADERS,
         body: JSON.stringify(body)
       });
@@ -109,6 +112,7 @@ export function NotesPanel() {
       );
       const response = await fetch(`${API_BASE_URL}${path}`, {
         method: deleteNoteContract.method,
+        credentials: 'include',
         headers: { Accept: 'application/json' }
       });
       if (!response.ok) throw new Error(`HTTP ${String(response.status)}`);

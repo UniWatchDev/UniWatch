@@ -162,7 +162,18 @@ describe('Backend bootstrap (e2e)', () => {
   });
 
   it('returns a ProblemDetails payload with traceId on a thrown HttpException', async () => {
-    const response = await request(app.getHttpServer())
+    const agent = request.agent(app.getHttpServer());
+    const registerBody = uniqueRegisterBody('pd');
+    await registerAndVerifyEmail(agent, registerBody);
+    await agent
+      .post(AUTH_LOGIN_ENDPOINT)
+      .send({
+        identifier: registerBody.email,
+        password: registerBody.password
+      })
+      .expect(200);
+
+    const response = await agent
       .get('/api/notes/not-a-uuid')
       .set('x-request-id', 'trace-xyz');
 
@@ -230,7 +241,7 @@ describe('Backend bootstrap (e2e)', () => {
     expect(body.userName).toBe(registerBody.userName);
     expect(body.firstName).toBe(registerBody.firstName);
     expect(body.email).toBe(registerBody.email.toLowerCase());
-    expect(typeof body.userId).toBe('number');
+    expect(typeof body.userId).toBe('string');
     expect(body.emailVerified).toBe(true);
   });
 
