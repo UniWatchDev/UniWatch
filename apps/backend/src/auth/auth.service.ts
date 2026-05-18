@@ -11,6 +11,7 @@ import * as bcrypt from 'bcrypt';
 import { randomBytes, randomInt } from 'node:crypto';
 
 import type {
+  ChangePasswordBody,
   ForgotPasswordBody,
   RegisterBody,
   ResetPasswordBody,
@@ -32,6 +33,8 @@ import { parseDurationToMs } from '@/utils/parse-duration-ms';
 type StoredUser = {
   userId: number;
   userName: string;
+  firstName: string;
+  lastName?: string;
   phoneNumber: string;
   email: string;
   passwordHash: string;
@@ -71,6 +74,8 @@ type PasswordResetDebug = {
 type RegisterResponseWithDebug = {
   userId: number;
   userName: string;
+  firstName: string;
+  lastName?: string;
   phoneNumber: string;
   email: string;
   createdAt: string;
@@ -92,6 +97,10 @@ type ForgotPasswordAckWithDebug = {
 
 function generateSixDigitCode(): string {
   return String(randomInt(0, 1_000_000)).padStart(6, '0');
+}
+
+function normalizedRegisterLastName(last: string | undefined): string | undefined {
+  return last !== undefined && last.length > 0 ? last : undefined;
 }
 
 @Injectable()
@@ -117,6 +126,43 @@ export class AuthService {
     private readonly config: ConfigService<Env, true>,
     private readonly mail: MailService
   ) {}
+
+  private async issueNewSession(user: StoredUser): Promise<LoginWithTokens> {
+    const accessToken = await this.jwtService.signAsync(
+      {
+        sub: String(user.userId),
+        email: user.email,
+        pv: user.passwordVersion
+      },
+      {
+        expiresIn: this.config.get('JWT_ACCESS_EXPIRES_IN', { infer: true })
+      }
+    );
+
+    const refreshToken = randomBytes(32).toString('hex');
+    const refreshMs = parseDurationToMs(
+      this.config.get('JWT_REFRESH_EXPIRES_IN', { infer: true })
+    );
+    this.refreshByToken.set(refreshToken, {
+      userId: user.userId,
+      expiresAtMs: Date.now() + refreshMs
+    });
+
+    const userPayload: LoginResponse = {
+      userId: user.userId,
+      userName: user.userName,
+      firstName: user.firstName,
+      ...(user.lastName !== undefined ? { lastName: user.lastName } : {}),
+      email: user.email,
+      emailVerified: user.emailVerified
+    };
+
+    return {
+      accessToken,
+      refreshToken,
+      user: userPayload
+    };
+  }
 
   private useRealEmails(): boolean {
     return this.config.get('AUTH_USE_REAL_EMAILS', { infer: true });
@@ -196,10 +242,13 @@ export class AuthService {
     const passwordHash = await bcrypt.hash(body.password, 12);
     const userId = this.nextUserId++;
     const createdAt = new Date();
+    const lastNameStored = normalizedRegisterLastName(body.lastName);
 
     const row: StoredUser = {
       userId,
       userName: body.userName,
+      firstName: body.firstName,
+      ...(lastNameStored !== undefined ? { lastName: lastNameStored } : {}),
       phoneNumber: body.phoneNumber,
       email: body.email,
       passwordHash,
@@ -227,6 +276,8 @@ export class AuthService {
     return {
       userId,
       userName: row.userName,
+      firstName: row.firstName,
+      ...(lastNameStored !== undefined ? { lastName: lastNameStored } : {}),
       phoneNumber: row.phoneNumber,
       email: row.email,
       createdAt: createdAt.toISOString(),
@@ -383,38 +434,30 @@ export class AuthService {
       throw new UnauthorizedException('Email not verified');
     }
 
-    const accessToken = await this.jwtService.signAsync(
-      {
-        sub: String(user.userId),
-        email: user.email,
-        pv: user.passwordVersion
-      },
-      {
-        expiresIn: this.config.get('JWT_ACCESS_EXPIRES_IN', { infer: true })
-      }
-    );
+    return this.issueNewSession(user);
+  }
 
-    const refreshToken = randomBytes(32).toString('hex');
-    const refreshMs = parseDurationToMs(
-      this.config.get('JWT_REFRESH_EXPIRES_IN', { infer: true })
-    );
-    this.refreshByToken.set(refreshToken, {
-      userId: user.userId,
-      expiresAtMs: Date.now() + refreshMs
-    });
+  async changePassword(
+    payload: JwtAccessPayload,
+    body: ChangePasswordBody
+  ): Promise<LoginWithTokens> {
+    this.assertAccessTokenClaims(payload);
+    const userId = Number(payload.sub);
+    const user = this.userByUserId.get(userId);
+    if (!user) {
+      throw new UnauthorizedException('Invalid token');
+    }
+    const currentOk = await bcrypt.compare(body.currentPassword, user.passwordHash);
+    if (!currentOk) {
+      throw new UnauthorizedException('Current password is incorrect');
+    }
 
-    const userPayload: LoginResponse = {
-      userId: user.userId,
-      userName: user.userName,
-      email: user.email,
-      emailVerified: user.emailVerified
-    };
+    user.passwordHash = await bcrypt.hash(body.newPassword, 12);
+    user.passwordVersion += 1;
+    this.revokeAllRefreshSessionsForUser(user.userId);
+    this.clearPasswordResetForUser(user.userId);
 
-    return {
-      accessToken,
-      refreshToken,
-      user: userPayload
-    };
+    return this.issueNewSession(user);
   }
 
   /**
@@ -441,38 +484,7 @@ export class AuthService {
       throw new UnauthorizedException('Email not verified');
     }
 
-    const accessToken = await this.jwtService.signAsync(
-      {
-        sub: String(user.userId),
-        email: user.email,
-        pv: user.passwordVersion
-      },
-      {
-        expiresIn: this.config.get('JWT_ACCESS_EXPIRES_IN', { infer: true })
-      }
-    );
-
-    const refreshToken = randomBytes(32).toString('hex');
-    const refreshMs = parseDurationToMs(
-      this.config.get('JWT_REFRESH_EXPIRES_IN', { infer: true })
-    );
-    this.refreshByToken.set(refreshToken, {
-      userId: user.userId,
-      expiresAtMs: Date.now() + refreshMs
-    });
-
-    const userPayload: LoginResponse = {
-      userId: user.userId,
-      userName: user.userName,
-      email: user.email,
-      emailVerified: user.emailVerified
-    };
-
-    return {
-      accessToken,
-      refreshToken,
-      user: userPayload
-    };
+    return this.issueNewSession(user);
   }
 
   /** Revokes the refresh session when the client sends a known refresh token. */
@@ -496,6 +508,8 @@ export class AuthService {
     return {
       userId: user.userId,
       userName: user.userName,
+      firstName: user.firstName,
+      ...(user.lastName !== undefined ? { lastName: user.lastName } : {}),
       email: user.email,
       emailVerified: user.emailVerified
     };

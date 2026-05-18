@@ -1,10 +1,41 @@
 import { Link, useLocation } from 'react-router-dom';
 
+import {
+  firstNameFromEmail,
+  getNavGreetingVariant,
+  getStoredFirstName
+} from '@/auth/profile-local';
+import { useCookieAuth } from '@/auth/use-cookie-auth';
+
+const AUTH_PATH_PREFIXES = [
+  '/login',
+  '/register',
+  '/verify-email',
+  '/forgot-password',
+  '/reset-password',
+  '/change-password'
+] as const;
+
+function isAuthPath(pathname: string): boolean {
+  return AUTH_PATH_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+  );
+}
+
 export function NavBar() {
   const location = useLocation();
   const isRoom = location.pathname.startsWith('/room/');
+  const onAuthPage = isAuthPath(location.pathname);
+  const { sessionUser, logout } = useCookieAuth();
 
   if (isRoom) return null;
+
+  const firstName =
+    sessionUser !== null
+      ? sessionUser.firstName.trim() || getStoredFirstName() || firstNameFromEmail(sessionUser.email)
+      : '';
+  const greetingVariant = sessionUser !== null ? getNavGreetingVariant() : 'hi';
+  const greetingLead = greetingVariant === 'hi' ? 'Hi' : 'Welcome Back';
 
   return (
     <nav className="navbar">
@@ -13,10 +44,11 @@ export function NavBar() {
           maxWidth: 1200,
           margin: '0 auto',
           padding: '0 24px',
-          height: 56,
+          minHeight: 56,
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between',
+          gap: 16,
+          flexWrap: 'wrap',
         }}
       >
         <Link
@@ -26,6 +58,7 @@ export function NavBar() {
             alignItems: 'center',
             gap: 10,
             textDecoration: 'none',
+            flexShrink: 0,
           }}
         >
           <span
@@ -58,17 +91,109 @@ export function NavBar() {
           </span>
         </Link>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <Link to="/" className="btn-ghost" style={{ padding: '7px 16px', fontSize: 13 }}>
-            Rooms
-          </Link>
-          <Link
-            to="/rooms/new"
-            className="btn-primary"
-            style={{ padding: '7px 16px', fontSize: 13, textDecoration: 'none' }}
+        <div
+          style={{
+            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            minWidth: 0,
+          }}
+        >
+          <div
+            style={{
+              flex: 1,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 10,
+              flexWrap: 'wrap',
+            }}
           >
-            + Create a room
-          </Link>
+            <Link to="/" className="btn-ghost" style={{ padding: '7px 16px', fontSize: 13 }}>
+              Rooms
+            </Link>
+
+            {sessionUser !== null ? (
+              <>
+                {!onAuthPage ? (
+                  <Link
+                    to="/rooms/new"
+                    className="btn-primary"
+                    style={{ padding: '7px 16px', fontSize: 13, textDecoration: 'none' }}
+                  >
+                    + Create a room
+                  </Link>
+                ) : null}
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  style={{ padding: '6px 14px', fontSize: 13, color: 'var(--text-muted)' }}
+                  onClick={() => {
+                    void logout();
+                  }}
+                >
+                  Logout
+                </button>
+              </>
+            ) : (
+              <>
+                {!onAuthPage ? (
+                  <Link
+                    to="/rooms/new"
+                    className="btn-primary"
+                    style={{ padding: '7px 16px', fontSize: 13, textDecoration: 'none' }}
+                  >
+                    + Create a room
+                  </Link>
+                ) : null}
+                <Link to="/register" className="btn-ghost" style={{ padding: '7px 16px', fontSize: 13 }}>
+                  Sign Up
+                </Link>
+                <Link
+                  to="/login"
+                  className="btn-primary"
+                  style={{ padding: '7px 16px', fontSize: 13, textDecoration: 'none' }}
+                >
+                  Sign In
+                </Link>
+              </>
+            )}
+          </div>
+
+          {sessionUser !== null ? (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 14,
+                flexShrink: 0,
+              }}
+            >
+              <Link
+                to="/change-password"
+                className="btn-ghost"
+                style={{ padding: '6px 12px', fontSize: 13, textDecoration: 'none' }}
+              >
+                Change password
+              </Link>
+              <span
+                className="display"
+                title={`${sessionUser.email} · @${sessionUser.userName}`}
+                style={{
+                  fontSize: 15,
+                  fontWeight: 600,
+                  color: 'var(--text-primary)',
+                  whiteSpace: 'nowrap',
+                  maxWidth: 'min(320px, 45vw)',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+              >
+                {greetingLead}, {firstName}
+              </span>
+            </div>
+          ) : null}
         </div>
       </div>
     </nav>

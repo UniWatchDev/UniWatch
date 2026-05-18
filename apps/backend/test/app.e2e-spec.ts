@@ -7,6 +7,7 @@ import type { App } from 'supertest/types';
 import { randomBytes } from 'node:crypto';
 
 import {
+  AUTH_CHANGE_PASSWORD_ENDPOINT,
   AUTH_FORGOT_PASSWORD_ENDPOINT,
   AUTH_LOGIN_ENDPOINT,
   AUTH_LOGOUT_ENDPOINT,
@@ -59,14 +60,17 @@ function getPasswordResetToken(value: unknown): string | undefined {
 }
 
 function uniqueRegisterBody(prefix: string): {
+  firstName: string;
   userName: string;
   phoneNumber: string;
   email: string;
   password: string;
+  lastName?: string;
 } {
   const id = `${String(Date.now())}${randomBytes(4).toString('hex')}`;
   const phoneSuffix = randomBytes(4).readUInt32BE(0) % 100_000_000;
   return {
+    firstName: 'Test',
     userName: `${prefix}${id}`,
     phoneNumber: `05${String(phoneSuffix).padStart(8, '0')}`,
     email: `${prefix}${id}@example.com`,
@@ -224,6 +228,7 @@ describe('Backend bootstrap (e2e)', () => {
       refreshRes.body as unknown
     );
     expect(body.userName).toBe(registerBody.userName);
+    expect(body.firstName).toBe(registerBody.firstName);
     expect(body.email).toBe(registerBody.email.toLowerCase());
     expect(typeof body.userId).toBe('number');
     expect(body.emailVerified).toBe(true);
@@ -247,6 +252,7 @@ describe('Backend bootstrap (e2e)', () => {
     const meRes = await agent.get(AUTH_ME_ENDPOINT).expect(200);
     const me: LoginResponse = loginResponseSchema.parse(meRes.body as unknown);
     expect(me.userName).toBe(registerBody.userName);
+    expect(me.firstName).toBe(registerBody.firstName);
     expect(me.email).toBe(registerBody.email.toLowerCase());
     expect(me.emailVerified).toBe(true);
   });
@@ -281,6 +287,18 @@ describe('Backend bootstrap (e2e)', () => {
       .expect(201);
   });
 
+  it('auth: register accepts optional lastName and echoes it in the response', async () => {
+    const agent = request.agent(app.getHttpServer());
+    const base = uniqueRegisterBody('ln');
+    const regRes = await agent
+      .post(AUTH_REGISTER_ENDPOINT)
+      .send({ ...base, lastName: 'Smith' })
+      .expect(201);
+    const parsed = registerResponseSchema.parse(regRes.body as unknown);
+    expect(parsed.firstName).toBe(base.firstName);
+    expect(parsed.lastName).toBe('Smith');
+  });
+
   it('auth: login accepts username as identifier after verify', async () => {
     const agent = request.agent(app.getHttpServer());
     const registerBody = uniqueRegisterBody('c');
@@ -290,6 +308,50 @@ describe('Backend bootstrap (e2e)', () => {
       .send({
         identifier: registerBody.userName,
         password: registerBody.password
+      })
+      .expect(200);
+  });
+
+  it('auth: change-password rejects wrong current password', async () => {
+    const agent = request.agent(app.getHttpServer());
+    const registerBody = uniqueRegisterBody('cw');
+    await registerAndVerifyEmail(agent, registerBody);
+    await agent
+      .post(AUTH_LOGIN_ENDPOINT)
+      .send({
+        identifier: registerBody.email,
+        password: registerBody.password
+      })
+      .expect(200);
+    await agent
+      .post(AUTH_CHANGE_PASSWORD_ENDPOINT)
+      .send({ currentPassword: 'wrongpassword', newPassword: 'Newpass1a' })
+      .expect(401);
+  });
+
+  it('auth: change-password succeeds and allows login with new password', async () => {
+    const agent = request.agent(app.getHttpServer());
+    const registerBody = uniqueRegisterBody('cx');
+    await registerAndVerifyEmail(agent, registerBody);
+    await agent
+      .post(AUTH_LOGIN_ENDPOINT)
+      .send({
+        identifier: registerBody.email,
+        password: registerBody.password
+      })
+      .expect(200);
+    const changeRes = await agent
+      .post(AUTH_CHANGE_PASSWORD_ENDPOINT)
+      .send({ currentPassword: registerBody.password, newPassword: 'Newpass1a' })
+      .expect(200);
+    loginResponseSchema.parse(changeRes.body as unknown);
+    await agent.get(AUTH_ME_ENDPOINT).expect(200);
+    await agent.post(AUTH_LOGOUT_ENDPOINT).expect(204);
+    await agent
+      .post(AUTH_LOGIN_ENDPOINT)
+      .send({
+        identifier: registerBody.email,
+        password: 'Newpass1a'
       })
       .expect(200);
   });

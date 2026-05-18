@@ -29,8 +29,30 @@ export const passwordSchema = z
   .regex(/[A-Z]/, 'Password must include at least one uppercase letter')
   .regex(/\d/, 'Password must include at least one number');
 
+const registerFirstNameSchema = z
+  .string()
+  .trim()
+  .transform(stripNullBytes)
+  .pipe(
+    z
+      .string()
+      .min(1, 'First name is required')
+      .max(64, 'First name is too long')
+  );
+
+const registerLastNameField = z.optional(
+  z
+    .string()
+    .trim()
+    .transform(stripNullBytes)
+    .pipe(z.string().max(64, 'Last name is too long'))
+);
+
 /** `email` and `userName` must be unique per server; `phoneNumber` may repeat across accounts. */
 export const registerBodySchema = z.strictObject({
+  firstName: registerFirstNameSchema,
+  lastName: registerLastNameField,
+
   userName: z
     .string()
     .trim()
@@ -89,6 +111,8 @@ const passwordResetDebugSchema = z.strictObject({
 export const registerResponseSchema = z.strictObject({
   userId: z.number().int().positive(),
   userName: z.string(),
+  firstName: z.string(),
+  lastName: z.string().optional(),
   phoneNumber: z.string().regex(/^\+9725\d{8}$/),
   email: email(),
   createdAt: z.string(),
@@ -132,6 +156,8 @@ export type LoginBody = z.infer<typeof loginBodySchema>;
 export const loginResponseSchema = z.strictObject({
   userId: z.number().int().positive(),
   userName: z.string(),
+  firstName: z.string(),
+  lastName: z.string().optional(),
   email: email(),
   emailVerified: z.boolean()
 });
@@ -196,3 +222,15 @@ export const resetPasswordBodySchema = z.strictObject({
 });
 
 export type ResetPasswordBody = z.infer<typeof resetPasswordBodySchema>;
+
+/** Authenticated user: verify current password, then set a new one (same rules as register). */
+export const changePasswordBodySchema = z.strictObject({
+  currentPassword: z
+    .string()
+    .trim()
+    .transform(stripNullBytes)
+    .pipe(z.string().min(1, 'Current password is required')),
+  newPassword: z.string().transform(stripNullBytes).pipe(passwordSchema)
+});
+
+export type ChangePasswordBody = z.infer<typeof changePasswordBodySchema>;

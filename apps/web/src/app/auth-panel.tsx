@@ -91,6 +91,8 @@ const inputClass =
   'w-full border-b border-[color:var(--color-rule)] bg-transparent px-0 py-1 text-[12px] text-[color:var(--color-ink)] placeholder:text-[color:var(--color-mute)] focus:border-[color:var(--color-ink)] focus:outline-none';
 
 export function AuthPanel() {
+  const [firstName, setFirstName] = useState('Test');
+  const [lastName, setLastName] = useState('');
   const [userName, setUserName] = useState(() => `u${String(Date.now())}`);
   const [phoneNumber, setPhoneNumber] = useState(
     () => `05${String(Math.floor(Math.random() * 100_000_000)).padStart(8, '0')}`
@@ -119,6 +121,8 @@ export function AuthPanel() {
     clearFeedback();
     try {
       const body = registerAuthContract.bodySchema.parse({
+        firstName,
+        lastName: lastName.trim() === '' ? undefined : lastName,
         userName,
         phoneNumber,
         email,
@@ -408,9 +412,33 @@ export function AuthPanel() {
             Register
           </p>
           <p className="mono mt-1 text-[10px] text-[color:var(--color-mute)]">
-            Unique email and username; phone may repeat across accounts.
+            Unique email and username; phone may repeat. First name is required; last name optional.
           </p>
           <div className="mt-2 grid gap-2 border-b border-dotted border-[color:var(--color-rule)] pb-2">
+            <label className="grid gap-0.5">
+              <span className="mono text-[9px] text-[color:var(--color-mute)]">
+                firstName
+              </span>
+              <input
+                className={inputClass}
+                value={firstName}
+                onChange={(e) => {
+                  setFirstName(e.target.value);
+                }}
+              />
+            </label>
+            <label className="grid gap-0.5">
+              <span className="mono text-[9px] text-[color:var(--color-mute)]">
+                lastName (optional)
+              </span>
+              <input
+                className={inputClass}
+                value={lastName}
+                onChange={(e) => {
+                  setLastName(e.target.value);
+                }}
+              />
+            </label>
             <label className="grid gap-0.5">
               <span className="mono text-[9px] text-[color:var(--color-mute)]">
                 userName

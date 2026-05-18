@@ -16,6 +16,7 @@ import type { Request, Response } from 'express';
 
 import {
   AUTH_CONTROLLER_PATH,
+  AUTH_ROUTE_CHANGE_PASSWORD,
   AUTH_ROUTE_FORGOT_PASSWORD,
   AUTH_ROUTE_LOGIN,
   AUTH_ROUTE_LOGOUT,
@@ -30,6 +31,7 @@ import {
 import { AUTH_ACCESS_COOKIE, AUTH_REFRESH_COOKIE } from '@/auth/auth.consts';
 import {
   AuthNonEnumeratingAckDto,
+  ChangePasswordDto,
   ForgotPasswordAckDto,
   ForgotPasswordDto,
   LoginDto,
@@ -237,5 +239,31 @@ export class AuthController {
   @HttpCode(204)
   async resetPassword(@Body() body: ResetPasswordDto): Promise<void> {
     await this.authService.resetPassword(body);
+  }
+
+  @Post(AUTH_ROUTE_CHANGE_PASSWORD)
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(200)
+  @ZodResponse({
+    status: 200,
+    description:
+      'Password updated; returns user JSON and sets new HttpOnly access + refresh cookies (all prior refresh sessions revoked).',
+    type: LoginResponseDto
+  })
+  async changePassword(
+    @Req() req: Request,
+    @Body() body: ChangePasswordDto,
+    @Res({ passthrough: true }) res: Response
+  ): Promise<LoginResponse> {
+    const payload = req.authPayload;
+    if (payload === undefined) {
+      throw new UnauthorizedException('Missing or invalid access token');
+    }
+    const result = await this.authService.changePassword(payload, body);
+    this.setAuthCookies(res, {
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken
+    });
+    return result.user;
   }
 }
