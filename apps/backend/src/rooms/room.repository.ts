@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import type { Model, Types } from 'mongoose';
+import type { Model } from 'mongoose';
+import { Types } from 'mongoose';
 import { RoomRecord, type RoomDocument } from '@/rooms/room.schema';
 
 @Injectable()
@@ -9,12 +10,29 @@ export class RoomRepository {
     @InjectModel(RoomRecord.name) private readonly model: Model<RoomDocument>
   ) {}
 
-  findAll(): Promise<RoomDocument[]> {
-    return this.model.find({ deleted_at: null }).populate('creator movie');
+  findAccessibleForUser(userId: string): Promise<RoomDocument[]> {
+    const uid = new Types.ObjectId(userId);
+    return this.model
+      .find({
+        deleted_at: null,
+        $or: [{ creator: uid }, { allowed_users: uid }]
+      })
+      .populate('creator movie allowed_users banned_users');
   }
 
-  findById(id: string): Promise<RoomDocument | null> {
+  findRawById(id: string): Promise<RoomDocument | null> {
     return this.model.findById(id).populate('creator movie allowed_users banned_users');
+  }
+
+  findOneAccessibleById(roomId: string, userId: string): Promise<RoomDocument | null> {
+    const uid = new Types.ObjectId(userId);
+    return this.model
+      .findOne({
+        _id: roomId,
+        deleted_at: null,
+        $or: [{ creator: uid }, { allowed_users: uid }]
+      })
+      .populate('creator movie allowed_users banned_users');
   }
 
   findByMovie(movieId: string): Promise<RoomDocument[]> {
@@ -22,7 +40,10 @@ export class RoomRepository {
   }
 
   findByCreator(userId: string): Promise<RoomDocument[]> {
-    return this.model.find({ creator: userId, deleted_at: null });
+    return this.model.find({
+      creator: new Types.ObjectId(userId),
+      deleted_at: null
+    });
   }
 
   create(data: {
@@ -57,7 +78,15 @@ export class RoomRepository {
     );
   }
 
-  softDelete(id: string): Promise<RoomDocument | null> {
-    return this.model.findByIdAndUpdate(id, { deleted_at: new Date() }, { new: true });
+  softDeleteIfCreator(roomId: string, creatorId: string): Promise<RoomDocument | null> {
+    return this.model.findOneAndUpdate(
+      {
+        _id: roomId,
+        creator: new Types.ObjectId(creatorId),
+        deleted_at: null
+      },
+      { $set: { deleted_at: new Date() } },
+      { returnDocument: 'after' }
+    );
   }
 }

@@ -44,6 +44,8 @@ pnpm dev
 
 If you already have `apps/backend/.env.development`, add a valid **`MONGODB_URI`** (`mongodb://` or `mongodb+srv://`) instead of replacing the whole file. Tracked reference: `apps/backend/env.development.template`.
 
+**Auth-related Mongo backfill:** `notes` and `movies` documents now require an `ownerId` tied to the user’s Mongo `_id`. Existing documents without that field will not appear in list APIs and cannot be mutated until you backfill (e.g. one-off script) or drop/reseed those collections in local development. `rooms.creator` is always set from the JWT at create time (clients must not send `creator` in `POST /api/rooms`).
+
 Common commands:
 
 ```sh

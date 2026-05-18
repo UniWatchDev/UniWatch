@@ -1,5 +1,8 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import type { HydratedDocument } from 'mongoose';
+import { Types } from 'mongoose';
+
+import { UserRecord } from '@/auth/user.schema';
 
 export enum MovieGenre {
   ACTION = 'action',
@@ -26,7 +29,10 @@ export enum MovieLanguage {
   collection: 'movies'
 })
 export class MovieRecord {
-  @Prop({ required: true, unique: true })
+  @Prop({ type: Types.ObjectId, ref: UserRecord.name, required: true })
+  ownerId!: Types.ObjectId;
+
+  @Prop({ required: true })
   name!: string;
 
   @Prop({ type: [String], default: [] })
@@ -57,3 +63,5 @@ export type MovieDocument = HydratedDocument<MovieRecord> & {
 };
 
 export const MovieSchema = SchemaFactory.createForClass(MovieRecord);
+
+MovieSchema.index({ ownerId: 1, name: 1 }, { unique: true });

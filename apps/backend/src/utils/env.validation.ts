@@ -67,7 +67,22 @@ const baseEnvSchema = z.object({
    * Optional public web origin for password-reset links in email (e.g. `https://app.example.com`).
    * No trailing slash. If empty, the email contains the raw token only.
    */
-  APP_PUBLIC_ORIGIN: z.string().default('')
+  APP_PUBLIC_ORIGIN: z.string().default(''),
+  /**
+   * When `true`, `AuthService` emits high-level `Logger.debug` events (no secrets).
+   * Defaults to `false`.
+   */
+  AUTH_DEBUG_LOG: z.preprocess(
+    (value) =>
+      value === undefined || value === null || value === ''
+        ? false
+        : value === 'true' || value === '1' || value === 'yes',
+    z.boolean()
+  ),
+  /** Window (ms) for `/api/auth/*` rate limiting (see `ThrottlerModule` in `app.module.ts`). */
+  AUTH_THROTTLE_TTL_MS: z.coerce.number().int().positive().default(60_000),
+  /** Max requests per client IP per TTL window on throttled `/api/auth/*` routes. */
+  AUTH_THROTTLE_LIMIT: z.coerce.number().int().positive().default(60)
 });
 
 const envSchema = baseEnvSchema

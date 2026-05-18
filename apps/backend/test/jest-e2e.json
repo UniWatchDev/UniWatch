@@ -7,7 +7,9 @@
     "^@repo/schemas/root$": "<rootDir>/../../../packages/schemas/src/root/root.schemas.ts",
     "^@repo/schemas/errors$": "<rootDir>/../../../packages/schemas/src/errors/problem-details.schemas.ts",
     "^@repo/schemas/auth$": "<rootDir>/../../../packages/schemas/src/auth/auth.schemas.ts",
-    "^@repo/consts/auth$": "<rootDir>/../../../packages/consts/src/auth/auth.consts.ts"
+    "^@repo/consts/auth$": "<rootDir>/../../../packages/consts/src/auth/auth.consts.ts",
+    "^@repo/schemas/movies$": "<rootDir>/../../../packages/schemas/src/movies/movie.schemas.ts",
+    "^@repo/schemas/rooms$": "<rootDir>/../../../packages/schemas/src/rooms/room.schemas.ts"
   },
   "rootDir": ".",
   "setupFiles": ["<rootDir>/jest-e2e.setup.ts"],

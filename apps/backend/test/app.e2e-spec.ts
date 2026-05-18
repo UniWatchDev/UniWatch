@@ -19,6 +19,9 @@ import {
   AUTH_VERIFY_EMAIL_ENDPOINT
 } from '@repo/consts/auth';
 import { forgotPasswordAckSchema } from '@repo/schemas/auth';
+import { movieResponseSchema } from '@repo/schemas/movies';
+import { noteSchema } from '@repo/schemas/notes';
+import { roomResponseSchema } from '@repo/schemas/rooms';
 
 import { AppModule } from '@/app/app.module';
 import {
@@ -414,6 +417,73 @@ describe('Backend bootstrap (e2e)', () => {
       .expect(200);
     const meAfter = await agent.get(AUTH_ME_ENDPOINT).expect(200);
     loginResponseSchema.parse(meAfter.body as unknown);
+  });
+
+  it('domain: movie + room respect JWT ownership; stranger gets 403; notes mutation is owner-only', async () => {
+    const agent = request.agent(app.getHttpServer());
+    const registerBody = uniqueRegisterBody('dom');
+    await registerAndVerifyEmail(agent, registerBody);
+    const loginRes = await agent
+      .post(AUTH_LOGIN_ENDPOINT)
+      .send({
+        identifier: registerBody.email,
+        password: registerBody.password
+      })
+      .expect(200);
+    const me = loginResponseSchema.parse(loginRes.body as unknown);
+
+    const movieRes = await agent
+      .post('/api/movies')
+      .send({
+        name: `E2E Movie ${String(Date.now())}`,
+        director: 'Director',
+        rating: 8,
+        length: 120,
+        genre: 'drama',
+        language: 'english'
+      })
+      .expect(201);
+    const movie = movieResponseSchema.parse(movieRes.body as unknown);
+
+    const deactivateAt = new Date(Date.now() + 86_400_000).toISOString();
+    const roomRes = await agent
+      .post('/api/rooms')
+      .send({
+        name: 'E2E Room',
+        movie: movie.id,
+        room_type: 'public',
+        deactivate_at: deactivateAt
+      })
+      .expect(201);
+    const room = roomResponseSchema.parse(roomRes.body as unknown);
+    expect(room.creator).toBe(me.userId);
+
+    const stranger = request.agent(app.getHttpServer());
+    const other = uniqueRegisterBody('dom2');
+    await registerAndVerifyEmail(stranger, other);
+    await stranger
+      .post(AUTH_LOGIN_ENDPOINT)
+      .send({
+        identifier: other.email,
+        password: other.password
+      })
+      .expect(200);
+
+    await stranger.get(`/api/rooms/${room.id}`).expect(403);
+    await stranger.delete(`/api/rooms/${room.id}`).expect(403);
+
+    await agent.delete(`/api/rooms/${room.id}`).expect(200);
+
+    const noteRes = await agent
+      .post('/api/notes')
+      .send({ title: 'Private', content: 'Body' })
+      .expect(201);
+    const note = noteSchema.parse(noteRes.body as unknown);
+
+    await stranger
+      .put(`/api/notes/${note.id}`)
+      .send({ title: 'Hacked', content: 'No' })
+      .expect(403);
   });
 
   it('auth: refresh without cookies returns 401', async () => {

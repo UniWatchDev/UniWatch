@@ -10,7 +10,7 @@ Vite 8 + React 19 client-side starter surface. Keep it polished, generic, and us
 
 - `src/App.tsx` — `CookieAuthProvider` + `react-router-dom` routes: `/` lobby, `/app` (protected shell), `/room/:id`, `/rooms/new`, `/rooms/:id/edit`, `/login`, `/register`, `/verify-email`, `/forgot-password`, `/reset-password`, `/change-password`.
 - `src/auth/` — cookie session auth: `cookie-auth-provider.tsx` (provider), `use-cookie-auth.ts` (`useCookieAuth` hook), `cookie-auth-context-internal.ts`, `use-cookie-auth-model.ts` (state + `fetch` via `@repo/contracts/auth`), `auth-fetch-helpers.ts`.
-- `src/pages/` — route screens: lobby, room, create/edit room, plus auth routes (`login`, `registration`, `verify-email-page`, `forgot-password-page`, `reset-password-page`, `change-password`) and shared `auth-page-shell.tsx` for those auth layouts.
+- `src/pages/` — route screens: lobby, room, create/edit room (UI-only today — no `POST /api/rooms` yet; when wired, **do not send `creator`**; the API derives it from the JWT), plus auth routes (`login`, `registration`, `verify-email-page`, `forgot-password-page`, `reset-password-page`, `change-password`) and shared `auth-page-shell.tsx` for those auth layouts.
 - `src/home-page.tsx` — optional glassmorphic starter layout (gradient canvas, package verification, endpoint explorer, `auth-panel.tsx` demo + links to `/login` / `/register`); not the default `/` route in `App.tsx`.
 - `src/auth-panel.tsx` — frosted card: register (with first/last name), verify + resend, forgot + reset, login, refresh + `/me` + logout; `credentials: 'include'` + `@repo/contracts/auth`.
 - `src/protected-app-page.tsx` — minimal shell: fetches `getAuthMeContract` with `credentials: 'include'`; redirects on `401`. Routed at **`/app`** from `App.tsx`.

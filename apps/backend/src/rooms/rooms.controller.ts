@@ -6,11 +6,14 @@ import {
   HttpCode,
   Param,
   Post,
+  Req,
   UseGuards
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { ZodResponse } from 'nestjs-zod';
+import type { Request } from 'express';
 import type { RoomResponse } from '@repo/schemas/rooms';
+import { getAuthenticatedUserId } from '@/auth/get-authenticated-user-id';
 import { JwtAuthGuard } from '@/auth/jwt-auth.guard';
 import { CreateRoomDto, RoomIdParamsDto, RoomResponseDto } from '@/rooms/rooms.dto';
 import { RoomsService } from '@/rooms/rooms.service';
@@ -23,25 +26,28 @@ export class RoomsController {
 
   @Get()
   @ZodResponse({ status: 200, description: 'List all rooms', type: [RoomResponseDto] })
-  list(): Promise<RoomResponse[]> {
-    return this.roomsService.list();
+  list(@Req() req: Request): Promise<RoomResponse[]> {
+    return this.roomsService.list(getAuthenticatedUserId(req));
   }
 
   @Get(':id')
   @ZodResponse({ status: 200, description: 'Get a room by id', type: RoomResponseDto })
-  get(@Param() params: RoomIdParamsDto): Promise<RoomResponse> {
-    return this.roomsService.get(params.id);
+  get(@Req() req: Request, @Param() params: RoomIdParamsDto): Promise<RoomResponse> {
+    return this.roomsService.get(params.id, getAuthenticatedUserId(req));
   }
 
   @Post()
   @HttpCode(201)
   @ZodResponse({ status: 201, description: 'Create a room', type: RoomResponseDto })
-  create(@Body() body: CreateRoomDto): Promise<RoomResponse> {
-    return this.roomsService.create(body);
+  create(@Req() req: Request, @Body() body: CreateRoomDto): Promise<RoomResponse> {
+    return this.roomsService.create(getAuthenticatedUserId(req), body);
   }
 
   @Delete(':id')
-  delete(@Param() params: RoomIdParamsDto): Promise<{ success: true }> {
-    return this.roomsService.delete(params.id);
+  delete(
+    @Req() req: Request,
+    @Param() params: RoomIdParamsDto
+  ): Promise<{ success: true }> {
+    return this.roomsService.delete(params.id, getAuthenticatedUserId(req));
   }
 }

@@ -118,6 +118,13 @@ export class AuthService {
     return this.config.get('AUTH_USE_REAL_EMAILS', { infer: true });
   }
 
+  private authDebug(message: string): void {
+    if (!this.config.get('AUTH_DEBUG_LOG', { infer: true })) {
+      return;
+    }
+    this.logger.debug(message);
+  }
+
   private async issueNewSession(doc: UserDocument): Promise<LoginWithTokens> {
     const userId = doc._id.toString();
     const accessToken = await this.jwtService.signAsync(
@@ -172,10 +179,12 @@ export class AuthService {
 
     const existingEmail = await this.users.findByEmail(emailKey);
     if (existingEmail) {
+      this.authDebug('register_fail: email_conflict');
       throw new ConflictException('Email already registered');
     }
     const existingUserName = await this.users.findByUserName(userNameKey);
     if (existingUserName) {
+      this.authDebug('register_fail: username_conflict');
       throw new ConflictException('Username already taken');
     }
 
@@ -223,6 +232,7 @@ export class AuthService {
     }
 
     const userId = doc._id.toString();
+    this.authDebug('register_ok');
     return {
       userId,
       userName: doc.userName,
@@ -383,16 +393,20 @@ export class AuthService {
   async login(body: LoginBody): Promise<LoginWithTokens> {
     const user = await this.users.findByIdentifier(body.identifier);
     if (user === null) {
+      this.authDebug('login_fail: unknown_identifier');
       throw new UnauthorizedException('Invalid email, username, or password');
     }
     const passwordOk = await bcrypt.compare(body.password, user.passwordHash);
     if (!passwordOk) {
+      this.authDebug('login_fail: bad_password');
       throw new UnauthorizedException('Invalid email, username, or password');
     }
     if (!user.emailVerified) {
+      this.authDebug('login_fail: email_not_verified');
       throw new UnauthorizedException('Email not verified');
     }
 
+    this.authDebug('login_ok');
     return this.issueNewSession(user);
   }
 

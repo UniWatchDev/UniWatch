@@ -6,7 +6,9 @@
 | -------- | -------------------------- | ------------- | ---------------------------------------------------------------------------------------------------------- |
 | backend  | `NODE_ENV`                 | `development` | Zod-validated at startup (`env.validation.ts`)                                                             |
 | backend  | `PORT`                     | `3000`        | Zod-validated at startup                                                                                   |
-| backend  | `CORS_ORIGIN`              | `*`           | Zod-validated. `*` allows all; comma-separated list for production (e.g. `https://app.example.com`)         |
+| backend  | `CORS_ORIGIN`              | `*`           | Zod-validated. `*` allows all; with **HttpOnly cookies**, production must use a **comma-separated list of exact origins** (never `*`). |
+| backend  | `AUTH_THROTTLE_TTL_MS` / `AUTH_THROTTLE_LIMIT` | `60000` / `60` | Window + max hits per IP for throttled `/api/auth/*` routes (see `ThrottlerModule` in `app.module.ts`). |
+| backend  | `AUTH_DEBUG_LOG`           | `false`       | When `true`, `AuthService` logs high-level debug events only (no passwords, codes, or reset tokens). |
 | backend  | `MONGODB_URI`              | —             | **Required** at startup. `mongodb://` or `mongodb+srv://`. Copy `apps/backend/env.development.template` → `.env.development`. |
 | backend  | `JWT_SECRET`               | —             | Required, ≥32 chars                                                                                        |
 | backend  | Auth `userId` in JSON      | —             | Responses use Mongo **ObjectId** string (24 hex chars), not numeric ids. |
