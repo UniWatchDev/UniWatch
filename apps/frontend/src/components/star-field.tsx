@@ -77,7 +77,7 @@ export function StarField() {
       >
         {SHOOTING_STARS.map((s) => (
           <span
-            key={`shooting-${s.id}`}
+            key={`shooting-${String(s.id)}`}
             className="shooting-star"
             style={
               {

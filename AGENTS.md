@@ -10,13 +10,13 @@ Reusable monorepo baseline — not a product-specific app. Keep the starter gene
 
 - `apps/frontend` — Vite 8 + React 19 client (port 5173 via `VITE_PORT`)
 - `apps/web` — Next.js 16 App Router (port 5172 hardcoded in scripts); home at `/`, cookie-gated **`/app`** (client `GET /api/auth/me`, redirect on `401`), auth panel includes forgot/reset like Vite.
-- `apps/backend` — NestJS 11 API under `/api` prefix (port 3000 via `PORT` env, Swagger UI at `/docs`). Loads `apps/backend/.env.${NODE_ENV}` only; copy `env.development.template` / `env.production.template` into gitignored `.env.development` / `.env.production` when bootstrapping.
+- `apps/backend` — NestJS 11 API under `/api` prefix (port 3000 via `PORT` env, Swagger UI at `/docs`). Loads `apps/backend/.env.${NODE_ENV}` only; copy `env.development.template` / `env.production.template` into gitignored `.env.development` / `.env.production` when bootstrapping. Auth and **`/api/notes`**, **`/api/movies`**, **`/api/rooms`** require a logged-in session (HttpOnly JWT cookies; use `credentials: 'include'` from browsers). Notes and movies are **scoped by `ownerId`** (JWT `sub`); room **`creator`** is set server-side from the JWT; **`POST /api/auth/*`** is rate-limited per IP (see `ThrottlerModule` + env `AUTH_THROTTLE_*`).
 - `apps/mobile` — empty placeholder
 
 ### Shared packages
 
 - `@repo/consts` — string constants: `API_BASE_URL`, endpoint paths (`/api`, `/api/auth/*` including register/login/refresh/me/logout/verify/resend/forgot/reset, `/api/health`, `/api/notes`, `/api/notes/:id`), starter copy. Leaf package, no internal deps.
-- `@repo/schemas` — Zod 4 schemas and inferred types. Subpaths: `/auth`, `/health`, `/notes`, `/root`, `/errors` (RFC 7807 `problemDetailsSchema`). Notes exports include `noteIdParamsSchema` for UUID path params.
+- `@repo/schemas` — Zod 4 schemas and inferred types. Subpaths: `/auth`, `/health`, `/notes`, `/movies`, `/rooms`, `/root`, `/errors` (RFC 7807 `problemDetailsSchema`). Notes exports include `noteIdParamsSchema` for UUID path params.
 - `@repo/contracts` — typed `EndpointContract<TResponse, TBody, TParams, TQuery>` objects. Each contract attaches `responseSchema` plus any of `bodySchema`/`paramsSchema`/`querySchema` as real Zod schemas from `@repo/schemas`. Subpaths: `/auth`, `/health`, `/notes`, `/root`. Depends on `@repo/consts`, `@repo/schemas`, `zod`.
 - `@repo/ui` — React components (button, card, code). Not currently consumed by any app.
 - `@repo/eslint-config` — ESLint 9 flat configs: `base`, `node`, `react-internal`, `next-js`.

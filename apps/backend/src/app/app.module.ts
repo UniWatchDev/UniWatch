@@ -1,10 +1,17 @@
 import { join } from 'node:path';
 
-import { MiddlewareConsumer, Module, type NestModule } from '@nestjs/common';
+import {
+  MiddlewareConsumer,
+  Module,
+  type ExecutionContext,
+  type NestModule
+} from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { APP_FILTER, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { MongooseModule } from '@nestjs/mongoose';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { ZodSerializerInterceptor, ZodValidationPipe } from 'nestjs-zod';
+import { AUTH_LOGOUT_ENDPOINT, AUTH_ME_ENDPOINT } from '@repo/consts/auth';
 import { AppController } from '@/app/app.controller';
 import { AppService } from '@/app/app.service';
 import { Env, validateEnv } from '@/utils/env.validation';
@@ -31,6 +38,34 @@ const envFilePath = [join(backendRoot, `.env.${nodeEnv}`)];
       isGlobal: true,
       envFilePath,
       validate: validateEnv
+    }),
+    ThrottlerModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService<Env, true>) => ({
+        skipIf: (ctx: ExecutionContext) => {
+          const req = ctx.switchToHttp().getRequest<{
+            originalUrl?: string;
+            method?: string;
+          }>();
+          const [path = ''] = (req.originalUrl ?? '').split('?');
+          const method = req.method ?? 'GET';
+          if (method === 'GET' && path === AUTH_ME_ENDPOINT) {
+            return true;
+          }
+          if (method === 'POST' && path === AUTH_LOGOUT_ENDPOINT) {
+            return true;
+          }
+          return !path.startsWith('/api/auth');
+        },
+        throttlers: [
+          {
+            name: 'default',
+            ttl: config.get('AUTH_THROTTLE_TTL_MS', { infer: true }),
+            limit: config.get('AUTH_THROTTLE_LIMIT', { infer: true })
+          }
+        ]
+      })
     }),
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
@@ -69,6 +104,10 @@ const envFilePath = [join(backendRoot, `.env.${nodeEnv}`)];
     {
       provide: APP_FILTER,
       useClass: HttpExceptionFilter
+    },
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard
     }
   ]
 })

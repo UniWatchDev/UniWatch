@@ -7,6 +7,7 @@ import type { App } from 'supertest/types';
 import { randomBytes } from 'node:crypto';
 
 import {
+  AUTH_CHANGE_PASSWORD_ENDPOINT,
   AUTH_FORGOT_PASSWORD_ENDPOINT,
   AUTH_LOGIN_ENDPOINT,
   AUTH_LOGOUT_ENDPOINT,
@@ -18,6 +19,9 @@ import {
   AUTH_VERIFY_EMAIL_ENDPOINT
 } from '@repo/consts/auth';
 import { forgotPasswordAckSchema } from '@repo/schemas/auth';
+import { movieResponseSchema } from '@repo/schemas/movies';
+import { noteSchema } from '@repo/schemas/notes';
+import { roomResponseSchema } from '@repo/schemas/rooms';
 
 import { AppModule } from '@/app/app.module';
 import {
@@ -59,14 +63,17 @@ function getPasswordResetToken(value: unknown): string | undefined {
 }
 
 function uniqueRegisterBody(prefix: string): {
+  firstName: string;
   userName: string;
   phoneNumber: string;
   email: string;
   password: string;
+  lastName?: string;
 } {
   const id = `${String(Date.now())}${randomBytes(4).toString('hex')}`;
   const phoneSuffix = randomBytes(4).readUInt32BE(0) % 100_000_000;
   return {
+    firstName: 'Test',
     userName: `${prefix}${id}`,
     phoneNumber: `05${String(phoneSuffix).padStart(8, '0')}`,
     email: `${prefix}${id}@example.com`,
@@ -158,7 +165,18 @@ describe('Backend bootstrap (e2e)', () => {
   });
 
   it('returns a ProblemDetails payload with traceId on a thrown HttpException', async () => {
-    const response = await request(app.getHttpServer())
+    const agent = request.agent(app.getHttpServer());
+    const registerBody = uniqueRegisterBody('pd');
+    await registerAndVerifyEmail(agent, registerBody);
+    await agent
+      .post(AUTH_LOGIN_ENDPOINT)
+      .send({
+        identifier: registerBody.email,
+        password: registerBody.password
+      })
+      .expect(200);
+
+    const response = await agent
       .get('/api/notes/not-a-uuid')
       .set('x-request-id', 'trace-xyz');
 
@@ -224,8 +242,9 @@ describe('Backend bootstrap (e2e)', () => {
       refreshRes.body as unknown
     );
     expect(body.userName).toBe(registerBody.userName);
+    expect(body.firstName).toBe(registerBody.firstName);
     expect(body.email).toBe(registerBody.email.toLowerCase());
-    expect(typeof body.userId).toBe('number');
+    expect(typeof body.userId).toBe('string');
     expect(body.emailVerified).toBe(true);
   });
 
@@ -247,6 +266,7 @@ describe('Backend bootstrap (e2e)', () => {
     const meRes = await agent.get(AUTH_ME_ENDPOINT).expect(200);
     const me: LoginResponse = loginResponseSchema.parse(meRes.body as unknown);
     expect(me.userName).toBe(registerBody.userName);
+    expect(me.firstName).toBe(registerBody.firstName);
     expect(me.email).toBe(registerBody.email.toLowerCase());
     expect(me.emailVerified).toBe(true);
   });
@@ -281,6 +301,18 @@ describe('Backend bootstrap (e2e)', () => {
       .expect(201);
   });
 
+  it('auth: register accepts optional lastName and echoes it in the response', async () => {
+    const agent = request.agent(app.getHttpServer());
+    const base = uniqueRegisterBody('ln');
+    const regRes = await agent
+      .post(AUTH_REGISTER_ENDPOINT)
+      .send({ ...base, lastName: 'Smith' })
+      .expect(201);
+    const parsed = registerResponseSchema.parse(regRes.body as unknown);
+    expect(parsed.firstName).toBe(base.firstName);
+    expect(parsed.lastName).toBe('Smith');
+  });
+
   it('auth: login accepts username as identifier after verify', async () => {
     const agent = request.agent(app.getHttpServer());
     const registerBody = uniqueRegisterBody('c');
@@ -290,6 +322,50 @@ describe('Backend bootstrap (e2e)', () => {
       .send({
         identifier: registerBody.userName,
         password: registerBody.password
+      })
+      .expect(200);
+  });
+
+  it('auth: change-password rejects wrong current password', async () => {
+    const agent = request.agent(app.getHttpServer());
+    const registerBody = uniqueRegisterBody('cw');
+    await registerAndVerifyEmail(agent, registerBody);
+    await agent
+      .post(AUTH_LOGIN_ENDPOINT)
+      .send({
+        identifier: registerBody.email,
+        password: registerBody.password
+      })
+      .expect(200);
+    await agent
+      .post(AUTH_CHANGE_PASSWORD_ENDPOINT)
+      .send({ currentPassword: 'wrongpassword', newPassword: 'Newpass1a' })
+      .expect(401);
+  });
+
+  it('auth: change-password succeeds and allows login with new password', async () => {
+    const agent = request.agent(app.getHttpServer());
+    const registerBody = uniqueRegisterBody('cx');
+    await registerAndVerifyEmail(agent, registerBody);
+    await agent
+      .post(AUTH_LOGIN_ENDPOINT)
+      .send({
+        identifier: registerBody.email,
+        password: registerBody.password
+      })
+      .expect(200);
+    const changeRes = await agent
+      .post(AUTH_CHANGE_PASSWORD_ENDPOINT)
+      .send({ currentPassword: registerBody.password, newPassword: 'Newpass1a' })
+      .expect(200);
+    loginResponseSchema.parse(changeRes.body as unknown);
+    await agent.get(AUTH_ME_ENDPOINT).expect(200);
+    await agent.post(AUTH_LOGOUT_ENDPOINT).expect(204);
+    await agent
+      .post(AUTH_LOGIN_ENDPOINT)
+      .send({
+        identifier: registerBody.email,
+        password: 'Newpass1a'
       })
       .expect(200);
   });
@@ -341,6 +417,73 @@ describe('Backend bootstrap (e2e)', () => {
       .expect(200);
     const meAfter = await agent.get(AUTH_ME_ENDPOINT).expect(200);
     loginResponseSchema.parse(meAfter.body as unknown);
+  });
+
+  it('domain: movie + room respect JWT ownership; stranger gets 403; notes mutation is owner-only', async () => {
+    const agent = request.agent(app.getHttpServer());
+    const registerBody = uniqueRegisterBody('dom');
+    await registerAndVerifyEmail(agent, registerBody);
+    const loginRes = await agent
+      .post(AUTH_LOGIN_ENDPOINT)
+      .send({
+        identifier: registerBody.email,
+        password: registerBody.password
+      })
+      .expect(200);
+    const me = loginResponseSchema.parse(loginRes.body as unknown);
+
+    const movieRes = await agent
+      .post('/api/movies')
+      .send({
+        name: `E2E Movie ${String(Date.now())}`,
+        director: 'Director',
+        rating: 8,
+        length: 120,
+        genre: 'drama',
+        language: 'english'
+      })
+      .expect(201);
+    const movie = movieResponseSchema.parse(movieRes.body as unknown);
+
+    const deactivateAt = new Date(Date.now() + 86_400_000).toISOString();
+    const roomRes = await agent
+      .post('/api/rooms')
+      .send({
+        name: 'E2E Room',
+        movie: movie.id,
+        room_type: 'public',
+        deactivate_at: deactivateAt
+      })
+      .expect(201);
+    const room = roomResponseSchema.parse(roomRes.body as unknown);
+    expect(room.creator).toBe(me.userId);
+
+    const stranger = request.agent(app.getHttpServer());
+    const other = uniqueRegisterBody('dom2');
+    await registerAndVerifyEmail(stranger, other);
+    await stranger
+      .post(AUTH_LOGIN_ENDPOINT)
+      .send({
+        identifier: other.email,
+        password: other.password
+      })
+      .expect(200);
+
+    await stranger.get(`/api/rooms/${room.id}`).expect(403);
+    await stranger.delete(`/api/rooms/${room.id}`).expect(403);
+
+    await agent.delete(`/api/rooms/${room.id}`).expect(200);
+
+    const noteRes = await agent
+      .post('/api/notes')
+      .send({ title: 'Private', content: 'Body' })
+      .expect(201);
+    const note = noteSchema.parse(noteRes.body as unknown);
+
+    await stranger
+      .put(`/api/notes/${note.id}`)
+      .send({ title: 'Hacked', content: 'No' })
+      .expect(403);
   });
 
   it('auth: refresh without cookies returns 401', async () => {

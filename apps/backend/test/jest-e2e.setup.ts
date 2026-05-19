@@ -10,3 +10,7 @@ process.env['AUTH_EMAIL_VERIFICATION_EXPIRES_IN'] =
 process.env['AUTH_PASSWORD_RESET_EXPIRES_IN'] =
   process.env['AUTH_PASSWORD_RESET_EXPIRES_IN'] ?? '1h';
 process.env['AUTH_USE_REAL_EMAILS'] = process.env['AUTH_USE_REAL_EMAILS'] ?? 'false';
+process.env['MONGODB_URI'] =
+  process.env['MONGODB_URI'] ?? 'mongodb://127.0.0.1:27017/uniwatch_e2e';
+process.env['AUTH_THROTTLE_LIMIT'] =
+  process.env['AUTH_THROTTLE_LIMIT'] ?? '10000';

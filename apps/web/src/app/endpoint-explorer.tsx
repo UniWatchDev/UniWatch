@@ -11,6 +11,8 @@ import {
 } from '@repo/contracts/notes';
 import type { Note } from '@repo/schemas/notes';
 
+import { assertOkOrSession } from '@/utils/api-session';
+
 type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'DELETE';
 
 interface EndpointRow {
@@ -55,9 +57,10 @@ const ROWS: readonly EndpointRow[] = [
     run: async () => {
       const response = await fetch(`${API_BASE_URL}${listNotesContract.path}`, {
         method: listNotesContract.method,
+        credentials: 'include',
         headers: { Accept: 'application/json' }
       });
-      if (!response.ok) throw new Error(`HTTP ${String(response.status)}`);
+      assertOkOrSession(response);
       return listNotesContract.responseSchema.parse(await response.json());
     }
   },
@@ -77,6 +80,7 @@ const ROWS: readonly EndpointRow[] = [
         `${API_BASE_URL}${createNoteContract.path}`,
         {
           method: createNoteContract.method,
+          credentials: 'include',
           headers: {
             'Content-Type': 'application/json',
             Accept: 'application/json'
@@ -84,7 +88,7 @@ const ROWS: readonly EndpointRow[] = [
           body: JSON.stringify(body)
         }
       );
-      if (!response.ok) throw new Error(`HTTP ${String(response.status)}`);
+      assertOkOrSession(response);
       return createNoteContract.responseSchema.parse(await response.json());
     }
   },
@@ -107,13 +111,14 @@ const ROWS: readonly EndpointRow[] = [
       );
       const response = await fetch(`${API_BASE_URL}${path}`, {
         method: patchNoteContract.method,
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
           Accept: 'application/json'
         },
         body: JSON.stringify(body)
       });
-      if (!response.ok) throw new Error(`HTTP ${String(response.status)}`);
+      assertOkOrSession(response);
       return patchNoteContract.responseSchema.parse(await response.json());
     }
   },
@@ -133,9 +138,10 @@ const ROWS: readonly EndpointRow[] = [
       );
       const response = await fetch(`${API_BASE_URL}${path}`, {
         method: deleteNoteContract.method,
+        credentials: 'include',
         headers: { Accept: 'application/json' }
       });
-      if (!response.ok) throw new Error(`HTTP ${String(response.status)}`);
+      assertOkOrSession(response);
       return deleteNoteContract.responseSchema.parse(await response.json());
     }
   }

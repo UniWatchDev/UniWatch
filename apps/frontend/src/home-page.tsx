@@ -129,6 +129,17 @@ export default function HomePage() {
           className="fade-up glass col-span-5 col-start-8 row-start-3 flex min-h-0 flex-col rounded-3xl p-5"
           style={{ animationDelay: '240ms' }}
         >
+          <p className="mono mb-3 text-[12px] leading-relaxed text-[color:var(--color-mute)]">
+            Full-page auth flows:{' '}
+            <Link to="/login" className="text-[color:var(--color-violet)]">
+              /login
+            </Link>
+            ,{' '}
+            <Link to="/register" className="text-[color:var(--color-violet)]">
+              /register
+            </Link>
+            .
+          </p>
           <AuthPanel />
         </section>
 

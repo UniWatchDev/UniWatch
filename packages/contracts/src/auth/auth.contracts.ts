@@ -1,4 +1,5 @@
 import {
+  AUTH_CHANGE_PASSWORD_ENDPOINT,
   AUTH_FORGOT_PASSWORD_ENDPOINT,
   AUTH_LOGIN_ENDPOINT,
   AUTH_ME_ENDPOINT,
@@ -10,6 +11,7 @@ import {
 } from '@repo/consts/auth';
 import {
   authNonEnumeratingAckSchema,
+  changePasswordBodySchema,
   forgotPasswordAckSchema,
   forgotPasswordBodySchema,
   loginBodySchema,
@@ -21,6 +23,7 @@ import {
   verifyEmailBodySchema,
   verifyEmailResponseSchema,
   type AuthNonEnumeratingAck,
+  type ChangePasswordBody,
   type ForgotPasswordAck,
   type ForgotPasswordBody,
   type LoginBody,
@@ -119,4 +122,15 @@ export const resetPasswordAuthContract: EndpointContract<
   path: AUTH_RESET_PASSWORD_ENDPOINT,
   responseSchema: z.unknown(),
   bodySchema: resetPasswordBodySchema
+};
+
+/** POST `/api/auth/change-password` — `{ currentPassword, newPassword }`; 200 + user + new cookies (access JWT required). */
+export const changePasswordAuthContract: EndpointContract<
+  LoginResponse,
+  ChangePasswordBody
+> = {
+  method: 'POST',
+  path: AUTH_CHANGE_PASSWORD_ENDPOINT,
+  responseSchema: loginResponseSchema,
+  bodySchema: changePasswordBodySchema
 };

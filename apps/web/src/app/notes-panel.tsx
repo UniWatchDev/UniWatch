@@ -1,6 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+
 import { API_BASE_URL } from '@repo/consts/api';
 import {
   createNoteContract,
@@ -10,12 +12,18 @@ import {
 } from '@repo/contracts/notes';
 import type { Note } from '@repo/schemas/notes';
 
+import {
+  SIGN_IN_REQUIRED_MESSAGE,
+  assertOkOrSession
+} from '@/utils/api-session';
+
 const JSON_HEADERS = {
   'Content-Type': 'application/json',
   Accept: 'application/json'
 };
 
 export function NotesPanel() {
+  const router = useRouter();
   const [notes, setNotes] = useState<Note[]>([]);
   const [newTitle, setNewTitle] = useState('');
   const [newContent, setNewContent] = useState('');
@@ -31,19 +39,24 @@ export function NotesPanel() {
     try {
       const response = await fetch(`${API_BASE_URL}${listNotesContract.path}`, {
         method: listNotesContract.method,
+        credentials: 'include',
         headers: { Accept: 'application/json' }
       });
-      if (!response.ok) throw new Error(`HTTP ${String(response.status)}`);
+      assertOkOrSession(response);
       const data = listNotesContract.responseSchema.parse(
         await response.json()
       );
       setNotes(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'failed to load');
+      const msg = err instanceof Error ? err.message : 'failed to load';
+      setError(msg);
+      if (msg === SIGN_IN_REQUIRED_MESSAGE) {
+        router.replace('/?login=1');
+      }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     void load();
@@ -61,17 +74,22 @@ export function NotesPanel() {
         `${API_BASE_URL}${createNoteContract.path}`,
         {
           method: createNoteContract.method,
+          credentials: 'include',
           headers: JSON_HEADERS,
           body: JSON.stringify(body)
         }
       );
-      if (!response.ok) throw new Error(`HTTP ${String(response.status)}`);
+      assertOkOrSession(response);
       createNoteContract.responseSchema.parse(await response.json());
       setNewTitle('');
       setNewContent('');
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'failed to publish');
+      const msg = err instanceof Error ? err.message : 'failed to publish';
+      setError(msg);
+      if (msg === SIGN_IN_REQUIRED_MESSAGE) {
+        router.replace('/?login=1');
+      }
     }
   }
 
@@ -89,15 +107,20 @@ export function NotesPanel() {
       );
       const response = await fetch(`${API_BASE_URL}${path}`, {
         method: updateNoteContract.method,
+        credentials: 'include',
         headers: JSON_HEADERS,
         body: JSON.stringify(body)
       });
-      if (!response.ok) throw new Error(`HTTP ${String(response.status)}`);
+      assertOkOrSession(response);
       updateNoteContract.responseSchema.parse(await response.json());
       setEditingId(null);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'failed to update');
+      const msg = err instanceof Error ? err.message : 'failed to update';
+      setError(msg);
+      if (msg === SIGN_IN_REQUIRED_MESSAGE) {
+        router.replace('/?login=1');
+      }
     }
   }
 
@@ -111,13 +134,18 @@ export function NotesPanel() {
       );
       const response = await fetch(`${API_BASE_URL}${path}`, {
         method: deleteNoteContract.method,
+        credentials: 'include',
         headers: { Accept: 'application/json' }
       });
-      if (!response.ok) throw new Error(`HTTP ${String(response.status)}`);
+      assertOkOrSession(response);
       deleteNoteContract.responseSchema.parse(await response.json());
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'failed to delete');
+      const msg = err instanceof Error ? err.message : 'failed to delete';
+      setError(msg);
+      if (msg === SIGN_IN_REQUIRED_MESSAGE) {
+        router.replace('/?login=1');
+      }
     }
   }
 

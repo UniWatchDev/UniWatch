@@ -10,6 +10,12 @@ export class UserRecord {
   userName!: string;
 
   @Prop({ required: true })
+  firstName!: string;
+
+  @Prop({ type: String, required: false })
+  lastName?: string;
+
+  @Prop({ required: true })
   phoneNumber!: string;
 
   @Prop({ required: true })
@@ -20,6 +26,20 @@ export class UserRecord {
 
   @Prop({ default: false })
   emailVerified!: boolean;
+
+  /** 6-digit email verification code while `emailVerified` is false. */
+  @Prop({ type: String, required: false })
+  emailVerificationCode?: string;
+
+  @Prop({ type: Date, required: false })
+  emailVerificationExpiresAt?: Date;
+
+  /** SHA-256 hex of opaque password-reset token. */
+  @Prop({ type: String, required: false })
+  passwordResetTokenHash?: string;
+
+  @Prop({ type: Date, required: false })
+  passwordResetExpiresAt?: Date;
 }
 
 export type UserDocument = HydratedDocument<UserRecord> & {
@@ -28,3 +48,5 @@ export type UserDocument = HydratedDocument<UserRecord> & {
 };
 
 export const UserSchema = SchemaFactory.createForClass(UserRecord);
+
+UserSchema.index({ passwordResetTokenHash: 1 }, { sparse: true, unique: true });
