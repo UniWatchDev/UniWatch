@@ -6,7 +6,8 @@
     "./health": "./dist/health/health.contracts.js",
     "./notes": "./dist/notes/notes.contracts.js",
     "./root": "./dist/root/root.contracts.js",
-    "./shared": "./dist/shared/endpoint.js"
+    "./shared": "./dist/shared/endpoint.js",
+    "./rooms": "./dist/rooms/rooms.contracts.js"
   },
   "scripts": {
     "dev": "tsc --watch --preserveWatchOutput",

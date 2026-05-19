@@ -1,10 +1,13 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+import { listRoomsContract } from '@repo/contracts/rooms';
+import { API_BASE_URL } from '@repo/consts/api';
 import { RoomCard } from '@/components/room-card';
 import { StarField } from '@/components/star-field';
-import { MOCK_ROOMS } from '@/data/mock-data';
-import type { RoomStatus } from '@/types/room';
+import type { RoomResponse, RoomStatus } from '@/types/room';
+
+const REFRESH_INTERVAL_MS = 5_000;
 
 type FilterStatus = RoomStatus | 'all';
 
@@ -12,11 +15,61 @@ export function Lobby() {
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<FilterStatus>('all');
+  const [rooms, setRooms] = useState<RoomResponse[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
-  const filtered = MOCK_ROOMS.filter((r) => {
+  const fetchRooms = async (signal: AbortSignal) => {
+    const res = await fetch(`${API_BASE_URL}${listRoomsContract.path}`, {
+      method: listRoomsContract.method,
+      headers: { Accept: 'application/json' },
+      credentials: 'include',
+      signal,
+    });
+    if (!res.ok) throw new Error(`HTTP ${String(res.status)}`);
+    return listRoomsContract.responseSchema.parse(await res.json());
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const load = () => {
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      fetchRooms(controller.signal)
+        .then((data) => {
+          if (!cancelled) {
+            setRooms(data);
+            setError(null);
+          }
+        })
+        .catch((err: unknown) => {
+          if (!cancelled && !(err instanceof DOMException && err.name === 'AbortError')) {
+            setError(err instanceof Error ? err.message : 'Failed to load rooms');
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+    };
+
+    load();
+    const interval = setInterval(load, REFRESH_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      abortRef.current?.abort();
+    };
+  }, []);
+
+  const filtered = rooms.filter((r) => {
     const matchesQuery =
       r.name.toLowerCase().includes(query.toLowerCase()) ||
-      r.movieName.toLowerCase().includes(query.toLowerCase()) ||
+      (r.movie_name?.toLowerCase().includes(query.toLowerCase()) ?? false) ||
       (r.description?.toLowerCase().includes(query.toLowerCase()) ?? false);
     const matchesFilter = filter === 'all' || r.status === filter;
     return matchesQuery && matchesFilter;
@@ -145,7 +198,15 @@ export function Lobby() {
           </div>
 
           {/* Room grid */}
-          {filtered.length === 0 ? (
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: '64px 16px', color: 'var(--text-muted)', fontSize: 15 }}>
+              Loading rooms…
+            </div>
+          ) : error !== null ? (
+            <div style={{ textAlign: 'center', padding: '64px 16px', color: '#f87171', fontSize: 15 }}>
+              {error}
+            </div>
+          ) : filtered.length === 0 ? (
             <div
               style={{
                 textAlign: 'center',

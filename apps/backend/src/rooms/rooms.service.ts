@@ -22,15 +22,20 @@ function toResponse(doc: RoomDocument): RoomResponse {
     id: doc._id.toString(),
     name: doc.name,
     room_type: doc.room_type,
-    movie: refToId(doc.movie as RefLike),
+    movie: doc.movie != null ? refToId(doc.movie as RefLike) : null,
     creator: refToId(doc.creator as RefLike),
     description: doc.description ?? null,
     password: doc.password ?? null,
     allowed_users: doc.allowed_users.map((u) => refToId(u as RefLike)),
-    banned_users: doc.banned_users?.map((u) => refToId(u as RefLike)) ?? null,
+    banned_users: doc.banned_users.map((u) => refToId(u as RefLike)),
     deactivate_at: doc.deactivate_at.toISOString(),
     created_at: doc.created_at.toISOString(),
-    updated_at: doc.updated_at.toISOString()
+    updated_at: doc.updated_at.toISOString(),
+    status: doc.status,
+    movie_name: doc.movie_name ?? null,
+    movie_description: doc.movie_description ?? null,
+    creator_name: doc.creator_name ?? undefined,
+    member_count: doc.allowed_users.length
   };
 }
 
@@ -57,15 +62,22 @@ export class RoomsService {
   }
 
   async create(userId: string, data: CreateRoomInput): Promise<RoomResponse> {
-    await this.movies.get(data.movie, userId);
+    if (data.movie !== undefined) {
+      await this.movies.get(data.movie, userId);
+    }
+    const deactivateAt = data.deactivate_at !== undefined
+      ? new Date(data.deactivate_at)
+      : new Date(Date.now() + 24 * 60 * 60 * 1000);
     const doc = await this.rooms.create({
       name: data.name,
       creator: new Types.ObjectId(userId),
-      movie: new Types.ObjectId(data.movie),
       room_type: data.room_type,
-      deactivate_at: new Date(data.deactivate_at),
+      deactivate_at: deactivateAt,
+      ...(data.movie !== undefined && { movie: new Types.ObjectId(data.movie) }),
       ...(data.password !== undefined && { password: data.password }),
-      ...(data.description !== undefined && { description: data.description })
+      ...(data.description !== undefined && { description: data.description }),
+      ...(data.movie_name !== undefined && { movie_name: data.movie_name }),
+      ...(data.movie_description !== undefined && { movie_description: data.movie_description })
     });
     return toResponse(doc);
   }

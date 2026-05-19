@@ -1,5 +1,7 @@
 import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { createRoomContract } from '@repo/contracts/rooms';
+import { API_BASE_URL } from '@repo/consts/api';
 
 interface FormState {
   name: string;
@@ -22,6 +24,8 @@ export function CreateRoom() {
     isPrivate: false,
   });
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
+  const [submitting, setSubmitting] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -32,16 +36,40 @@ export function CreateRoom() {
     const next: typeof errors = {};
     if (!form.name.trim()) next.name = 'Room name is required.';
     if (form.isPrivate && !form.password.trim()) next.password = 'Password is required for private rooms.';
-    if (!form.movieName.trim()) next.movieName = 'Movie name is required.';
     setErrors(next);
     return Object.keys(next).length === 0;
   };
 
-  const handleSubmit = (e: React.SyntheticEvent) => {
+  const handleSubmit = async (e: React.SyntheticEvent) => {
     e.preventDefault();
     if (!validate()) return;
-    // In the future: POST to API, then navigate to the new room
-    void navigate('/');
+    setSubmitting(true);
+    setApiError(null);
+    try {
+      const body = createRoomContract.bodySchema.parse({
+        name: form.name.trim(),
+        room_type: form.isPrivate ? 'private' : 'public',
+        ...(form.password.trim() && { password: form.password.trim() }),
+        ...(form.movieName.trim() && { movie_name: form.movieName.trim() }),
+        ...(form.movieDescription.trim() && { movie_description: form.movieDescription.trim() }),
+      });
+      const res = await fetch(`${API_BASE_URL}${createRoomContract.path}`, {
+        method: createRoomContract.method,
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`HTTP ${String(res.status)}: ${text}`);
+      }
+      const room = createRoomContract.responseSchema.parse(await res.json());
+      void navigate(`/room/${room.id}`);
+    } catch (err: unknown) {
+      setApiError(err instanceof Error ? err.message : 'Failed to create room');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -71,7 +99,7 @@ export function CreateRoom() {
         {/* Header */}
         <div style={{ marginBottom: 28 }}>
           <button
-            onClick={() => { void navigate('/'); }}
+            onClick={() => { void navigate('/rooms'); }}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -99,7 +127,23 @@ export function CreateRoom() {
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+        {apiError && (
+          <div
+            style={{
+              marginBottom: 16,
+              padding: '10px 14px',
+              borderRadius: 8,
+              background: 'rgba(239,68,68,0.1)',
+              border: '1px solid rgba(239,68,68,0.3)',
+              fontSize: 13,
+              color: '#f87171',
+            }}
+          >
+            {apiError}
+          </div>
+        )}
+
+        <form onSubmit={(e) => { void handleSubmit(e); }} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           {/* Room name */}
           <FormField label="Room name" error={errors.name}>
             <input
@@ -205,7 +249,7 @@ export function CreateRoom() {
           </div>
 
           {/* Movie name */}
-          <FormField label="Movie name" error={errors.movieName}>
+          <FormField label="Movie name" optional>
             <input
               className="input"
               type="text"
@@ -228,9 +272,13 @@ export function CreateRoom() {
             />
           </FormField>
 
-          {/* Submit */}
-          <button className="btn-primary" type="submit" style={{ marginTop: 4, padding: '12px 24px', fontSize: 15, width: '100%' }}>
-            Create Room
+          <button
+            className="btn-primary"
+            type="submit"
+            disabled={submitting}
+            style={{ marginTop: 4, padding: '12px 24px', fontSize: 15, width: '100%', opacity: submitting ? 0.7 : 1 }}
+          >
+            {submitting ? 'Creating…' : 'Create Room'}
           </button>
         </form>
       </div>

@@ -1,46 +1,10 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { MOCK_ROOMS, MOCK_CHAT } from '@/data/mock-data';
-import type { ChatMessage, Member } from '@/types/room';
-
-function Avatar({ member, size = 36 }: { member: Member; size?: number }) {
-  const initials = member.name.slice(0, 2).toUpperCase();
-  return (
-    <div
-      style={{
-        width: size,
-        height: size,
-        borderRadius: '50%',
-        background: member.avatarColor,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontSize: size * 0.38,
-        fontWeight: 700,
-        color: '#fff',
-        flexShrink: 0,
-      }}
-    >
-      {initials}
-    </div>
-  );
-}
-
-function StatusDot({ status }: { status: Member['status'] }) {
-  const color = status === 'active' ? '#4ade80' : status === 'away' ? '#fbbf24' : '#64748b';
-  return (
-    <span
-      style={{
-        display: 'inline-block',
-        width: 8,
-        height: 8,
-        borderRadius: '50%',
-        background: color,
-        flexShrink: 0,
-      }}
-    />
-  );
-}
+import { getRoomContract } from '@repo/contracts/rooms';
+import { API_BASE_URL } from '@repo/consts/api';
+import type { RoomResponse, RoomStatus } from '@repo/schemas/rooms';
+import type { ChatMessage } from '@/types/room';
+import { MOCK_CHAT } from '@/data/mock-data';
 
 function PlayIcon() {
   return (
@@ -105,26 +69,56 @@ function formatChatTime(date: Date): string {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
+async function fetchRoom(id: string): Promise<RoomResponse> {
+  const path = getRoomContract.path.replace(':id', encodeURIComponent(id));
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    headers: { Accept: 'application/json' },
+    credentials: 'include'
+  });
+  if (!res.ok) throw new Error(`HTTP ${String(res.status)}`);
+  return getRoomContract.responseSchema.parse(await res.json());
+}
+
 export function RoomPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
-  const room = MOCK_ROOMS.find((r) => r.id === id);
+  const [room, setRoom] = useState<RoomResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(3862); // 1:04:22
-  const [duration] = useState(8887); // 2:28:07
+  const [currentTime, setCurrentTime] = useState(3862);
+  const [duration] = useState(8887);
   const [volume, setVolume] = useState(80);
   const [muted, setMuted] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>(MOCK_CHAT);
   const [chatInput, setChatInput] = useState('');
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  if (!room) {
+  useEffect(() => {
+    if (!id) return;
+    let cancelled = false;
+    fetchRoom(id)
+      .then((r) => { if (!cancelled) { setRoom(r); } })
+      .catch((err: unknown) => { if (!cancelled) setLoadError(err instanceof Error ? err.message : 'Failed to load room'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [id]);
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100dvh' }}>
+        <p style={{ color: 'var(--text-muted)' }}>Loading room…</p>
+      </div>
+    );
+  }
+
+  if (loadError || !room) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100dvh', gap: 16 }}>
-        <p style={{ color: 'var(--text-secondary)', fontSize: 18 }}>Room not found.</p>
-        <button className="btn-primary" onClick={() => { void navigate('/'); }}>Back to Lobby</button>
+        <p style={{ color: 'var(--text-secondary)', fontSize: 18 }}>{loadError ?? 'Room not found.'}</p>
+        <button className="btn-primary" onClick={() => { void navigate('/rooms'); }}>Back to Lobby</button>
       </div>
     );
   }
@@ -146,12 +140,12 @@ export function RoomPage() {
     setTimeout(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, 50);
   };
 
-  const statusLabel: Record<string, string> = {
+  const statusLabel: Record<RoomStatus, string> = {
     watching: 'WATCHING',
     preparing: 'PREPARING',
     ready: 'READY',
   };
-  const statusClass: Record<string, string> = {
+  const statusClass: Record<RoomStatus, string> = {
     watching: 'badge badge-watching',
     preparing: 'badge badge-preparing',
     ready: 'badge badge-ready',
@@ -180,13 +174,12 @@ export function RoomPage() {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span
-            className="display"
-            style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}
-          >
+          <span className="display" style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>
             {room.name}
           </span>
-          <span className={statusClass[room.status] ?? 'badge'}>{statusLabel[room.status] ?? room.status}</span>
+          {room.status !== undefined && (
+              <span className={statusClass[room.status]}>{statusLabel[room.status]}</span>
+            )}
           <button
             onClick={() => { void navigate(`/rooms/${String(id)}/edit`); }}
             title="Edit room"
@@ -220,7 +213,7 @@ export function RoomPage() {
         <button
           className="btn-danger"
           style={{ padding: '7px 16px', fontSize: 13 }}
-          onClick={() => { void navigate('/'); }}
+          onClick={() => { void navigate('/rooms'); }}
         >
           Leave room
         </button>
@@ -250,7 +243,6 @@ export function RoomPage() {
               overflow: 'hidden',
             }}
           >
-            {/* Placeholder video state */}
             <div style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
               <p style={{ fontSize: 40, marginBottom: 8 }}>⏳</p>
               <p style={{ fontSize: 14 }}>Waiting for the host to upload a video…</p>
@@ -281,8 +273,12 @@ export function RoomPage() {
                 }}
               >
                 <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{room.name}</span>
-                <span> - </span>
-                <span>{room.movieName}</span>
+                {room.movie_name && (
+                  <>
+                    <span> - </span>
+                    <span>{room.movie_name}</span>
+                  </>
+                )}
                 <span
                   style={{
                     display: 'flex',
@@ -293,15 +289,7 @@ export function RoomPage() {
                     fontSize: 11,
                   }}
                 >
-                  <span
-                    style={{
-                      width: 6,
-                      height: 6,
-                      borderRadius: '50%',
-                      background: '#4ade80',
-                      display: 'inline-block',
-                    }}
-                  />
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#4ade80', display: 'inline-block' }} />
                   LIVE
                 </span>
               </div>
@@ -317,7 +305,6 @@ export function RoomPage() {
               flexShrink: 0,
             }}
           >
-            {/* Progress */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
               <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' }}>
                 {formatTime(currentTime)}
@@ -335,39 +322,21 @@ export function RoomPage() {
               </span>
             </div>
 
-            {/* Buttons + volume */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <button
-                onClick={() => { setCurrentTime((t) => Math.max(0, t - 10)); }}
-                style={controlBtnStyle}
-                title="Rewind 10s"
-              >
+              <button onClick={() => { setCurrentTime((t) => Math.max(0, t - 10)); }} style={controlBtnStyle} title="Rewind 10s">
                 <SkipBackIcon />
               </button>
-
               <button
                 onClick={() => { setIsPlaying((p) => !p); }}
                 style={{ ...controlBtnStyle, background: 'var(--accent)', color: '#fff', padding: '8px 14px', borderRadius: 8 }}
               >
                 {isPlaying ? <PauseIcon /> : <PlayIcon />}
               </button>
-
-              <button
-                onClick={() => { setCurrentTime((t) => Math.min(duration, t + 10)); }}
-                style={controlBtnStyle}
-                title="Forward 10s"
-              >
+              <button onClick={() => { setCurrentTime((t) => Math.min(duration, t + 10)); }} style={controlBtnStyle} title="Forward 10s">
                 <SkipForwardIcon />
               </button>
-
               <div style={{ flex: 1 }} />
-
-              {/* Volume */}
-              <button
-                style={{ ...controlBtnStyle, padding: '6px 8px' }}
-                onClick={() => { setMuted((m) => !m); }}
-                title={muted ? 'Unmute' : 'Mute'}
-              >
+              <button style={{ ...controlBtnStyle, padding: '6px 8px' }} onClick={() => { setMuted((m) => !m); }} title={muted ? 'Unmute' : 'Mute'}>
                 <VolumeIcon muted={muted} />
               </button>
               <input
@@ -375,10 +344,7 @@ export function RoomPage() {
                 min={0}
                 max={100}
                 value={muted ? 0 : volume}
-                onChange={(e) => {
-                  setVolume(Number(e.target.value));
-                  setMuted(false);
-                }}
+                onChange={(e) => { setVolume(Number(e.target.value)); setMuted(false); }}
                 style={{ width: 80 }}
                 title="Volume"
               />
@@ -397,17 +363,11 @@ export function RoomPage() {
             overflow: 'hidden',
           }}
         >
-          {/* Members */}
-          <section
-            style={{
-              padding: '14px 16px',
-              borderBottom: '1px solid var(--border-subtle)',
-              flexShrink: 0,
-            }}
-          >
+          {/* Room info */}
+          <section style={{ padding: '14px 16px', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0 }}>
             <h3
               style={{
-                margin: '0 0 12px',
+                margin: '0 0 10px',
                 fontSize: 12,
                 fontWeight: 700,
                 textTransform: 'uppercase',
@@ -415,63 +375,26 @@ export function RoomPage() {
                 color: 'var(--text-muted)',
               }}
             >
-              In this room ({room.members.length})
+              In this room ({room.member_count})
             </h3>
-            <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {room.members.map((member) => (
-                <li key={member.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div style={{ position: 'relative', flexShrink: 0 }}>
-                    <Avatar member={member} size={32} />
-                    <span style={{ position: 'absolute', bottom: 0, right: 0 }}>
-                      <StatusDot status={member.status} />
-                    </span>
-                  </div>
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {member.name}
-                      </span>
-                      {member.isHost && (
-                        <span
-                          style={{
-                            fontSize: 10,
-                            fontWeight: 700,
-                            padding: '1px 5px',
-                            borderRadius: 4,
-                            background: 'var(--accent-dim)',
-                            color: 'var(--accent-hover)',
-                            border: '1px solid rgba(124,58,237,0.25)',
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          HOST
-                        </span>
-                      )}
-                    </div>
-                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>@{member.username}</span>
-                  </div>
-                </li>
-              ))}
-            </ul>
+            <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+              <p style={{ margin: '0 0 4px' }}>
+                Host: <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>@{room.creator_name}</span>
+              </p>
+              {room.movie_name && (
+                <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
+                  Watching: {room.movie_name}
+                </p>
+              )}
+            </div>
+            <p style={{ margin: '10px 0 0', fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>
+              Live member list coming with real-time integration.
+            </p>
           </section>
 
           {/* Chat */}
-          <section
-            style={{
-              flex: 1,
-              display: 'flex',
-              flexDirection: 'column',
-              minHeight: 0,
-              overflow: 'hidden',
-            }}
-          >
-            <div
-              style={{
-                padding: '12px 16px 8px',
-                borderBottom: '1px solid var(--border-subtle)',
-                flexShrink: 0,
-              }}
-            >
+          <section style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+            <div style={{ padding: '12px 16px 8px', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0 }}>
               <h3
                 style={{
                   margin: 0,
@@ -486,7 +409,6 @@ export function RoomPage() {
               </h3>
             </div>
 
-            {/* Messages */}
             <div
               className="soft-scroll"
               style={{ flex: 1, overflowY: 'auto', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}
@@ -513,7 +435,6 @@ export function RoomPage() {
               <div ref={chatEndRef} />
             </div>
 
-            {/* Input */}
             <div
               style={{
                 padding: '10px 12px',

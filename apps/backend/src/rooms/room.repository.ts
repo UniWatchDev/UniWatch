@@ -49,12 +49,13 @@ export class RoomRepository {
   create(data: {
     name: string;
     creator: Types.ObjectId;
-    movie: Types.ObjectId;
     room_type: string;
     deactivate_at: Date;
+    movie?: Types.ObjectId;
     password?: string;
     description?: string;
-    lobby?: Types.ObjectId;
+    movie_name?: string;
+    movie_description?: string;
   }): Promise<RoomDocument> {
     return new this.model(data).save();
   }
