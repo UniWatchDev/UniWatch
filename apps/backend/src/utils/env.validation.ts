@@ -23,7 +23,20 @@ const baseEnvSchema = z.object({
   AUTH_EMAIL_VERIFICATION_EXPIRES_IN: z.string().default('15m'),
   /** TTL for opaque password-reset tokens (e.g. `1h`, `24h`). */
   AUTH_PASSWORD_RESET_EXPIRES_IN: z.string().default('1h'),
-  MONGODB_URI: z.string().url().startsWith('mongodb'),
+  MONGODB_URI: z
+    .string()
+    .min(1)
+    .refine(
+      (value) => {
+        try {
+          const u = new URL(value);
+          return u.protocol === 'mongodb:' || u.protocol === 'mongodb+srv:';
+        } catch {
+          return false;
+        }
+      },
+      { message: 'Must be a valid mongodb:// or mongodb+srv:// URL' }
+    ),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   /**
    * CORS allowed origins. `*` allows all (dev default). For production, set a
@@ -54,7 +67,22 @@ const baseEnvSchema = z.object({
    * Optional public web origin for password-reset links in email (e.g. `https://app.example.com`).
    * No trailing slash. If empty, the email contains the raw token only.
    */
-  APP_PUBLIC_ORIGIN: z.string().default('')
+  APP_PUBLIC_ORIGIN: z.string().default(''),
+  /**
+   * When `true`, `AuthService` emits high-level `Logger.debug` events (no secrets).
+   * Defaults to `false`.
+   */
+  AUTH_DEBUG_LOG: z.preprocess(
+    (value) =>
+      value === undefined || value === null || value === ''
+        ? false
+        : value === 'true' || value === '1' || value === 'yes',
+    z.boolean()
+  ),
+  /** Window (ms) for `/api/auth/*` rate limiting (see `ThrottlerModule` in `app.module.ts`). */
+  AUTH_THROTTLE_TTL_MS: z.coerce.number().int().positive().default(60_000),
+  /** Max requests per client IP per TTL window on throttled `/api/auth/*` routes. */
+  AUTH_THROTTLE_LIMIT: z.coerce.number().int().positive().default(60)
 });
 
 const envSchema = baseEnvSchema

@@ -140,9 +140,8 @@ DELETE {{baseUrl}}/movies/PASTE_MOVIE_ID_HERE
 
 # ─────────────────────────────────────────
 # ROOMS
-# NOTE: auth is in-memory (userId is a number), so creator uses a
-# placeholder ObjectId. Replace with a real user _id once auth is
-# wired to MongoDB.
+# `creator` is derived from the JWT (`sub`); do not send it in the body.
+# `movie` must be a Mongo ObjectId for a movie you own (24 hex chars).
 # ─────────────────────────────────────────
 
 ### Create a room
@@ -151,7 +150,6 @@ Content-Type: application/json
 
 {
   "name": "Friday Night Watch",
-  "creator": "000000000000000000000001",
   "movie": "{{listMovies.response.body[0].id}}",
   "room_type": "public",
   "deactivate_at": "2026-12-31T23:59:59.000Z",
@@ -166,7 +164,6 @@ Content-Type: application/json
 
 {
   "name": "Private Screening",
-  "creator": "000000000000000000000001",
   "movie": "{{listMovies.response.body[0].id}}",
   "room_type": "private",
   "password": "secret123",

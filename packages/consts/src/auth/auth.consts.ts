@@ -10,6 +10,7 @@ export const AUTH_ROUTE_VERIFY_EMAIL = 'verify-email' as const;
 export const AUTH_ROUTE_RESEND_VERIFICATION = 'resend-verification' as const;
 export const AUTH_ROUTE_FORGOT_PASSWORD = 'forgot-password' as const;
 export const AUTH_ROUTE_RESET_PASSWORD = 'reset-password' as const;
+export const AUTH_ROUTE_CHANGE_PASSWORD = 'change-password' as const;
 
 /** POST — create account (JSON body). */
 export const AUTH_REGISTER_ENDPOINT = '/api/auth/register' as const;
@@ -40,3 +41,7 @@ export const AUTH_FORGOT_PASSWORD_ENDPOINT =
 /** POST — `{ token, newPassword }`; 204; revokes refresh sessions and bumps password version. */
 export const AUTH_RESET_PASSWORD_ENDPOINT =
   '/api/auth/reset-password' as const;
+
+/** POST — `{ currentPassword, newPassword }`; 200 + user JSON + new HttpOnly cookies (requires access cookie). */
+export const AUTH_CHANGE_PASSWORD_ENDPOINT =
+  '/api/auth/change-password' as const;

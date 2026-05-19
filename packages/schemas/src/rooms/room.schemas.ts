@@ -8,7 +8,6 @@ export type RoomType = z.infer<typeof roomTypeSchema>;
 
 export const createRoomSchema = z.strictObject({
   name: z.string().min(1),
-  creator: objectId,
   movie: objectId,
   room_type: roomTypeSchema,
   deactivate_at: z.string().datetime(),

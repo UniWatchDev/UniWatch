@@ -155,6 +155,10 @@ body {
 .btn-primary:active {
   transform: translateY(0);
 }
+.btn-primary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 
 .btn-ghost {
   display: inline-flex;
@@ -179,6 +183,10 @@ body {
   background: var(--border-subtle);
   color: var(--text-primary);
   border-color: var(--border-strong);
+}
+.btn-ghost:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .btn-danger {
@@ -224,6 +232,10 @@ body {
 .input:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-dim);
+}
+.input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 textarea.input {
@@ -428,4 +440,49 @@ input[type='range']::-moz-range-thumb {
   justify-content: center;
   padding: 16px;
   animation: fade-in 200ms ease both;
+}
+
+/* ── Site footer links ───────────────────────────────────────── */
+.site-footer-link {
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color 150ms ease;
+}
+.site-footer-link:hover {
+  color: var(--text-secondary);
+}
+
+/* ── Auth feedback (dark surfaces) ─────────────────────────── */
+.auth-feedback-error {
+  border-radius: 8px;
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  background: rgba(127, 29, 29, 0.35);
+  color: #fecaca;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.auth-feedback-success {
+  border-radius: 8px;
+  border: 1px solid rgba(52, 211, 153, 0.35);
+  background: rgba(6, 78, 59, 0.35);
+  color: #a7f3d0;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.auth-link {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+  transition: color 150ms ease;
+}
+.auth-link:hover {
+  color: var(--accent-hover);
+}
+.auth-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
 }

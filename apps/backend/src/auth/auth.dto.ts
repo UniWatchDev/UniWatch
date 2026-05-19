@@ -3,6 +3,7 @@ import { createZodDto } from 'nestjs-zod';
 import type { LoginResponse } from '@repo/schemas/auth';
 import {
   authNonEnumeratingAckSchema,
+  changePasswordBodySchema,
   forgotPasswordAckSchema,
   forgotPasswordBodySchema,
   loginBodySchema,
@@ -17,6 +18,7 @@ import {
 
 export type {
   AuthNonEnumeratingAck,
+  ChangePasswordBody,
   ForgotPasswordAck,
   ForgotPasswordBody,
   LoginBody,
@@ -31,6 +33,7 @@ export type {
 
 export {
   authNonEnumeratingAckSchema,
+  changePasswordBodySchema,
   forgotPasswordAckSchema,
   forgotPasswordBodySchema,
   loginBodySchema,
@@ -70,6 +73,8 @@ export class ForgotPasswordDto extends createZodDto(forgotPasswordBodySchema) {}
 export class ForgotPasswordAckDto extends createZodDto(forgotPasswordAckSchema) {}
 
 export class ResetPasswordDto extends createZodDto(resetPasswordBodySchema) {}
+
+export class ChangePasswordDto extends createZodDto(changePasswordBodySchema) {}
 
 export type LoginWithTokens = {
   accessToken: string;

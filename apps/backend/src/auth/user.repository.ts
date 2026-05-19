@@ -1,7 +1,20 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import type { Model } from 'mongoose';
+import { Types } from 'mongoose';
+
 import { UserRecord, type UserDocument } from '@/auth/user.schema';
+
+export type CreateUserInput = {
+  email: string;
+  userName: string;
+  firstName: string;
+  lastName?: string;
+  phoneNumber: string;
+  passwordHash: string;
+  emailVerificationCode: string;
+  emailVerificationExpiresAt: Date;
+};
 
 @Injectable()
 export class UserRepository {
@@ -10,6 +23,9 @@ export class UserRepository {
   ) {}
 
   findById(id: string): Promise<UserDocument | null> {
+    if (!Types.ObjectId.isValid(id)) {
+      return Promise.resolve(null);
+    }
     return this.model.findById(id);
   }
 
@@ -18,7 +34,7 @@ export class UserRepository {
   }
 
   findByUserName(userName: string): Promise<UserDocument | null> {
-    return this.model.findOne({ userName: new RegExp(`^${userName}$`, 'i') });
+    return this.model.findOne({ userName: new RegExp(`^${escapeRegex(userName)}$`, 'i') });
   }
 
   findByIdentifier(identifier: string): Promise<UserDocument | null> {
@@ -26,24 +42,114 @@ export class UserRepository {
     return this.findByUserName(identifier);
   }
 
-  async create(data: {
-    email: string;
-    userName: string;
-    phoneNumber: string;
-    passwordHash: string;
-  }): Promise<UserDocument> {
-    return new this.model(data).save();
+  findByPasswordResetTokenHash(hash: string): Promise<UserDocument | null> {
+    return this.model.findOne({ passwordResetTokenHash: hash });
+  }
+
+  create(data: CreateUserInput): Promise<UserDocument> {
+    return new this.model({
+      email: data.email,
+      userName: data.userName,
+      firstName: data.firstName,
+      ...(data.lastName !== undefined ? { lastName: data.lastName } : {}),
+      phoneNumber: data.phoneNumber,
+      passwordHash: data.passwordHash,
+      emailVerificationCode: data.emailVerificationCode,
+      emailVerificationExpiresAt: data.emailVerificationExpiresAt,
+      emailVerified: false,
+      passwordVersion: 0
+    }).save();
+  }
+
+  setEmailVerificationChallenge(
+    id: string,
+    code: string,
+    expiresAt: Date
+  ): Promise<UserDocument | null> {
+    return this.model.findByIdAndUpdate(
+      id,
+      {
+        $set: {
+          emailVerificationCode: code,
+          emailVerificationExpiresAt: expiresAt
+        }
+      },
+      { returnDocument: 'after' }
+    );
   }
 
   markEmailVerified(id: string): Promise<UserDocument | null> {
-    return this.model.findByIdAndUpdate(id, { $set: { emailVerified: true } }, { new: true });
+    return this.model.findByIdAndUpdate(
+      id,
+      {
+        $set: { emailVerified: true },
+        $unset: {
+          emailVerificationCode: '',
+          emailVerificationExpiresAt: ''
+        }
+      },
+      { returnDocument: 'after' }
+    );
+  }
+
+  setPasswordResetChallenge(
+    id: string,
+    tokenHash: string,
+    expiresAt: Date
+  ): Promise<UserDocument | null> {
+    return this.model.findByIdAndUpdate(
+      id,
+      {
+        $set: {
+          passwordResetTokenHash: tokenHash,
+          passwordResetExpiresAt: expiresAt
+        }
+      },
+      { returnDocument: 'after' }
+    );
+  }
+
+  clearPasswordResetChallenge(id: string): Promise<UserDocument | null> {
+    return this.model.findByIdAndUpdate(
+      id,
+      {
+        $unset: {
+          passwordResetTokenHash: '',
+          passwordResetExpiresAt: ''
+        }
+      },
+      { returnDocument: 'after' }
+    );
   }
 
   updatePassword(id: string, passwordHash: string): Promise<UserDocument | null> {
     return this.model.findByIdAndUpdate(
       id,
-      { $set: { passwordHash }, $inc: { passwordVersion: 1 } },
-      { new: true }
+      {
+        $set: { passwordHash },
+        $inc: { passwordVersion: 1 }
+      },
+      { returnDocument: 'after' }
     );
   }
+
+  /** Password reset: bump version, set hash, clear reset token fields. */
+  completePasswordReset(id: string, passwordHash: string): Promise<UserDocument | null> {
+    return this.model.findByIdAndUpdate(
+      id,
+      {
+        $set: { passwordHash },
+        $unset: {
+          passwordResetTokenHash: '',
+          passwordResetExpiresAt: ''
+        },
+        $inc: { passwordVersion: 1 }
+      },
+      { returnDocument: 'after' }
+    );
+  }
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
