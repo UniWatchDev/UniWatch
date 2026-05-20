@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { API_BASE_URL } from '@repo/consts/api';
 import {
   AUTH_FORGOT_PASSWORD_ENDPOINT,
@@ -58,6 +58,22 @@ export function useCookieAuthModel() {
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sessionUser, setSessionUser] = useState<LoginResponse | null>(null);
+  const [authInitialized, setAuthInitialized] = useState(false);
+
+  useEffect(() => {
+    fetch(`${API_BASE_URL}${getAuthMeContract.path}`, {
+      credentials: 'include' as const,
+      headers: { Accept: 'application/json' }
+    })
+      .then(async (res) => {
+        if (!res.ok) return;
+        const user: LoginResponse = getAuthMeContract.responseSchema.parse(await res.json());
+        rememberFirstNameFromRegistration(user.firstName, user.email);
+        setSessionUser(user);
+      })
+      .catch(() => undefined)
+      .finally(() => { setAuthInitialized(true); });
+  }, []);
 
   function clearFeedback() {
     setError(null);
@@ -443,6 +459,7 @@ export function useCookieAuthModel() {
     setError,
     sessionUser,
     setSessionUser,
+    authInitialized,
     clearFeedback,
     register,
     verifyEmail,

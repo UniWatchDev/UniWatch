@@ -10,13 +10,9 @@ export class RoomRepository {
     @InjectModel(RoomRecord.name) private readonly model: Model<RoomDocument>
   ) {}
 
-  findAccessibleForUser(userId: string): Promise<RoomDocument[]> {
-    const uid = new Types.ObjectId(userId);
+  findAllActive(): Promise<RoomDocument[]> {
     return this.model
-      .find({
-        deleted_at: null,
-        $or: [{ creator: uid }, { allowed_users: uid }]
-      })
+      .find({ deleted_at: null })
       .populate('creator movie allowed_users banned_users');
   }
 
@@ -68,6 +64,14 @@ export class RoomRepository {
     );
   }
 
+  removeUser(roomId: string, userId: Types.ObjectId): Promise<RoomDocument | null> {
+    return this.model.findByIdAndUpdate(
+      roomId,
+      { $pull: { allowed_users: userId } },
+      { new: true }
+    );
+  }
+
   banUser(roomId: string, userId: Types.ObjectId): Promise<RoomDocument | null> {
     return this.model.findByIdAndUpdate(
       roomId,
@@ -77,6 +81,20 @@ export class RoomRepository {
       },
       { new: true }
     );
+  }
+
+  updateIfCreator(
+    roomId: string,
+    creatorId: string,
+    data: Record<string, unknown>
+  ): Promise<RoomDocument | null> {
+    return this.model
+      .findOneAndUpdate(
+        { _id: roomId, creator: new Types.ObjectId(creatorId), deleted_at: null },
+        { $set: data },
+        { returnDocument: 'after' }
+      )
+      .populate('creator movie allowed_users banned_users');
   }
 
   softDeleteIfCreator(roomId: string, creatorId: string): Promise<RoomDocument | null> {

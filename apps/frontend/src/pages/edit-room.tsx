@@ -71,7 +71,7 @@ async function fetchCurrentUserId(): Promise<string | null> {
     });
     if (!res.ok) return null;
     const me = getAuthMeContract.responseSchema.parse(await res.json());
-    return String(me.userId);
+    return me.userId;
   } catch {
     return null;
   }
@@ -131,6 +131,12 @@ export function EditRoom() {
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [id]);
+
+  useEffect(() => {
+    if (!loading && room && currentUserId !== null && currentUserId !== room.creator) {
+      void navigate(`/room/${room.id}`, { replace: true });
+    }
+  }, [loading, room, currentUserId, navigate]);
 
   if (loading) {
     return (
@@ -352,11 +358,11 @@ export function EditRoom() {
             </div>
           </EditRow>
 
-          {/* Password */}
-          <EditRow
+          {/* Password — only for private rooms */}
+          {room.room_type === 'private' && <EditRow
             label="Password"
             isEditing={editing.password}
-            displayValue={room.room_type === 'private' ? '••••••••' : 'Not set'}
+            displayValue={room.password != null ? 'Password set' : 'No password'}
             canEdit={isOwner}
             saving={saving}
             onEdit={() => { startEdit('password'); }}
@@ -370,9 +376,10 @@ export function EditRoom() {
               value={drafts.password}
               onChange={(e) => { setDrafts((p) => ({ ...p, password: e.target.value })); }}
               maxLength={64}
+              autoComplete="new-password"
               autoFocus
             />
-          </EditRow>
+          </EditRow>}
 
           <hr style={{ border: 'none', borderTop: '1px solid var(--border-subtle)' }} />
 

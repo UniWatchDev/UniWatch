@@ -190,6 +190,7 @@ export function CreateRoom() {
                 value={form.password}
                 onChange={(e) => { set('password', e.target.value); }}
                 maxLength={64}
+                autoComplete="new-password"
               />
             </FormField>
           )}

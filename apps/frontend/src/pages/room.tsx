@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { getRoomContract } from '@repo/contracts/rooms';
+import { getRoomContract, previewRoomContract, joinRoomContract, leaveRoomContract } from '@repo/contracts/rooms';
+import { getAuthMeContract } from '@repo/contracts/auth';
+import type { RoomPreview } from '@repo/schemas/rooms';
 import { API_BASE_URL } from '@repo/consts/api';
 import type { RoomResponse, RoomStatus } from '@repo/schemas/rooms';
 import type { ChatMessage } from '@/types/room';
@@ -79,13 +81,71 @@ async function fetchRoom(id: string): Promise<RoomResponse> {
   return getRoomContract.responseSchema.parse(await res.json());
 }
 
+async function fetchRoomPreview(id: string): Promise<RoomPreview> {
+  const path = previewRoomContract.path.replace(':id', encodeURIComponent(id));
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    headers: { Accept: 'application/json' },
+    credentials: 'include'
+  });
+  if (!res.ok) throw new Error(`HTTP ${String(res.status)}`);
+  return previewRoomContract.responseSchema.parse(await res.json());
+}
+
+async function joinRoom(id: string, password: string | undefined): Promise<void> {
+  const path = joinRoomContract.path.replace(':id', encodeURIComponent(id));
+  const body = joinRoomContract.bodySchema.parse(password !== undefined ? { password } : {});
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    method: joinRoomContract.method,
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({})) as Record<string, unknown>;
+    throw new Error(typeof data['detail'] === 'string' ? data['detail'] : `HTTP ${String(res.status)}`);
+  }
+}
+
+async function leaveRoom(id: string): Promise<void> {
+  const path = leaveRoomContract.path.replace(':id', encodeURIComponent(id));
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    method: leaveRoomContract.method,
+    headers: { Accept: 'application/json' },
+    credentials: 'include',
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({})) as Record<string, unknown>;
+    throw new Error(typeof data['detail'] === 'string' ? data['detail'] : `HTTP ${String(res.status)}`);
+  }
+}
+
+async function fetchCurrentUserId(): Promise<string | null> {
+  try {
+    const res = await fetch(`${API_BASE_URL}${getAuthMeContract.path}`, {
+      headers: { Accept: 'application/json' },
+      credentials: 'include'
+    });
+    if (!res.ok) return null;
+    const me = getAuthMeContract.responseSchema.parse(await res.json());
+    return me.userId;
+  } catch {
+    return null;
+  }
+}
+
 export function RoomPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
   const [room, setRoom] = useState<RoomResponse | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [passwordRequired, setPasswordRequired] = useState(false);
+  const [roomPreview, setRoomPreview] = useState<RoomPreview | null>(null);
+  const [passwordInput, setPasswordInput] = useState('');
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [joiningRoom, setJoiningRoom] = useState(false);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(3862);
@@ -96,20 +156,119 @@ export function RoomPage() {
   const [chatInput, setChatInput] = useState('');
   const chatEndRef = useRef<HTMLDivElement>(null);
 
+  const loadRoom = (roomId: string, cancelled: { current: boolean }) => {
+    setLoading(true);
+    setPasswordRequired(false);
+    let autoJoining = false;
+    Promise.all([fetchRoom(roomId), fetchCurrentUserId()])
+      .then(([r, userId]) => {
+        if (cancelled.current) return;
+        setRoom(r);
+        setCurrentUserId(userId);
+      })
+      .catch(async (err: unknown) => {
+        const msg = err instanceof Error ? err.message : '';
+        if (msg.includes('403')) {
+          try {
+            const preview = await fetchRoomPreview(roomId);
+            if (preview.room_type === 'public' && !preview.has_password) {
+              await joinRoom(roomId, undefined);
+              if (!cancelled.current) {
+                autoJoining = true;
+                loadRoom(roomId, cancelled);
+              }
+            } else if (!cancelled.current) {
+              setRoomPreview(preview);
+              setPasswordRequired(true);
+            }
+          } catch {
+            if (!cancelled.current) setLoadError('You do not have access to this room.');
+          }
+        } else if (!cancelled.current) {
+          setLoadError(msg || 'Failed to load room');
+        }
+      })
+      .finally(() => { if (!cancelled.current && !autoJoining) setLoading(false); });
+  };
+
   useEffect(() => {
     if (!id) return;
-    let cancelled = false;
-    fetchRoom(id)
-      .then((r) => { if (!cancelled) { setRoom(r); } })
-      .catch((err: unknown) => { if (!cancelled) setLoadError(err instanceof Error ? err.message : 'Failed to load room'); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
+    const cancelled: { current: boolean } = { current: false };
+    loadRoom(id, cancelled);
+    return () => { cancelled.current = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  const handleJoin = async () => {
+    if (!id) return;
+    setJoiningRoom(true);
+    setPasswordError(null);
+    try {
+      await joinRoom(id, passwordInput);
+      const cancelled: { current: boolean } = { current: false };
+      loadRoom(id, cancelled);
+    } catch (err: unknown) {
+      setPasswordError(err instanceof Error ? err.message : 'Incorrect password');
+    } finally {
+      setJoiningRoom(false);
+    }
+  };
 
   if (loading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100dvh' }}>
         <p style={{ color: 'var(--text-muted)' }}>Loading room…</p>
+      </div>
+    );
+  }
+
+  if (passwordRequired && roomPreview !== null) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100dvh', background: 'var(--bg-primary)' }}>
+        <div className="card fade-up" style={{ width: '100%', maxWidth: 380, padding: '32px' }}>
+          <div style={{ textAlign: 'center', marginBottom: 24 }}>
+            <span style={{ fontSize: 36 }}>🔒</span>
+            <h2 className="display" style={{ fontSize: 20, fontWeight: 800, color: 'var(--text-primary)', margin: '12px 0 4px' }}>
+              {roomPreview.name}
+            </h2>
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>
+              {roomPreview.has_password ? 'This room is password protected.' : 'This is a private room.'}
+            </p>
+          </div>
+          {passwordError !== null && (
+            <div style={{ marginBottom: 14, padding: '8px 12px', borderRadius: 8, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', fontSize: 13, color: '#f87171' }}>
+              {passwordError}
+            </div>
+          )}
+          {roomPreview.has_password && (
+            <input
+              className="input"
+              type="password"
+              placeholder="Enter room password"
+              value={passwordInput}
+              autoComplete="current-password"
+              autoFocus
+              onChange={(e) => { setPasswordInput(e.target.value); setPasswordError(null); }}
+              onKeyDown={(e) => { if (e.key === 'Enter') void handleJoin(); }}
+              style={{ marginBottom: 12 }}
+            />
+          )}
+          <button
+            className="btn-primary"
+            style={{ width: '100%', padding: '10px', fontSize: 14, opacity: joiningRoom ? 0.7 : 1 }}
+            disabled={joiningRoom || (roomPreview.has_password && passwordInput.length === 0)}
+            onClick={() => { void handleJoin(); }}
+          >
+            {joiningRoom ? 'Joining…' : 'Join Room'}
+          </button>
+          <button
+            className="btn-ghost"
+            style={{ width: '100%', marginTop: 8, padding: '8px', fontSize: 13 }}
+            onClick={() => { void navigate('/rooms'); }}
+          >
+            Back to Lobby
+          </button>
+        </div>
       </div>
     );
   }
@@ -122,6 +281,8 @@ export function RoomPage() {
       </div>
     );
   }
+
+  const isOwner = currentUserId !== null && currentUserId === room.creator;
 
   const sendMessage = () => {
     const text = chatInput.trim();
@@ -180,40 +341,48 @@ export function RoomPage() {
           {room.status !== undefined && (
               <span className={statusClass[room.status]}>{statusLabel[room.status]}</span>
             )}
-          <button
-            onClick={() => { void navigate(`/rooms/${String(id)}/edit`); }}
-            title="Edit room"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: '5px 7px',
-              background: 'transparent',
-              color: 'var(--text-muted)',
-              border: '1px solid var(--border-medium)',
-              borderRadius: 7,
-              cursor: 'pointer',
-              transition: 'color 150ms ease, border-color 150ms ease',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.color = 'var(--text-primary)';
-              e.currentTarget.style.borderColor = 'var(--accent)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.color = 'var(--text-muted)';
-              e.currentTarget.style.borderColor = 'var(--border-medium)';
-            }}
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
-              <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
-            </svg>
-          </button>
+          {isOwner && (
+            <button
+              onClick={() => { void navigate(`/rooms/${String(id)}/edit`); }}
+              title="Edit room"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '5px 7px',
+                background: 'transparent',
+                color: 'var(--text-muted)',
+                border: '1px solid var(--border-medium)',
+                borderRadius: 7,
+                cursor: 'pointer',
+                transition: 'color 150ms ease, border-color 150ms ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = 'var(--text-primary)';
+                e.currentTarget.style.borderColor = 'var(--accent)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = 'var(--text-muted)';
+                e.currentTarget.style.borderColor = 'var(--border-medium)';
+              }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+                <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+              </svg>
+            </button>
+          )}
         </div>
         <button
           className="btn-danger"
           style={{ padding: '7px 16px', fontSize: 13 }}
-          onClick={() => { void navigate('/rooms'); }}
+          onClick={() => {
+            if (!isOwner && id) {
+              void leaveRoom(id).finally(() => { void navigate('/rooms'); });
+            } else {
+              void navigate('/rooms');
+            }
+          }}
         >
           Leave room
         </button>
@@ -380,7 +549,13 @@ export function RoomPage() {
             <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
               <p style={{ margin: '0 0 4px' }}>
                 Host: <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>@{room.creator_name}</span>
+                {isOwner && <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--accent-hover)', fontWeight: 700 }}>YOU</span>}
               </p>
+              {!isOwner && currentUserId !== null && (
+                <p style={{ margin: '0 0 4px', fontSize: 12, color: 'var(--text-muted)' }}>
+                  You joined as a member
+                </p>
+              )}
               {room.movie_name && (
                 <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
                   Watching: {room.movie_name}

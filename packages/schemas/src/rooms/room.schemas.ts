@@ -53,6 +53,28 @@ export const deleteRoomResponseSchema = z.object({
   success: z.boolean()
 });
 
+export const roomPreviewSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  room_type: roomTypeSchema,
+  has_password: z.boolean(),
+  status: roomStatusSchema.optional(),
+  creator_name: z.string().optional(),
+  member_count: z.number().optional()
+});
+
+export type RoomPreview = z.infer<typeof roomPreviewSchema>;
+
+export const joinRoomBodySchema = z.strictObject({
+  password: z.string().optional()
+});
+
+export type JoinRoomBody = z.infer<typeof joinRoomBodySchema>;
+
+export const joinRoomResponseSchema = z.object({ success: z.boolean() });
+
+export type JoinRoomResponse = z.infer<typeof joinRoomResponseSchema>;
+
 export type DeleteRoomResponse = z.infer<typeof deleteRoomResponseSchema>;
 
 export const roomIdParamsSchema = z.strictObject({

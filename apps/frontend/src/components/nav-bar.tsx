@@ -1,4 +1,4 @@
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import {
   firstNameFromEmail,
@@ -24,6 +24,7 @@ function isAuthPath(pathname: string): boolean {
 
 export function NavBar() {
   const location = useLocation();
+  const navigate = useNavigate();
   const isRoom = location.pathname.startsWith('/room/');
   const onAuthPage = isAuthPath(location.pathname);
   const { sessionUser, logout } = useCookieAuth();
@@ -87,7 +88,7 @@ export function NavBar() {
             className="display"
             style={{ color: 'var(--text-primary)', fontSize: 17, fontWeight: 700 }}
           >
-            Uni-Watch
+            UniWatch
           </span>
         </Link>
 
@@ -130,7 +131,7 @@ export function NavBar() {
                   className="btn-ghost"
                   style={{ padding: '6px 14px', fontSize: 13, color: 'var(--text-muted)' }}
                   onClick={() => {
-                    void logout();
+                    void logout().then(() => { void navigate('/login'); });
                   }}
                 >
                   Logout
