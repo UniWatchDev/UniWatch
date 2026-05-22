@@ -1,23 +1,31 @@
-import type { LoginResponse } from '@repo/schemas/auth';
-
-import {
-  MOCK_MEMBER_SINCE,
-  MOCK_PROFILE_BADGE
-} from '@/data/mock-profile-data';
+import { MOCK_PROFILE_BADGE } from '@/data/mock-profile-data';
 import type { ProfileIdentity } from '@/types/profile';
-import { hashUserIdToColor, initialsFromName } from '@/utils/avatar-color';
+import { initialsFromName } from '@/utils/avatar-color';
 
-export function buildProfileIdentity(user: LoginResponse): ProfileIdentity {
+import { formatMemberSince } from '@/profile/format-member-since';
+
+type ProfileSource = {
+  userId: string;
+  userName: string;
+  firstName: string;
+  lastName?: string | undefined;
+  avatarId: string;
+  createdAt: string;
+  email?: string | undefined;
+};
+
+export function buildProfileIdentity(source: ProfileSource): ProfileIdentity {
   const displayName =
-    [user.firstName.trim(), user.lastName?.trim()].filter(Boolean).join(' ') ||
-    user.userName;
+    [source.firstName.trim(), source.lastName?.trim()].filter(Boolean).join(' ') ||
+    source.userName;
   return {
     displayName,
-    handle: `@${user.userName}`,
+    handle: `@${source.userName}`,
     initials: initialsFromName(displayName),
-    avatarColor: hashUserIdToColor(user.userId),
-    email: user.email,
-    memberSince: MOCK_MEMBER_SINCE,
+    avatarColor: '#7c3aed',
+    avatarId: source.avatarId,
+    email: source.email ?? '',
+    memberSince: formatMemberSince(source.createdAt),
     badge: MOCK_PROFILE_BADGE
   };
 }

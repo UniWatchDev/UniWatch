@@ -3,6 +3,7 @@ import type { ProfileFriend } from '@/types/profile';
 
 export interface FriendCardProps {
   readonly friend: ProfileFriend;
+  readonly canRemove: boolean;
   readonly onRemove: (id: string) => void;
 }
 
@@ -18,7 +19,7 @@ function statusColor(status: ProfileFriend['status']): string {
   return '#64748b';
 }
 
-export function FriendCard({ friend, onRemove }: FriendCardProps) {
+export function FriendCard({ friend, canRemove, onRemove }: FriendCardProps) {
   return (
     <article
       className="card"
@@ -59,16 +60,18 @@ export function FriendCard({ friend, onRemove }: FriendCardProps) {
         />
         {statusLabel(friend.status)}
       </span>
-      <button
-        type="button"
-        className="btn-danger"
-        style={{ width: '100%', padding: '8px 16px', fontSize: 13 }}
-        onClick={() => {
-          onRemove(friend.id);
-        }}
-      >
-        Remove
-      </button>
+      {canRemove ? (
+        <button
+          type="button"
+          className="btn-danger"
+          style={{ width: '100%', padding: '8px 16px', fontSize: 13 }}
+          onClick={() => {
+            onRemove(friend.id);
+          }}
+        >
+          Remove
+        </button>
+      ) : null}
     </article>
   );
 }

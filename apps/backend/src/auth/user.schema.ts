@@ -27,6 +27,12 @@ export class UserRecord {
   @Prop({ default: false })
   emailVerified!: boolean;
 
+  @Prop({ default: false })
+  isProfilePrivate!: boolean;
+
+  @Prop({ default: 'violet-reel' })
+  avatarId!: string;
+
   /** 6-digit email verification code while `emailVerified` is false. */
   @Prop({ type: String, required: false })
   emailVerificationCode?: string;

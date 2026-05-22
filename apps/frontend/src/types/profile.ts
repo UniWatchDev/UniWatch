@@ -41,6 +41,7 @@ export interface ProfileIdentity {
   handle: string;
   initials: string;
   avatarColor: string;
+  avatarId: string;
   email: string;
   memberSince: string;
   badge: string;

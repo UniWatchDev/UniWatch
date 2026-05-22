@@ -1,13 +1,26 @@
+import { PresetAvatar } from '@/components/preset-avatar';
+import { isAvatarPresetId } from '@/data/avatar-presets';
 import { initialsFromName } from '@/utils/avatar-color';
 
 export interface UserAvatarProps {
   readonly name: string;
   readonly avatarColor: string;
+  readonly avatarId?: string | undefined;
   readonly size?: number;
   readonly ring?: boolean;
 }
 
-export function UserAvatar({ name, avatarColor, size = 36, ring = false }: UserAvatarProps) {
+export function UserAvatar({
+  name,
+  avatarColor,
+  avatarId,
+  size = 36,
+  ring = false
+}: UserAvatarProps) {
+  if (avatarId !== undefined && isAvatarPresetId(avatarId)) {
+    return <PresetAvatar avatarId={avatarId} size={size} ring={ring} />;
+  }
+
   const initials = initialsFromName(name);
   return (
     <div

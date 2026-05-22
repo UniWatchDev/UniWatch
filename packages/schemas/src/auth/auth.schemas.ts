@@ -165,7 +165,22 @@ export const loginResponseSchema = z.strictObject({
   firstName: z.string(),
   lastName: z.string().optional(),
   email: email(),
-  emailVerified: z.boolean()
+  phoneNumber: z
+    .string()
+    .regex(/^\+9725\d{8}$/, 'Invalid phone number'),
+  emailVerified: z.boolean(),
+  isProfilePrivate: z.boolean(),
+  avatarId: z.enum([
+    'violet-reel',
+    'coral-popcorn',
+    'sky-star',
+    'mint-clapper',
+    'amber-moon',
+    'rose-heart',
+    'teal-ticket',
+    'gold-bolt'
+  ]),
+  createdAt: z.string()
 });
 
 export type LoginResponse = z.infer<typeof loginResponseSchema>;

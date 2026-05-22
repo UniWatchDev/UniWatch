@@ -1,4 +1,4 @@
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 
 import { useCookieAuth } from '@/auth/use-cookie-auth';
 import { SiteFooter } from '@/components/site-footer';
@@ -7,6 +7,8 @@ import { AuthPageShell } from './auth-page-shell';
 
 export function Login() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const authRequired = searchParams.get('auth') === 'required';
   const {
     loginIdentifier,
     setLoginIdentifier,
@@ -28,6 +30,12 @@ export function Login() {
           <p style={{ margin: '0 0 28px', fontSize: 14, color: 'var(--text-secondary)' }}>
             Sign in to join or create a watch room
           </p>
+
+          {authRequired ? (
+            <p className="auth-feedback-info" style={{ marginBottom: 20 }}>
+              Oops — log in first.
+            </p>
+          ) : null}
 
           <form
             className="flex flex-col gap-4"

@@ -14,6 +14,7 @@ import { ResetPasswordPage } from '@/pages/reset-password-page';
 import { RoomPage } from '@/pages/room';
 import { VerifyEmailPage } from '@/pages/verify-email-page';
 import { ProfilePage } from '@/profile/profile-page';
+import { ProfileRedirect } from '@/profile/profile-redirect';
 
 export default function App() {
   return (
@@ -29,7 +30,8 @@ export default function App() {
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
             <Route path="/app" element={<ProtectedAppPage />} />
-            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/profile" element={<ProfileRedirect />} />
+            <Route path="/u/:userName" element={<ProfilePage />} />
             <Route path="/" element={<Lobby />} />
             <Route path="/room/:id" element={<RoomPage />} />
             <Route path="/rooms/new" element={<CreateRoom />} />

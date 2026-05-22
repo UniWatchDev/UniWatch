@@ -9,6 +9,7 @@ export interface ProfileTabsProps {
   readonly friends: ProfileFriend[];
   readonly history: WatchHistoryItem[];
   readonly achievements: Achievement[];
+  readonly canRemoveFriends: boolean;
   readonly onRemoveFriend: (id: string) => void;
 }
 
@@ -24,6 +25,7 @@ export function ProfileTabs({
   friends,
   history,
   achievements,
+  canRemoveFriends,
   onRemoveFriend
 }: ProfileTabsProps) {
   const counts = {
@@ -77,7 +79,11 @@ export function ProfileTabs({
       </div>
       <div role="tabpanel">
         {activeTab === 'friends' ? (
-          <FriendsPanel friends={friends} onRemove={onRemoveFriend} />
+          <FriendsPanel
+            friends={friends}
+            canRemove={canRemoveFriends}
+            onRemove={onRemoveFriend}
+          />
         ) : null}
         {activeTab === 'history' ? <HistoryPanel items={history} /> : null}
         {activeTab === 'achievements' ? <AchievementsPanel achievements={achievements} /> : null}

@@ -3,10 +3,11 @@ import type { ProfileFriend } from '@/types/profile';
 
 export interface FriendsPanelProps {
   readonly friends: ProfileFriend[];
+  readonly canRemove: boolean;
   readonly onRemove: (id: string) => void;
 }
 
-export function FriendsPanel({ friends, onRemove }: FriendsPanelProps) {
+export function FriendsPanel({ friends, canRemove, onRemove }: FriendsPanelProps) {
   if (friends.length === 0) {
     return (
       <p style={{ margin: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: 14 }}>
@@ -25,7 +26,7 @@ export function FriendsPanel({ friends, onRemove }: FriendsPanelProps) {
       }}
     >
       {friends.map((friend) => (
-        <FriendCard key={friend.id} friend={friend} onRemove={onRemove} />
+        <FriendCard key={friend.id} friend={friend} canRemove={canRemove} onRemove={onRemove} />
       ))}
     </div>
   );

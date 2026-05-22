@@ -1,8 +1,13 @@
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 
+import {
+  firstNameFromEmail,
+  getStoredFirstName
+} from '@/auth/profile-local';
+import { LOGIN_AUTH_REQUIRED_PATH } from '@/auth/auth-redirect';
 import { useCookieAuth } from '@/auth/use-cookie-auth';
+import { SignOutIcon } from '@/components/sign-out-icon';
 import { UserAvatar } from '@/components/user-avatar';
-import { hashUserIdToColor } from '@/utils/avatar-color';
 
 const AUTH_PATH_PREFIXES = [
   '/login',
@@ -21,15 +26,16 @@ function isAuthPath(pathname: string): boolean {
 
 export function NavBar() {
   const location = useLocation();
+  const navigate = useNavigate();
   const isRoom = location.pathname.startsWith('/room/');
   const onAuthPage = isAuthPath(location.pathname);
   const { sessionUser, logout } = useCookieAuth();
 
   if (isRoom) return null;
 
-  const navDisplayName =
+  const firstName =
     sessionUser !== null
-      ? sessionUser.firstName.trim() || sessionUser.userName
+      ? sessionUser.firstName.trim() || getStoredFirstName() || firstNameFromEmail(sessionUser.email)
       : '';
 
   return (
@@ -91,117 +97,119 @@ export function NavBar() {
             flex: 1,
             display: 'flex',
             alignItems: 'center',
-            gap: 12,
+            justifyContent: 'center',
+            gap: 10,
+            flexWrap: 'wrap',
             minWidth: 0,
           }}
         >
-          <div
-            style={{
-              flex: 1,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 10,
-              flexWrap: 'wrap',
-            }}
-          >
-            <Link to="/" className="btn-ghost" style={{ padding: '7px 16px', fontSize: 13 }}>
-              Rooms
+          <Link to="/" className="btn-ghost" style={{ padding: '7px 16px', fontSize: 13 }}>
+            Rooms
+          </Link>
+          {sessionUser !== null && !onAuthPage ? (
+            <Link
+              to="/rooms/new"
+              className="btn-primary"
+              style={{ padding: '7px 16px', fontSize: 13, textDecoration: 'none' }}
+            >
+              + Create a room
             </Link>
-
-            {sessionUser !== null ? (
-              <>
-                {!onAuthPage ? (
-                  <Link
-                    to="/rooms/new"
-                    className="btn-primary"
-                    style={{ padding: '7px 16px', fontSize: 13, textDecoration: 'none' }}
-                  >
-                    + Create a room
-                  </Link>
-                ) : null}
-                <button
-                  type="button"
-                  className="btn-ghost"
-                  style={{ padding: '6px 14px', fontSize: 13, color: 'var(--text-muted)' }}
-                  onClick={() => {
-                    void logout();
-                  }}
-                >
-                  Sign out
-                </button>
-              </>
-            ) : (
-              <>
-                {!onAuthPage ? (
-                  <Link
-                    to="/rooms/new"
-                    className="btn-primary"
-                    style={{ padding: '7px 16px', fontSize: 13, textDecoration: 'none' }}
-                  >
-                    + Create a room
-                  </Link>
-                ) : null}
-                <Link to="/register" className="btn-ghost" style={{ padding: '7px 16px', fontSize: 13 }}>
-                  Sign Up
-                </Link>
+          ) : null}
+          {sessionUser === null ? (
+            <>
+              {!onAuthPage ? (
                 <Link
-                  to="/login"
+                  to="/rooms/new"
                   className="btn-primary"
                   style={{ padding: '7px 16px', fontSize: 13, textDecoration: 'none' }}
                 >
-                  Sign In
+                  + Create a room
                 </Link>
-              </>
-            )}
-          </div>
+              ) : null}
+              <Link to="/register" className="btn-ghost" style={{ padding: '7px 16px', fontSize: 13 }}>
+                Sign Up
+              </Link>
+              <Link
+                to="/login"
+                className="btn-primary"
+                style={{ padding: '7px 16px', fontSize: 13, textDecoration: 'none' }}
+              >
+                Sign In
+              </Link>
+            </>
+          ) : null}
+        </div>
 
-          {sessionUser !== null ? (
-            <div
+        {sessionUser !== null ? (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              flexShrink: 0,
+            }}
+          >
+            <Link
+              to="/profile"
+              title={`${sessionUser.email} · @${sessionUser.userName}`}
+              className="nav-profile-link"
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 12,
-                flexShrink: 0,
+                gap: 10,
+                textDecoration: 'none',
+                padding: '4px 8px',
+                borderRadius: 8,
               }}
             >
-              <Link
-                to="/profile"
-                title={`${sessionUser.email} · @${sessionUser.userName}`}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  textDecoration: 'none',
-                  padding: '4px 8px',
-                  borderRadius: 8,
-                  transition: 'background 150ms ease'
-                }}
-                className="nav-profile-link"
-              >
-                <UserAvatar
-                  name={navDisplayName}
-                  avatarColor={hashUserIdToColor(sessionUser.userId)}
-                  size={32}
-                />
+              <UserAvatar
+                name={firstName}
+                avatarId={sessionUser.avatarId}
+                avatarColor="#7c3aed"
+                size={32}
+              />
+              <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
                 <span
                   className="display"
                   style={{
-                    fontSize: 15,
+                    fontSize: 14,
                     fontWeight: 600,
                     color: 'var(--text-primary)',
                     whiteSpace: 'nowrap',
-                    maxWidth: 'min(200px, 30vw)',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
+                    lineHeight: 1.2,
                   }}
                 >
-                  {navDisplayName}
+                  Hi, {firstName}
                 </span>
-              </Link>
-            </div>
-          ) : null}
-        </div>
+                <span
+                  style={{
+                    fontSize: 12,
+                    color: 'var(--text-muted)',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  @{sessionUser.userName}
+                </span>
+              </span>
+            </Link>
+            <button
+              type="button"
+              className="btn-ghost nav-sign-out"
+              aria-label="Sign out"
+              title="Sign out"
+              onClick={() => {
+                void (async () => {
+                  const result = await logout();
+                  if (result.ok) {
+                    void navigate(LOGIN_AUTH_REQUIRED_PATH, { replace: true });
+                  }
+                })();
+              }}
+            >
+              <SignOutIcon />
+            </button>
+          </div>
+        ) : null}
       </div>
     </nav>
   );

@@ -334,7 +334,7 @@ export function useCookieAuthModel() {
     }
   }
 
-  async function loadMe(): Promise<{ ok: true } | { ok: false }> {
+  async function loadMe(): Promise<{ ok: true; user: LoginResponse } | { ok: false }> {
     clearFeedback();
     try {
       const response = await fetch(`${API_BASE_URL}${getAuthMeContract.path}`, {
@@ -351,7 +351,7 @@ export function useCookieAuthModel() {
       rememberFirstNameFromRegistration(user.firstName, user.email);
       setSessionUser(user);
       setStatus('Profile loaded.');
-      return { ok: true };
+      return { ok: true, user };
     } catch (err) {
       setError(formatErr(err));
       return { ok: false };
@@ -360,7 +360,6 @@ export function useCookieAuthModel() {
 
   async function logout(): Promise<{ ok: true } | { ok: false }> {
     clearFeedback();
-    setSessionUser(null);
     try {
       const response = await fetch(`${API_BASE_URL}${AUTH_LOGOUT_ENDPOINT}`, {
         ...FETCH_INIT,
@@ -374,6 +373,8 @@ export function useCookieAuthModel() {
     } catch (err) {
       setError(formatErr(err));
       return { ok: false };
+    } finally {
+      setSessionUser(null);
     }
   }
 

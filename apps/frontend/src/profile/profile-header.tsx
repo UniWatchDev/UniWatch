@@ -3,6 +3,7 @@ import type { ProfileIdentity } from '@/types/profile';
 
 export interface ProfileHeaderProps {
   readonly identity: ProfileIdentity;
+  readonly canEdit: boolean;
   readonly onEdit: () => void;
 }
 
@@ -27,32 +28,35 @@ function PencilIcon() {
   );
 }
 
-export function ProfileHeader({ identity, onEdit }: ProfileHeaderProps) {
+export function ProfileHeader({ identity, canEdit, onEdit }: ProfileHeaderProps) {
   return (
     <section className="card profile-header-card" style={{ overflow: 'hidden', padding: 0 }}>
       <div className="profile-banner-gradient" style={{ height: 120, position: 'relative' }}>
-        <button
-          type="button"
-          className="btn-ghost"
-          onClick={onEdit}
-          style={{
-            position: 'absolute',
-            top: 12,
-            right: 12,
-            padding: '6px 12px',
-            fontSize: 13,
-            background: 'rgba(0,0,0,0.35)',
-            borderColor: 'var(--border-medium)'
-          }}
-        >
-          <PencilIcon />
-          Edit profile
-        </button>
+        {canEdit ? (
+          <button
+            type="button"
+            className="btn-ghost"
+            onClick={onEdit}
+            style={{
+              position: 'absolute',
+              top: 12,
+              right: 12,
+              padding: '6px 12px',
+              fontSize: 13,
+              background: 'rgba(0,0,0,0.35)',
+              borderColor: 'var(--border-medium)'
+            }}
+          >
+            <PencilIcon />
+            Edit profile
+          </button>
+        ) : null}
       </div>
       <div style={{ padding: '0 24px 24px', marginTop: -48, position: 'relative' }}>
         <UserAvatar
           name={identity.displayName}
           avatarColor={identity.avatarColor}
+          avatarId={identity.avatarId}
           size={96}
           ring
         />
