@@ -1,30 +1,8 @@
 import { useState, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { UserAvatar } from '@/components/user-avatar';
 import { MOCK_ROOMS, MOCK_CHAT } from '@/data/mock-data';
 import type { ChatMessage, Member } from '@/types/room';
-
-function Avatar({ member, size = 36 }: { member: Member; size?: number }) {
-  const initials = member.name.slice(0, 2).toUpperCase();
-  return (
-    <div
-      style={{
-        width: size,
-        height: size,
-        borderRadius: '50%',
-        background: member.avatarColor,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontSize: size * 0.38,
-        fontWeight: 700,
-        color: '#fff',
-        flexShrink: 0,
-      }}
-    >
-      {initials}
-    </div>
-  );
-}
 
 function StatusDot({ status }: { status: Member['status'] }) {
   const color = status === 'active' ? '#4ade80' : status === 'away' ? '#fbbf24' : '#64748b';
@@ -421,7 +399,7 @@ export function RoomPage() {
               {room.members.map((member) => (
                 <li key={member.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <div style={{ position: 'relative', flexShrink: 0 }}>
-                    <Avatar member={member} size={32} />
+                    <UserAvatar name={member.name} avatarColor={member.avatarColor} size={32} />
                     <span style={{ position: 'absolute', bottom: 0, right: 0 }}>
                       <StatusDot status={member.status} />
                     </span>

@@ -442,6 +442,24 @@ input[type='range']::-moz-range-thumb {
   animation: fade-in 200ms ease both;
 }
 
+/* ── Profile page ───────────────────────────────────────────── */
+.profile-banner-gradient {
+  background: linear-gradient(135deg, #4c1d95 0%, #312e81 40%, #1e3a8a 100%);
+}
+
+.profile-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.nav-profile-link:hover {
+  background: var(--border-subtle);
+}
+.nav-profile-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 /* ── Site footer links ───────────────────────────────────────── */
 .site-footer-link {
   color: var(--text-muted);

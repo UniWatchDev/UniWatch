@@ -1,11 +1,8 @@
 import { Link, useLocation } from 'react-router-dom';
 
-import {
-  firstNameFromEmail,
-  getNavGreetingVariant,
-  getStoredFirstName
-} from '@/auth/profile-local';
 import { useCookieAuth } from '@/auth/use-cookie-auth';
+import { UserAvatar } from '@/components/user-avatar';
+import { hashUserIdToColor } from '@/utils/avatar-color';
 
 const AUTH_PATH_PREFIXES = [
   '/login',
@@ -30,12 +27,10 @@ export function NavBar() {
 
   if (isRoom) return null;
 
-  const firstName =
+  const navDisplayName =
     sessionUser !== null
-      ? sessionUser.firstName.trim() || getStoredFirstName() || firstNameFromEmail(sessionUser.email)
+      ? sessionUser.firstName.trim() || sessionUser.userName
       : '';
-  const greetingVariant = sessionUser !== null ? getNavGreetingVariant() : 'hi';
-  const greetingLead = greetingVariant === 'hi' ? 'Hi' : 'Welcome Back';
 
   return (
     <nav className="navbar">
@@ -133,7 +128,7 @@ export function NavBar() {
                     void logout();
                   }}
                 >
-                  Logout
+                  Sign out
                 </button>
               </>
             ) : (
@@ -166,32 +161,44 @@ export function NavBar() {
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 14,
+                gap: 12,
                 flexShrink: 0,
               }}
             >
               <Link
-                to="/change-password"
-                className="btn-ghost"
-                style={{ padding: '6px 12px', fontSize: 13, textDecoration: 'none' }}
-              >
-                Change password
-              </Link>
-              <span
-                className="display"
+                to="/profile"
                 title={`${sessionUser.email} · @${sessionUser.userName}`}
                 style={{
-                  fontSize: 15,
-                  fontWeight: 600,
-                  color: 'var(--text-primary)',
-                  whiteSpace: 'nowrap',
-                  maxWidth: 'min(320px, 45vw)',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  textDecoration: 'none',
+                  padding: '4px 8px',
+                  borderRadius: 8,
+                  transition: 'background 150ms ease'
                 }}
+                className="nav-profile-link"
               >
-                {greetingLead}, {firstName}
-              </span>
+                <UserAvatar
+                  name={navDisplayName}
+                  avatarColor={hashUserIdToColor(sessionUser.userId)}
+                  size={32}
+                />
+                <span
+                  className="display"
+                  style={{
+                    fontSize: 15,
+                    fontWeight: 600,
+                    color: 'var(--text-primary)',
+                    whiteSpace: 'nowrap',
+                    maxWidth: 'min(200px, 30vw)',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  {navDisplayName}
+                </span>
+              </Link>
             </div>
           ) : null}
         </div>

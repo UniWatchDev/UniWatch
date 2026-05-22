@@ -13,6 +13,7 @@ import { Registration } from '@/pages/registration';
 import { ResetPasswordPage } from '@/pages/reset-password-page';
 import { RoomPage } from '@/pages/room';
 import { VerifyEmailPage } from '@/pages/verify-email-page';
+import { ProfilePage } from '@/profile/profile-page';
 
 export default function App() {
   return (
@@ -28,6 +29,7 @@ export default function App() {
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
             <Route path="/app" element={<ProtectedAppPage />} />
+            <Route path="/profile" element={<ProfilePage />} />
             <Route path="/" element={<Lobby />} />
             <Route path="/room/:id" element={<RoomPage />} />
             <Route path="/rooms/new" element={<CreateRoom />} />
