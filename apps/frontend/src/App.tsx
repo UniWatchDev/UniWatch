@@ -1,7 +1,7 @@
 import { Route, Routes } from 'react-router-dom';
 
 import { CookieAuthProvider } from '@/auth/cookie-auth-provider';
-import { NavBar } from '@/components/nav-bar';
+import { NavBar } from '@/nav/nav-bar';
 import { ProtectedAppPage } from '@/protected-app-page';
 import { ChangePasswordPage } from '@/pages/change-password';
 import { CreateRoom } from '@/pages/create-room';
