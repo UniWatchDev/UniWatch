@@ -1,6 +1,7 @@
 import { createZodDto } from 'nestjs-zod';
 
 import type { LoginResponse } from '@repo/schemas/auth';
+import { userProfileSchema } from '@repo/schemas/profile';
 import {
   authNonEnumeratingAckSchema,
   changePasswordBodySchema,
@@ -52,7 +53,7 @@ export class RegisterResponseDto extends createZodDto(registerResponseSchema) {}
 
 export class LoginDto extends createZodDto(loginBodySchema) {}
 
-export class LoginResponseDto extends createZodDto(loginResponseSchema) {}
+export class LoginResponseDto extends createZodDto(userProfileSchema) {}
 
 export class VerifyEmailDto extends createZodDto(verifyEmailBodySchema) {}
 

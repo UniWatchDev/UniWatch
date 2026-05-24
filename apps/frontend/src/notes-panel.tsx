@@ -10,6 +10,7 @@ import {
 } from '@repo/contracts/notes';
 import type { Note } from '@repo/schemas/notes';
 
+import { redirectToLogin } from '@/auth/auth-redirect';
 import {
   SIGN_IN_REQUIRED_MESSAGE,
   assertOkOrSession
@@ -49,7 +50,7 @@ export function NotesPanel() {
       const msg = err instanceof Error ? err.message : 'failed to load';
       setError(msg);
       if (msg === SIGN_IN_REQUIRED_MESSAGE) {
-        void navigate('/login', { replace: true });
+        redirectToLogin(navigate, { replace: true });
       }
     } finally {
       setLoading(false);
@@ -86,7 +87,7 @@ export function NotesPanel() {
       const msg = err instanceof Error ? err.message : 'failed to publish';
       setError(msg);
       if (msg === SIGN_IN_REQUIRED_MESSAGE) {
-        void navigate('/login', { replace: true });
+        redirectToLogin(navigate, { replace: true });
       }
     }
   }
@@ -117,7 +118,7 @@ export function NotesPanel() {
       const msg = err instanceof Error ? err.message : 'failed to update';
       setError(msg);
       if (msg === SIGN_IN_REQUIRED_MESSAGE) {
-        void navigate('/login', { replace: true });
+        redirectToLogin(navigate, { replace: true });
       }
     }
   }
@@ -142,7 +143,7 @@ export function NotesPanel() {
       const msg = err instanceof Error ? err.message : 'failed to delete';
       setError(msg);
       if (msg === SIGN_IN_REQUIRED_MESSAGE) {
-        void navigate('/login', { replace: true });
+        redirectToLogin(navigate, { replace: true });
       }
     }
   }

@@ -21,6 +21,7 @@ import type {
   VerifyEmailBody,
   VerifyEmailResponse
 } from '@repo/schemas/auth';
+import { avatarPresetIdSchema, type UpdateProfileBody } from '@repo/schemas/profile';
 
 import type {
   LoginBody,
@@ -89,7 +90,11 @@ function userToLoginResponse(doc: UserDocument): LoginResponse {
       ? { lastName: doc.lastName }
       : {}),
     email: doc.email,
-    emailVerified: doc.emailVerified
+    phoneNumber: doc.phoneNumber,
+    emailVerified: doc.emailVerified,
+    isProfilePrivate: doc.isProfilePrivate,
+    avatarId: avatarPresetIdSchema.parse(doc.avatarId),
+    createdAt: doc.createdAt.toISOString()
   };
 }
 
@@ -482,5 +487,23 @@ export class AuthService {
       throw new UnauthorizedException('Email not verified');
     }
     return userToLoginResponse(user);
+  }
+
+  async updateMe(payload: JwtAccessPayload, body: UpdateProfileBody): Promise<LoginResponse> {
+    await this.assertAccessTokenClaims(payload);
+    const updated = await this.users.updateProfile(payload.sub, {
+      firstName: body.firstName,
+      lastName: body.lastName,
+      phoneNumber: body.phoneNumber,
+      isProfilePrivate: body.isProfilePrivate,
+      avatarId: body.avatarId
+    });
+    if (updated === null || updated.email !== payload.email) {
+      throw new UnauthorizedException('Invalid token');
+    }
+    if (!updated.emailVerified) {
+      throw new UnauthorizedException('Email not verified');
+    }
+    return userToLoginResponse(updated);
   }
 }

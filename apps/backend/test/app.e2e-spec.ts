@@ -18,7 +18,9 @@ import {
   AUTH_RESET_PASSWORD_ENDPOINT,
   AUTH_VERIFY_EMAIL_ENDPOINT
 } from '@repo/consts/auth';
+import { AUTH_PATCH_ME_ENDPOINT } from '@repo/consts/profile';
 import { forgotPasswordAckSchema } from '@repo/schemas/auth';
+import { getUserProfileResponseSchema } from '@repo/schemas/profile';
 import { movieResponseSchema } from '@repo/schemas/movies';
 import { noteSchema } from '@repo/schemas/notes';
 import { roomResponseSchema } from '@repo/schemas/rooms';
@@ -488,6 +490,129 @@ describe('Backend bootstrap (e2e)', () => {
 
   it('auth: refresh without cookies returns 401', async () => {
     await request(app.getHttpServer()).post(AUTH_REFRESH_ENDPOINT).expect(401);
+  });
+
+  it('auth: PATCH me updates profile and rejects unknown keys', async () => {
+    const agent = request.agent(app.getHttpServer());
+    const registerBody = uniqueRegisterBody('pm');
+    await registerAndVerifyEmail(agent, registerBody);
+    await agent
+      .post(AUTH_LOGIN_ENDPOINT)
+      .send({
+        identifier: registerBody.email,
+        password: registerBody.password
+      })
+      .expect(200);
+
+    const patchRes = await agent
+      .patch(AUTH_PATCH_ME_ENDPOINT)
+      .send({
+        firstName: 'Patched',
+        lastName: '',
+        phoneNumber: registerBody.phoneNumber,
+        isProfilePrivate: true,
+        avatarId: 'coral-popcorn'
+      })
+      .expect(200);
+    const patched = loginResponseSchema.parse(patchRes.body as unknown);
+    expect(patched.firstName).toBe('Patched');
+    expect(patched.lastName).toBeUndefined();
+    expect(patched.isProfilePrivate).toBe(true);
+    expect(patched.avatarId).toBe('coral-popcorn');
+    expect(patched.phoneNumber).toMatch(/^\+9725\d{8}$/);
+    expect(patched.createdAt).toEqual(expect.any(String));
+
+    await agent
+      .patch(AUTH_PATCH_ME_ENDPOINT)
+      .send({
+        firstName: 'Patched',
+        lastName: '',
+        phoneNumber: registerBody.phoneNumber,
+        isProfilePrivate: true,
+        avatarId: 'coral-popcorn',
+        userName: 'hacker'
+      })
+      .expect(400);
+
+    await agent
+      .patch(AUTH_PATCH_ME_ENDPOINT)
+      .send({
+        firstName: 'Patched',
+        lastName: '',
+        phoneNumber: registerBody.phoneNumber,
+        isProfilePrivate: true,
+        avatarId: 'not-a-preset'
+      })
+      .expect(400);
+  });
+
+  it('auth: GET user by username respects private profile for strangers', async () => {
+    const owner = request.agent(app.getHttpServer());
+    const ownerBody = uniqueRegisterBody('own');
+    await registerAndVerifyEmail(owner, ownerBody);
+    const ownerLogin = await owner
+      .post(AUTH_LOGIN_ENDPOINT)
+      .send({
+        identifier: ownerBody.email,
+        password: ownerBody.password
+      })
+      .expect(200);
+    const ownerMe = loginResponseSchema.parse(ownerLogin.body as unknown);
+
+    await owner
+      .patch(AUTH_PATCH_ME_ENDPOINT)
+      .send({
+        firstName: 'Owner',
+        lastName: 'User',
+        phoneNumber: ownerBody.phoneNumber,
+        isProfilePrivate: true,
+        avatarId: 'sky-star'
+      })
+      .expect(200);
+
+    const stranger = request.agent(app.getHttpServer());
+    const strangerBody = uniqueRegisterBody('str');
+    await registerAndVerifyEmail(stranger, strangerBody);
+    await stranger
+      .post(AUTH_LOGIN_ENDPOINT)
+      .send({
+        identifier: strangerBody.email,
+        password: strangerBody.password
+      })
+      .expect(200);
+
+    const privateView = await stranger
+      .get(`/api/users/${encodeURIComponent(ownerMe.userName)}`)
+      .expect(200);
+    const privateParsed = getUserProfileResponseSchema.parse(privateView.body as unknown);
+    expect(privateParsed.viewerIsOwner).toBe(false);
+    expect(privateParsed.profile.isProfilePrivate).toBe(true);
+    expect(privateParsed.profile.userName).toBe(ownerMe.userName);
+    expect(privateParsed.profile.firstName).toBe('Owner');
+    expect(privateParsed.profile.avatarId).toBe('sky-star');
+
+    await owner
+      .patch(AUTH_PATCH_ME_ENDPOINT)
+      .send({
+        firstName: 'Owner',
+        lastName: 'User',
+        phoneNumber: ownerBody.phoneNumber,
+        isProfilePrivate: false,
+        avatarId: 'sky-star'
+      })
+      .expect(200);
+
+    const publicView = await stranger
+      .get(`/api/users/${encodeURIComponent(ownerMe.userName)}`)
+      .expect(200);
+    const publicParsed = getUserProfileResponseSchema.parse(publicView.body as unknown);
+    expect(publicParsed.profile.isProfilePrivate).toBe(false);
+
+    const ownerView = await owner
+      .get(`/api/users/${encodeURIComponent(ownerMe.userName)}`)
+      .expect(200);
+    const ownerParsed = getUserProfileResponseSchema.parse(ownerView.body as unknown);
+    expect(ownerParsed.viewerIsOwner).toBe(true);
   });
 });
 

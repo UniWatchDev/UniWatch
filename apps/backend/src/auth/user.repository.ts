@@ -134,6 +134,36 @@ export class UserRepository {
   }
 
   /** Password reset: bump version, set hash, clear reset token fields. */
+  updateProfile(
+    id: string,
+    data: {
+      firstName: string;
+      lastName?: string | undefined;
+      phoneNumber: string;
+      isProfilePrivate: boolean;
+      avatarId: string;
+    }
+  ): Promise<UserDocument | null> {
+    const setFields: Record<string, string | boolean> = {
+      firstName: data.firstName,
+      phoneNumber: data.phoneNumber,
+      isProfilePrivate: data.isProfilePrivate,
+      avatarId: data.avatarId
+    };
+    const update: {
+      $set: Record<string, string | boolean>;
+      $unset?: Record<string, ''>;
+    } = { $set: setFields };
+
+    if (data.lastName === undefined) {
+      update.$unset = { lastName: '' };
+    } else {
+      setFields['lastName'] = data.lastName;
+    }
+
+    return this.model.findByIdAndUpdate(id, update, { returnDocument: 'after' });
+  }
+
   completePasswordReset(id: string, passwordHash: string): Promise<UserDocument | null> {
     return this.model.findByIdAndUpdate(
       id,
