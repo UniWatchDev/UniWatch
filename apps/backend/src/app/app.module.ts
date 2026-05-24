@@ -21,6 +21,7 @@ import { RealtimeModule } from '@/realtime/realtime.module';
 import { HttpExceptionFilter } from '@/filters/http-exception.filter';
 import { RequestIdMiddleware } from '@/middleware/request-id.middleware';
 import { JwtModule } from '@nestjs/jwt';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AuthModule } from '@/auth/auth.module';
 import { MoviesModule } from '@/movies/movies.module';
 import { RoomsModule } from '@/rooms/rooms.module';
@@ -83,6 +84,7 @@ const envFilePath = [join(backendRoot, `.env.${nodeEnv}`)];
       }),
       inject: [ConfigService<Env, true>]
     }),
+    ScheduleModule.forRoot(),
     HealthModule,
     NotesModule,
     RealtimeModule,

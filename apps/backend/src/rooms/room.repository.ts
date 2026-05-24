@@ -108,4 +108,12 @@ export class RoomRepository {
       { returnDocument: 'after' }
     );
   }
+
+  async softDeleteOlderThan(cutoff: Date): Promise<{ deletedCount: number }> {
+    const result = await this.model.updateMany(
+      { deleted_at: null, created_at: { $lt: cutoff } },
+      { $set: { deleted_at: new Date() } }
+    );
+    return { deletedCount: result.modifiedCount };
+  }
 }
