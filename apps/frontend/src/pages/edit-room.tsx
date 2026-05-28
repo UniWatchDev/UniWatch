@@ -182,8 +182,25 @@ export function EditRoom() {
       const path = updateRoomContract.path.replace(':id', encodeURIComponent(id));
       let patchBody: Record<string, unknown> = {};
       if (field === 'name') patchBody = { name: drafts.name };
-      else if (field === 'isPrivate') patchBody = { room_type: drafts.isPrivate ? 'private' : 'public' };
-      else if (field === 'password') patchBody = { password: drafts.password || null };
+      else if (field === 'isPrivate') {
+        if (drafts.isPrivate && !room.password && !drafts.password.trim()) {
+          setApiError('A password is required before making a room private.');
+          setSaving(false);
+          return;
+        }
+        patchBody = {
+          room_type: drafts.isPrivate ? 'private' : 'public',
+          ...(drafts.isPrivate && drafts.password.trim() ? { password: drafts.password.trim() } : {}),
+        };
+      }
+      else if (field === 'password') {
+        if (!drafts.password.trim()) {
+          setApiError('Password cannot be empty for a private room.');
+          setSaving(false);
+          return;
+        }
+        patchBody = { password: drafts.password };
+      }
       else if (field === 'movieName') patchBody = { movie_name: drafts.movieName || null };
       else if (field === 'movieDescription') patchBody = { movie_description: drafts.movieDescription || null };
 
@@ -329,32 +346,45 @@ export function EditRoom() {
             onSave={() => { void saveField('isPrivate'); }}
             onCancel={() => { cancelEdit('isPrivate'); }}
           >
-            <div style={{ display: 'flex', gap: 8 }}>
-              {(['public', 'private'] as const).map((v) => {
-                const isActive = v === 'private' ? drafts.isPrivate : !drafts.isPrivate;
-                return (
-                  <button
-                    key={v}
-                    type="button"
-                    onClick={() => { setDrafts((p) => ({ ...p, isPrivate: v === 'private' })); }}
-                    style={{
-                      flex: 1,
-                      padding: '9px 12px',
-                      border: isActive ? '2px solid var(--accent)' : '1px solid var(--border-medium)',
-                      borderRadius: 8,
-                      background: isActive ? 'var(--accent-dim)' : 'var(--bg-input)',
-                      color: isActive ? 'var(--text-primary)' : 'var(--text-muted)',
-                      fontFamily: 'var(--font-body)',
-                      fontSize: 13,
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      transition: 'all 200ms ease',
-                    }}
-                  >
-                    {v === 'public' ? '🌐 Public' : '🔒 Private'}
-                  </button>
-                );
-              })}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {(['public', 'private'] as const).map((v) => {
+                  const isActive = v === 'private' ? drafts.isPrivate : !drafts.isPrivate;
+                  return (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => { setDrafts((p) => ({ ...p, isPrivate: v === 'private' })); }}
+                      style={{
+                        flex: 1,
+                        padding: '9px 12px',
+                        border: isActive ? '2px solid var(--accent)' : '1px solid var(--border-medium)',
+                        borderRadius: 8,
+                        background: isActive ? 'var(--accent-dim)' : 'var(--bg-input)',
+                        color: isActive ? 'var(--text-primary)' : 'var(--text-muted)',
+                        fontFamily: 'var(--font-body)',
+                        fontSize: 13,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        transition: 'all 200ms ease',
+                      }}
+                    >
+                      {v === 'public' ? '🌐 Public' : '🔒 Private'}
+                    </button>
+                  );
+                })}
+              </div>
+              {drafts.isPrivate && !room.password && (
+                <input
+                  className="input"
+                  type="password"
+                  placeholder="Set a password (required for private rooms)"
+                  value={drafts.password}
+                  onChange={(e) => { setDrafts((p) => ({ ...p, password: e.target.value })); }}
+                  maxLength={64}
+                  autoComplete="new-password"
+                />
+              )}
             </div>
           </EditRow>
 
