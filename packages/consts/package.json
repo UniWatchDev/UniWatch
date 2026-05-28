@@ -8,6 +8,7 @@
     "./notes": "./dist/notes/notes.consts.js",
     "./root": "./dist/root/root.consts.js",
     "./starter": "./dist/starter/starter.consts.js",
+    "./profile": "./dist/profile/profile.consts.js",
     "./rooms": "./dist/rooms/rooms.consts.js"
   },
   "scripts": {

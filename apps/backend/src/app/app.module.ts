@@ -25,6 +25,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { AuthModule } from '@/auth/auth.module';
 import { MoviesModule } from '@/movies/movies.module';
 import { RoomsModule } from '@/rooms/rooms.module';
+import { UsersModule } from '@/users/users.module';
 
 const nodeEnv = process.env['NODE_ENV'] ?? 'development';
 const backendRoot = process.cwd().endsWith('/apps/backend')
@@ -90,7 +91,8 @@ const envFilePath = [join(backendRoot, `.env.${nodeEnv}`)];
     RealtimeModule,
     AuthModule,
     MoviesModule,
-    RoomsModule
+    RoomsModule,
+    UsersModule
   ],
   controllers: [AppController],
   providers: [

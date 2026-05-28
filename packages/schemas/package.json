@@ -8,7 +8,8 @@
     "./errors": "./dist/errors/problem-details.schemas.js",
     "./root": "./dist/root/root.schemas.js",
     "./movies": "./dist/movies/movie.schemas.js",
-    "./rooms": "./dist/rooms/room.schemas.js"
+    "./rooms": "./dist/rooms/room.schemas.js",
+    "./profile": "./dist/profile/profile.schemas.js"
   },
   "scripts": {
     "dev": "tsc --watch --preserveWatchOutput",

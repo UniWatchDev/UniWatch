@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 
 import { passwordSchema } from '@repo/schemas/auth';
 
+import { redirectToLogin } from '@/auth/auth-redirect';
 import { useCookieAuth } from '@/auth/use-cookie-auth';
 import { SiteFooter } from '@/components/site-footer';
 
@@ -18,7 +19,7 @@ export function ChangePasswordPage() {
 
   useEffect(() => {
     if (sessionUser === null) {
-      void navigate('/login', { replace: true });
+      redirectToLogin(navigate, { replace: true });
     }
   }, [sessionUser, navigate]);
 

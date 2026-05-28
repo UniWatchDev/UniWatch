@@ -7,6 +7,25 @@ import { API_BASE_URL } from '@repo/consts/api';
 import type { RoomResponse, RoomStatus } from '@repo/schemas/rooms';
 import type { ChatMessage } from '@/types/room';
 import { MOCK_CHAT } from '@/data/mock-data';
+import { UserAvatar } from '@/components/user-avatar';
+import { MOCK_ROOMS, MOCK_CHAT } from '@/data/mock-data';
+import type { ChatMessage, Member } from '@/types/room';
+
+function StatusDot({ status }: { status: Member['status'] }) {
+  const color = status === 'active' ? '#4ade80' : status === 'away' ? '#fbbf24' : '#64748b';
+  return (
+    <span
+      style={{
+        display: 'inline-block',
+        width: 8,
+        height: 8,
+        borderRadius: '50%',
+        background: color,
+        flexShrink: 0,
+      }}
+    />
+  );
+}
 
 function PlayIcon() {
   return (
@@ -565,6 +584,42 @@ export function RoomPage() {
             <p style={{ margin: '10px 0 0', fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>
               Live member list coming with real-time integration.
             </p>
+            <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {room.members.map((member) => (
+                <li key={member.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ position: 'relative', flexShrink: 0 }}>
+                    <UserAvatar name={member.name} avatarColor={member.avatarColor} size={32} />
+                    <span style={{ position: 'absolute', bottom: 0, right: 0 }}>
+                      <StatusDot status={member.status} />
+                    </span>
+                  </div>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {member.name}
+                      </span>
+                      {member.isHost && (
+                        <span
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 700,
+                            padding: '1px 5px',
+                            borderRadius: 4,
+                            background: 'var(--accent-dim)',
+                            color: 'var(--accent-hover)',
+                            border: '1px solid rgba(124,58,237,0.25)',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          HOST
+                        </span>
+                      )}
+                    </div>
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>@{member.username}</span>
+                  </div>
+                </li>
+              ))}
+            </ul>
           </section>
 
           {/* Chat */}

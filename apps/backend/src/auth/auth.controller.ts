@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   HttpCode,
+  Patch,
   Post,
   Req,
   Res,
@@ -29,6 +30,7 @@ import {
 } from '@repo/consts/auth';
 
 import { AUTH_ACCESS_COOKIE, AUTH_REFRESH_COOKIE } from '@/auth/auth.consts';
+import { UpdateProfileDto } from '@/users/users.dto';
 import {
   AuthNonEnumeratingAckDto,
   ChangePasswordDto,
@@ -191,6 +193,25 @@ export class AuthController {
       throw new UnauthorizedException('Missing or invalid access token');
     }
     return this.authService.getMeForJwtPayload(payload);
+  }
+
+  @Patch(AUTH_ROUTE_ME)
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(200)
+  @ZodResponse({
+    status: 200,
+    description: 'Update own profile (firstName, lastName, phone, privacy)',
+    type: LoginResponseDto
+  })
+  async patchMe(
+    @Req() req: Request,
+    @Body() body: UpdateProfileDto
+  ): Promise<LoginResponse> {
+    const payload = req.authPayload;
+    if (payload === undefined) {
+      throw new UnauthorizedException('Missing or invalid access token');
+    }
+    return this.authService.updateMe(payload, body);
   }
 
   @Post(AUTH_ROUTE_LOGOUT)
