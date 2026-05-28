@@ -129,7 +129,7 @@ export function Registration() {
                 Upload photo
               </button>
               <p style={{ margin: '8px 0 0', fontSize: 11, color: 'var(--text-muted)' }}>
-                Preview only — not sent to the server.
+                Preview only - not sent to the server.
               </p>
             </div>
           </div>
@@ -305,7 +305,7 @@ export function Registration() {
                 }}
               />
               <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                Not sent to the server — UI placeholder only.
+                Not sent to the server - UI placeholder only.
               </span>
             </div>
 

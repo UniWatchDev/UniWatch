@@ -1,4 +1,4 @@
-export type RoomStatus = 'watching' | 'preparing' | 'ready';
+export type { RoomStatus, RoomType, RoomResponse } from '@repo/schemas/rooms';
 
 export type MemberStatus = 'active' | 'away' | 'free';
 
@@ -17,19 +17,4 @@ export interface ChatMessage {
   userName: string;
   content: string;
   timestamp: Date;
-}
-
-export interface Room {
-  id: string;
-  name: string;
-  description?: string;
-  movieName: string;
-  movieDescription?: string;
-  genre?: string;
-  rating?: number;
-  status: RoomStatus;
-  isPrivate: boolean;
-  viewerCount: number;
-  host: string;
-  members: Member[];
 }

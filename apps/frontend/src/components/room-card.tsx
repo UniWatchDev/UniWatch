@@ -1,8 +1,8 @@
 import { useNavigate } from 'react-router-dom';
-import type { Room, RoomStatus } from '@/types/room';
+import type { RoomResponse, RoomStatus } from '@repo/schemas/rooms';
 
 interface RoomCardProps {
-  room: Room;
+  room: RoomResponse;
 }
 
 function StatusBadge({ status }: { status: RoomStatus }) {
@@ -30,17 +30,6 @@ function LockIcon() {
   );
 }
 
-function StarRating({ rating }: { rating: number }) {
-  return (
-    <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="#eab308">
-        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-      </svg>
-      <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>{rating.toFixed(1)}</span>
-    </span>
-  );
-}
-
 const STATUS_BORDER_CLASS: Record<RoomStatus, string> = {
   watching: 'room-card-watching',
   preparing: 'room-card-preparing',
@@ -49,10 +38,11 @@ const STATUS_BORDER_CLASS: Record<RoomStatus, string> = {
 
 export function RoomCard({ room }: RoomCardProps) {
   const navigate = useNavigate();
+  const isPrivate = room.room_type === 'private';
 
   return (
     <div
-      className={`card ${STATUS_BORDER_CLASS[room.status]}`}
+      className={`card ${room.status !== undefined ? STATUS_BORDER_CLASS[room.status] : ''}`}
       onClick={() => { void navigate(`/room/${room.id}`); }}
       style={{ padding: '16px', cursor: 'pointer', userSelect: 'none' }}
       role="button"
@@ -68,15 +58,17 @@ export function RoomCard({ room }: RoomCardProps) {
           >
             {room.name}
           </span>
-          <StatusBadge status={room.status} />
+          {room.status !== undefined && <StatusBadge status={room.status} />}
         </div>
-        {room.isPrivate && <LockIcon />}
+        {isPrivate && <LockIcon />}
       </div>
 
       {/* Movie name */}
-      <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '0 0 4px', fontWeight: 500 }}>
-        {room.movieName}
-      </p>
+      {room.movie_name && (
+        <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '0 0 4px', fontWeight: 500 }}>
+          {room.movie_name}
+        </p>
+      )}
 
       {/* Description */}
       {room.description && (
@@ -95,43 +87,24 @@ export function RoomCard({ room }: RoomCardProps) {
         </p>
       )}
 
-      {/* Genre + rating row */}
-      {(room.genre ?? room.rating !== undefined) && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-          {room.genre && (
-            <span
-              style={{
-                fontSize: 11,
-                fontWeight: 600,
-                padding: '2px 8px',
-                borderRadius: 6,
-                background: 'var(--accent-dim)',
-                color: 'var(--accent-hover)',
-                border: '1px solid rgba(124,58,237,0.2)',
-              }}
-            >
-              {room.genre}
-            </span>
-          )}
-          {room.rating !== undefined && <StarRating rating={room.rating} />}
-        </div>
-      )}
-
-      {/* Private label or viewer count */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        {room.isPrivate ? (
+      {/* Owner + viewer count row */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 8 }}>
+        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+          by <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>{room.creator_name}</span>
+        </span>
+        {isPrivate ? (
           <span style={{ fontSize: 12, color: 'var(--accent-hover)', fontWeight: 600 }}>
             Password required
           </span>
         ) : (
-          <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ color: 'var(--text-muted)' }}>
               <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
               <circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="1.8" />
               <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
             </svg>
-            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{room.viewerCount} watching</span>
-          </>
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{room.member_count} watching</span>
+          </div>
         )}
       </div>
     </div>

@@ -1,6 +1,7 @@
-import { Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes } from 'react-router-dom';
 
 import { CookieAuthProvider } from '@/auth/cookie-auth-provider';
+import { RequireAuth } from '@/auth/require-auth';
 import { NavBar } from '@/nav/nav-bar';
 import { ProtectedAppPage } from '@/protected-app-page';
 import { ChangePasswordPage } from '@/pages/change-password';
@@ -32,10 +33,11 @@ export default function App() {
             <Route path="/app" element={<ProtectedAppPage />} />
             <Route path="/profile" element={<ProfileRedirect />} />
             <Route path="/u/:userName" element={<ProfilePage />} />
-            <Route path="/" element={<Lobby />} />
-            <Route path="/room/:id" element={<RoomPage />} />
-            <Route path="/rooms/new" element={<CreateRoom />} />
-            <Route path="/rooms/:id/edit" element={<EditRoom />} />
+            <Route path="/" element={<Navigate to="/rooms" replace />} />
+            <Route path="/rooms" element={<RequireAuth><Lobby /></RequireAuth>} />
+            <Route path="/room/:id" element={<RequireAuth><RoomPage /></RequireAuth>} />
+            <Route path="/rooms/new" element={<RequireAuth><CreateRoom /></RequireAuth>} />
+            <Route path="/rooms/:id/edit" element={<RequireAuth><EditRoom /></RequireAuth>} />
           </Routes>
         </div>
       </div>

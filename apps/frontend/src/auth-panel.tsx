@@ -182,7 +182,7 @@ export function AuthPanel() {
       verifyEmailResponseSchema.parse(
         JSON.parse(await response.text()) as unknown
       );
-      setStatus('Email verified — you can log in now.');
+      setStatus('Email verified - you can log in now.');
     } catch (err) {
       setError(formatErr(err));
     }
@@ -277,7 +277,7 @@ export function AuthPanel() {
       }
       setSessionUser(null);
       setStatus(
-        'Password updated — refresh sessions were revoked and old access tokens no longer work.'
+        'Password updated - refresh sessions were revoked and old access tokens no longer work.'
       );
     } catch (err) {
       setError(formatErr(err));
@@ -320,7 +320,7 @@ export function AuthPanel() {
         JSON.parse(raw) as unknown
       );
       setSessionUser(user);
-      setStatus('Logged in — cookies set. Try Refresh or Me.');
+      setStatus('Logged in - cookies set. Try Refresh or Me.');
     } catch (err) {
       setError(formatErr(err));
     }
@@ -382,7 +382,7 @@ export function AuthPanel() {
       if (response.status !== 204) {
         throw new Error(`logout HTTP ${String(response.status)}`);
       }
-      setStatus('Logged out — cookies cleared.');
+      setStatus('Logged out - cookies cleared.');
     } catch (err) {
       setError(formatErr(err));
     }

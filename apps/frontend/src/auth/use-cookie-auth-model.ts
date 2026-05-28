@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { API_BASE_URL } from '@repo/consts/api';
 import {
   AUTH_FORGOT_PASSWORD_ENDPOINT,
@@ -58,6 +58,22 @@ export function useCookieAuthModel() {
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sessionUser, setSessionUser] = useState<LoginResponse | null>(null);
+  const [authInitialized, setAuthInitialized] = useState(false);
+
+  useEffect(() => {
+    fetch(`${API_BASE_URL}${getAuthMeContract.path}`, {
+      credentials: 'include' as const,
+      headers: { Accept: 'application/json' }
+    })
+      .then(async (res) => {
+        if (!res.ok) return;
+        const user: LoginResponse = getAuthMeContract.responseSchema.parse(await res.json());
+        rememberFirstNameFromRegistration(user.firstName, user.email);
+        setSessionUser(user);
+      })
+      .catch(() => undefined)
+      .finally(() => { setAuthInitialized(true); });
+  }, []);
 
   function clearFeedback() {
     setError(null);
@@ -151,7 +167,7 @@ export function useCookieAuthModel() {
       verifyEmailResponseSchema.parse(
         JSON.parse(await response.text()) as unknown
       );
-      setStatus('Email verified — you can log in now.');
+      setStatus('Email verified - you can log in now.');
       return { ok: true };
     } catch (err) {
       setError(formatErr(err));
@@ -252,7 +268,7 @@ export function useCookieAuthModel() {
       }
       setSessionUser(null);
       setStatus(
-        'Password updated — refresh sessions were revoked and old access tokens no longer work.'
+        'Password updated - refresh sessions were revoked and old access tokens no longer work.'
       );
       return { ok: true };
     } catch (err) {
@@ -299,7 +315,7 @@ export function useCookieAuthModel() {
       rememberFirstNameFromRegistration(user.firstName, user.email);
       void recordLoginForGreeting();
       setSessionUser(user);
-      setStatus('Signed in — session cookies set.');
+      setStatus('Signed in - session cookies set.');
       return { ok: true, user };
     } catch (err) {
       setError(formatErr(err));
@@ -368,7 +384,7 @@ export function useCookieAuthModel() {
       if (response.status !== 204) {
         throw new Error(`logout HTTP ${String(response.status)}`);
       }
-      setStatus('Signed out — cookies cleared.');
+      setStatus('Signed out - cookies cleared.');
       return { ok: true };
     } catch (err) {
       setError(formatErr(err));
@@ -403,7 +419,7 @@ export function useCookieAuthModel() {
       );
       rememberFirstNameFromRegistration(user.firstName, user.email);
       setSessionUser(user);
-      setStatus('Password updated — you are still signed in.');
+      setStatus('Password updated - you are still signed in.');
       return { ok: true };
     } catch (err) {
       setError(formatErr(err));
@@ -444,6 +460,7 @@ export function useCookieAuthModel() {
     setError,
     sessionUser,
     setSessionUser,
+    authInitialized,
     clearFeedback,
     register,
     verifyEmail,

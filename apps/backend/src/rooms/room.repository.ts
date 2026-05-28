@@ -10,13 +10,9 @@ export class RoomRepository {
     @InjectModel(RoomRecord.name) private readonly model: Model<RoomDocument>
   ) {}
 
-  findAccessibleForUser(userId: string): Promise<RoomDocument[]> {
-    const uid = new Types.ObjectId(userId);
+  findAllActive(): Promise<RoomDocument[]> {
     return this.model
-      .find({
-        deleted_at: null,
-        $or: [{ creator: uid }, { allowed_users: uid }]
-      })
+      .find({ deleted_at: null })
       .populate('creator movie allowed_users banned_users');
   }
 
@@ -49,12 +45,13 @@ export class RoomRepository {
   create(data: {
     name: string;
     creator: Types.ObjectId;
-    movie: Types.ObjectId;
     room_type: string;
     deactivate_at: Date;
+    movie?: Types.ObjectId;
     password?: string;
     description?: string;
-    lobby?: Types.ObjectId;
+    movie_name?: string;
+    movie_description?: string;
   }): Promise<RoomDocument> {
     return new this.model(data).save();
   }
@@ -63,6 +60,14 @@ export class RoomRepository {
     return this.model.findByIdAndUpdate(
       roomId,
       { $addToSet: { allowed_users: userId } },
+      { new: true }
+    );
+  }
+
+  removeUser(roomId: string, userId: Types.ObjectId): Promise<RoomDocument | null> {
+    return this.model.findByIdAndUpdate(
+      roomId,
+      { $pull: { allowed_users: userId } },
       { new: true }
     );
   }
@@ -78,6 +83,20 @@ export class RoomRepository {
     );
   }
 
+  updateIfCreator(
+    roomId: string,
+    creatorId: string,
+    data: Record<string, unknown>
+  ): Promise<RoomDocument | null> {
+    return this.model
+      .findOneAndUpdate(
+        { _id: roomId, creator: new Types.ObjectId(creatorId), deleted_at: null },
+        { $set: data },
+        { returnDocument: 'after' }
+      )
+      .populate('creator movie allowed_users banned_users');
+  }
+
   softDeleteIfCreator(roomId: string, creatorId: string): Promise<RoomDocument | null> {
     return this.model.findOneAndUpdate(
       {
@@ -88,5 +107,13 @@ export class RoomRepository {
       { $set: { deleted_at: new Date() } },
       { returnDocument: 'after' }
     );
+  }
+
+  async softDeleteOlderThan(cutoff: Date): Promise<{ deletedCount: number }> {
+    const result = await this.model.updateMany(
+      { deleted_at: null, created_at: { $lt: cutoff } },
+      { $set: { deleted_at: new Date() } }
+    );
+    return { deletedCount: result.modifiedCount };
   }
 }

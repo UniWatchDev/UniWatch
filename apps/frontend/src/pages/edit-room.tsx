@@ -1,15 +1,9 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { MOCK_ROOMS } from '@/data/mock-data';
-
-interface EditableField {
-  name: boolean;
-  password: boolean;
-  movieFile: boolean;
-  movieName: boolean;
-  movieDescription: boolean;
-  isPrivate: boolean;
-}
+import { getRoomContract, updateRoomContract, deleteRoomContract } from '@repo/contracts/rooms';
+import { getAuthMeContract } from '@repo/contracts/auth';
+import { API_BASE_URL } from '@repo/consts/api';
+import type { RoomResponse } from '@repo/schemas/rooms';
 
 function PencilIcon() {
   return (
@@ -48,23 +42,64 @@ function TrashIcon() {
   );
 }
 
+type EditableField = 'name' | 'password' | 'movieFile' | 'movieName' | 'movieDescription' | 'isPrivate';
+
+interface DraftState {
+  name: string;
+  password: string;
+  movieFile: File | null;
+  movieName: string;
+  movieDescription: string;
+  isPrivate: boolean;
+}
+
+async function fetchRoom(id: string): Promise<RoomResponse> {
+  const path = getRoomContract.path.replace(':id', encodeURIComponent(id));
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    headers: { Accept: 'application/json' },
+    credentials: 'include'
+  });
+  if (!res.ok) throw new Error(`HTTP ${String(res.status)}`);
+  return getRoomContract.responseSchema.parse(await res.json());
+}
+
+async function fetchCurrentUserId(): Promise<string | null> {
+  try {
+    const res = await fetch(`${API_BASE_URL}${getAuthMeContract.path}`, {
+      headers: { Accept: 'application/json' },
+      credentials: 'include'
+    });
+    if (!res.ok) return null;
+    const me = getAuthMeContract.responseSchema.parse(await res.json());
+    return me.userId;
+  } catch {
+    return null;
+  }
+}
+
 export function EditRoom() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const room = MOCK_ROOMS.find((r) => r.id === id);
+  const [room, setRoom] = useState<RoomResponse | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-  const [form, setForm] = useState({
-    name: room?.name ?? '',
+  const [drafts, setDrafts] = useState<DraftState>({
+    name: '',
     password: '',
-    movieFile: null as File | null,
-    movieName: room?.movieName ?? '',
-    movieDescription: room?.movieDescription ?? '',
-    isPrivate: room?.isPrivate ?? false,
+    movieFile: null,
+    movieName: '',
+    movieDescription: '',
+    isPrivate: false,
   });
-
-  const [editing, setEditing] = useState<EditableField>({
+  const [editing, setEditing] = useState<Record<EditableField, boolean>>({
     name: false,
     password: false,
     movieFile: false,
@@ -73,36 +108,143 @@ export function EditRoom() {
     isPrivate: false,
   });
 
-  const [drafts, setDrafts] = useState({ ...form });
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  useEffect(() => {
+    if (!id) return;
+    let cancelled = false;
+    Promise.all([fetchRoom(id), fetchCurrentUserId()])
+      .then(([r, userId]) => {
+        if (cancelled) return;
+        setRoom(r);
+        setCurrentUserId(userId);
+        setDrafts({
+          name: r.name,
+          password: '',
+          movieFile: null,
+          movieName: r.movie_name ?? '',
+          movieDescription: r.movie_description ?? '',
+          isPrivate: r.room_type === 'private',
+        });
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setLoadError(err instanceof Error ? err.message : 'Failed to load room');
+      })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [id]);
 
-  if (!room) {
+  useEffect(() => {
+    if (!loading && room && currentUserId !== null && currentUserId !== room.creator) {
+      void navigate(`/room/${room.id}`, { replace: true });
+    }
+  }, [loading, room, currentUserId, navigate]);
+
+  if (loading) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100dvh', gap: 16 }}>
-        <p style={{ color: 'var(--text-secondary)', fontSize: 18 }}>Room not found.</p>
-        <button className="btn-primary" onClick={() => { void navigate('/'); }}>Back to Lobby</button>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100dvh' }}>
+        <p style={{ color: 'var(--text-muted)' }}>Loading…</p>
       </div>
     );
   }
 
-  const startEdit = (field: keyof EditableField) => {
-    setDrafts({ ...form });
+  if (loadError || !room) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100dvh', gap: 16 }}>
+        <p style={{ color: 'var(--text-secondary)', fontSize: 18 }}>{loadError ?? 'Room not found.'}</p>
+        <button className="btn-primary" onClick={() => { void navigate('/rooms'); }}>Back to Lobby</button>
+      </div>
+    );
+  }
+
+  const isOwner = currentUserId !== null && currentUserId === room.creator;
+
+  const startEdit = (field: EditableField) => {
     setEditing((prev) => ({ ...prev, [field]: true }));
+    setApiError(null);
   };
 
-  const saveEdit = (field: keyof EditableField) => {
-    setForm({ ...drafts });
+  const cancelEdit = (field: EditableField) => {
     setEditing((prev) => ({ ...prev, [field]: false }));
+    setDrafts((prev) => ({
+      ...prev,
+      name: room.name,
+      movieName: room.movie_name ?? '',
+      movieDescription: room.movie_description ?? '',
+      isPrivate: room.room_type === 'private',
+      password: '',
+    }));
   };
 
-  const cancelEdit = (field: keyof EditableField) => {
-    setDrafts({ ...form });
-    setEditing((prev) => ({ ...prev, [field]: false }));
+  const saveField = async (field: EditableField) => {
+    if (!id) return;
+    setSaving(true);
+    setApiError(null);
+    try {
+      const path = updateRoomContract.path.replace(':id', encodeURIComponent(id));
+      let patchBody: Record<string, unknown> = {};
+      if (field === 'name') patchBody = { name: drafts.name };
+      else if (field === 'isPrivate') {
+        if (drafts.isPrivate && !room.password && !drafts.password.trim()) {
+          setApiError('A password is required before making a room private.');
+          setSaving(false);
+          return;
+        }
+        patchBody = {
+          room_type: drafts.isPrivate ? 'private' : 'public',
+          ...(drafts.isPrivate && drafts.password.trim() ? { password: drafts.password.trim() } : {}),
+        };
+      }
+      else if (field === 'password') {
+        if (!drafts.password.trim()) {
+          setApiError('Password cannot be empty for a private room.');
+          setSaving(false);
+          return;
+        }
+        patchBody = { password: drafts.password };
+      }
+      else if (field === 'movieName') patchBody = { movie_name: drafts.movieName || null };
+      else if (field === 'movieDescription') patchBody = { movie_description: drafts.movieDescription || null };
+
+      const body = updateRoomContract.bodySchema.parse(patchBody);
+      const res = await fetch(`${API_BASE_URL}${path}`, {
+        method: updateRoomContract.method,
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`HTTP ${String(res.status)}: ${text}`);
+      }
+      const updated = updateRoomContract.responseSchema.parse(await res.json());
+      setRoom(updated);
+      setEditing((prev) => ({ ...prev, [field]: false }));
+    } catch (err: unknown) {
+      setApiError(err instanceof Error ? err.message : 'Failed to save changes');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleDeleteConfirmed = () => {
-    // In the future: call DELETE API, then navigate
-    void navigate('/');
+  const handleDeleteConfirmed = async () => {
+    if (!id) return;
+    setDeleting(true);
+    setApiError(null);
+    try {
+      const path = deleteRoomContract.path.replace(':id', encodeURIComponent(id));
+      const res = await fetch(`${API_BASE_URL}${path}`, {
+        method: deleteRoomContract.method,
+        headers: { Accept: 'application/json' },
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`HTTP ${String(res.status)}: ${text}`);
+      }
+      void navigate('/rooms');
+    } catch (err: unknown) {
+      setApiError(err instanceof Error ? err.message : 'Failed to delete room');
+      setDeleting(false);
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -149,18 +291,38 @@ export function EditRoom() {
             Edit Room
           </h1>
           <p style={{ marginTop: 6, fontSize: 14, color: 'var(--text-muted)' }}>
-            Update your room settings. Click the pencil icon to edit a field.
+            {isOwner
+              ? 'Update your room settings. Click the pencil icon to edit a field.'
+              : 'You can view this room\'s settings, but only the owner can edit them.'}
           </p>
         </div>
+
+        {apiError && (
+          <div
+            style={{
+              marginBottom: 16,
+              padding: '10px 14px',
+              borderRadius: 8,
+              background: 'rgba(239,68,68,0.1)',
+              border: '1px solid rgba(239,68,68,0.3)',
+              fontSize: 13,
+              color: '#f87171',
+            }}
+          >
+            {apiError}
+          </div>
+        )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {/* Room name */}
           <EditRow
             label="Room name"
             isEditing={editing.name}
-            displayValue={form.name}
+            displayValue={room.name}
+            canEdit={isOwner}
+            saving={saving}
             onEdit={() => { startEdit('name'); }}
-            onSave={() => { saveEdit('name'); }}
+            onSave={() => { void saveField('name'); }}
             onCancel={() => { cancelEdit('name'); }}
           >
             <input
@@ -177,47 +339,64 @@ export function EditRoom() {
           <EditRow
             label="Visibility"
             isEditing={editing.isPrivate}
-            displayValue={form.isPrivate ? '🔒 Private' : '🌐 Public'}
+            displayValue={room.room_type === 'private' ? '🔒 Private' : '🌐 Public'}
+            canEdit={isOwner}
+            saving={saving}
             onEdit={() => { startEdit('isPrivate'); }}
-            onSave={() => { saveEdit('isPrivate'); }}
+            onSave={() => { void saveField('isPrivate'); }}
             onCancel={() => { cancelEdit('isPrivate'); }}
           >
-            <div style={{ display: 'flex', gap: 8 }}>
-              {(['public', 'private'] as const).map((v) => {
-                const isActive = v === 'private' ? drafts.isPrivate : !drafts.isPrivate;
-                return (
-                  <button
-                    key={v}
-                    type="button"
-                    onClick={() => { setDrafts((p) => ({ ...p, isPrivate: v === 'private' })); }}
-                    style={{
-                      flex: 1,
-                      padding: '9px 12px',
-                      border: isActive ? '2px solid var(--accent)' : '1px solid var(--border-medium)',
-                      borderRadius: 8,
-                      background: isActive ? 'var(--accent-dim)' : 'var(--bg-input)',
-                      color: isActive ? 'var(--text-primary)' : 'var(--text-muted)',
-                      fontFamily: 'var(--font-body)',
-                      fontSize: 13,
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      transition: 'all 200ms ease',
-                    }}
-                  >
-                    {v === 'public' ? '🌐 Public' : '🔒 Private'}
-                  </button>
-                );
-              })}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {(['public', 'private'] as const).map((v) => {
+                  const isActive = v === 'private' ? drafts.isPrivate : !drafts.isPrivate;
+                  return (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => { setDrafts((p) => ({ ...p, isPrivate: v === 'private' })); }}
+                      style={{
+                        flex: 1,
+                        padding: '9px 12px',
+                        border: isActive ? '2px solid var(--accent)' : '1px solid var(--border-medium)',
+                        borderRadius: 8,
+                        background: isActive ? 'var(--accent-dim)' : 'var(--bg-input)',
+                        color: isActive ? 'var(--text-primary)' : 'var(--text-muted)',
+                        fontFamily: 'var(--font-body)',
+                        fontSize: 13,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        transition: 'all 200ms ease',
+                      }}
+                    >
+                      {v === 'public' ? '🌐 Public' : '🔒 Private'}
+                    </button>
+                  );
+                })}
+              </div>
+              {drafts.isPrivate && !room.password && (
+                <input
+                  className="input"
+                  type="password"
+                  placeholder="Set a password (required for private rooms)"
+                  value={drafts.password}
+                  onChange={(e) => { setDrafts((p) => ({ ...p, password: e.target.value })); }}
+                  maxLength={64}
+                  autoComplete="new-password"
+                />
+              )}
             </div>
           </EditRow>
 
-          {/* Password */}
-          <EditRow
+          {/* Password - only for private rooms */}
+          {room.room_type === 'private' && <EditRow
             label="Password"
             isEditing={editing.password}
-            displayValue={form.password ? '••••••••' : 'Not set'}
+            displayValue={room.password != null ? 'Password set' : 'No password'}
+            canEdit={isOwner}
+            saving={saving}
             onEdit={() => { startEdit('password'); }}
-            onSave={() => { saveEdit('password'); }}
+            onSave={() => { void saveField('password'); }}
             onCancel={() => { cancelEdit('password'); }}
           >
             <input
@@ -227,9 +406,10 @@ export function EditRoom() {
               value={drafts.password}
               onChange={(e) => { setDrafts((p) => ({ ...p, password: e.target.value })); }}
               maxLength={64}
+              autoComplete="new-password"
               autoFocus
             />
-          </EditRow>
+          </EditRow>}
 
           <hr style={{ border: 'none', borderTop: '1px solid var(--border-subtle)' }} />
 
@@ -237,10 +417,12 @@ export function EditRoom() {
           <EditRow
             label="Movie file"
             isEditing={editing.movieFile}
-            displayValue={form.movieFile ? form.movieFile.name : 'No file uploaded'}
+            displayValue={drafts.movieFile ? drafts.movieFile.name : 'No file uploaded'}
+            canEdit={isOwner}
+            saving={saving}
             onEdit={() => { startEdit('movieFile'); }}
-            onSave={() => { saveEdit('movieFile'); }}
-            onCancel={() => { cancelEdit('movieFile'); }}
+            onSave={() => { setEditing((p) => ({ ...p, movieFile: false })); }}
+            onCancel={() => { setEditing((p) => ({ ...p, movieFile: false })); setDrafts((p) => ({ ...p, movieFile: null })); }}
           >
             <div
               onClick={() => { fileInputRef.current?.click(); }}
@@ -256,7 +438,9 @@ export function EditRoom() {
               }}
             >
               <p style={{ fontSize: 13, color: drafts.movieFile ? 'var(--text-primary)' : 'var(--text-muted)', margin: 0 }}>
-                {drafts.movieFile ? `${drafts.movieFile.name} (${(drafts.movieFile.size / 1024 / 1024).toFixed(1)} MB)` : 'Click to upload a new video'}
+                {drafts.movieFile
+                  ? `${drafts.movieFile.name} (${(drafts.movieFile.size / 1024 / 1024).toFixed(1)} MB)`
+                  : 'Click to upload a new video'}
               </p>
             </div>
             <input
@@ -273,9 +457,11 @@ export function EditRoom() {
           <EditRow
             label="Movie name"
             isEditing={editing.movieName}
-            displayValue={form.movieName}
+            displayValue={room.movie_name ?? 'No movie set'}
+            canEdit={isOwner}
+            saving={saving}
             onEdit={() => { startEdit('movieName'); }}
-            onSave={() => { saveEdit('movieName'); }}
+            onSave={() => { void saveField('movieName'); }}
             onCancel={() => { cancelEdit('movieName'); }}
           >
             <input
@@ -292,9 +478,11 @@ export function EditRoom() {
           <EditRow
             label="Movie description"
             isEditing={editing.movieDescription}
-            displayValue={form.movieDescription || 'No description'}
+            displayValue={room.movie_description ?? 'No description'}
+            canEdit={isOwner}
+            saving={saving}
             onEdit={() => { startEdit('movieDescription'); }}
-            onSave={() => { saveEdit('movieDescription'); }}
+            onSave={() => { void saveField('movieDescription'); }}
             onCancel={() => { cancelEdit('movieDescription'); }}
           >
             <textarea
@@ -307,52 +495,51 @@ export function EditRoom() {
             />
           </EditRow>
 
-          {/* Delete section */}
-          <div
-            style={{
-              marginTop: 16,
-              padding: '20px',
-              border: '1px solid rgba(239,68,68,0.2)',
-              borderRadius: 12,
-              background: 'rgba(239,68,68,0.04)',
-            }}
-          >
-            <h4
-              style={{ margin: '0 0 6px', fontSize: 14, fontWeight: 700, color: '#f87171' }}
+          {/* Danger zone - owner only */}
+          {isOwner && (
+            <div
+              style={{
+                marginTop: 16,
+                padding: '20px',
+                border: '1px solid rgba(239,68,68,0.2)',
+                borderRadius: 12,
+                background: 'rgba(239,68,68,0.04)',
+              }}
             >
-              Danger zone
-            </h4>
-            <p style={{ margin: '0 0 14px', fontSize: 13, color: 'var(--text-muted)' }}>
-              Permanently delete this room and remove all participants. This cannot be undone.
-            </p>
-            {showDeleteConfirm ? (
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button
-                  className="btn-danger"
-                  onClick={handleDeleteConfirmed}
-                  style={{ flex: 1 }}
-                >
+              <h4 style={{ margin: '0 0 6px', fontSize: 14, fontWeight: 700, color: '#f87171' }}>
+                Danger zone
+              </h4>
+              <p style={{ margin: '0 0 14px', fontSize: 13, color: 'var(--text-muted)' }}>
+                Permanently delete this room and remove all participants. This cannot be undone.
+              </p>
+              {showDeleteConfirm ? (
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    className="btn-danger"
+                    onClick={() => { void handleDeleteConfirmed(); }}
+                    disabled={deleting}
+                    style={{ flex: 1, opacity: deleting ? 0.7 : 1 }}
+                  >
+                    <TrashIcon />
+                    {deleting ? 'Deleting…' : 'Yes, delete room'}
+                  </button>
+                  <button
+                    className="btn-ghost"
+                    onClick={() => { setShowDeleteConfirm(false); }}
+                    disabled={deleting}
+                    style={{ flex: 1 }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <button className="btn-danger" onClick={() => { setShowDeleteConfirm(true); }}>
                   <TrashIcon />
-                  Yes, delete room
+                  Delete Room
                 </button>
-                <button
-                  className="btn-ghost"
-                  onClick={() => { setShowDeleteConfirm(false); }}
-                  style={{ flex: 1 }}
-                >
-                  Cancel
-                </button>
-              </div>
-            ) : (
-              <button
-                className="btn-danger"
-                onClick={() => { setShowDeleteConfirm(true); }}
-              >
-                <TrashIcon />
-                Delete Room
-              </button>
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -363,6 +550,8 @@ function EditRow({
   label,
   isEditing,
   displayValue,
+  canEdit,
+  saving,
   onEdit,
   onSave,
   onCancel,
@@ -371,6 +560,8 @@ function EditRow({
   label: string;
   isEditing: boolean;
   displayValue: string;
+  canEdit: boolean;
+  saving: boolean;
   onEdit: () => void;
   onSave: () => void;
   onCancel: () => void;
@@ -414,9 +605,13 @@ function EditRow({
               style={{
                 margin: 0,
                 fontSize: 14,
-                color: displayValue === 'No description' || displayValue === 'Not set' || displayValue === 'No file uploaded'
-                  ? 'var(--text-muted)'
-                  : 'var(--text-primary)',
+                color:
+                  displayValue === 'No description' ||
+                  displayValue === 'Not set' ||
+                  displayValue === 'No file uploaded' ||
+                  displayValue === 'No movie set'
+                    ? 'var(--text-muted)'
+                    : 'var(--text-primary)',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap',
@@ -427,38 +622,24 @@ function EditRow({
           )}
         </div>
 
-        {/* Action buttons */}
-        <div style={{ display: 'flex', gap: 6, flexShrink: 0, marginTop: isEditing ? 2 : 0 }}>
-          {isEditing ? (
-            <>
-              <IconButton
-                onClick={onSave}
-                title="Save"
-                color="var(--accent-hover)"
-                hoverBg="var(--accent-dim)"
-              >
-                <CheckIcon />
+        {canEdit && (
+          <div style={{ display: 'flex', gap: 6, flexShrink: 0, marginTop: isEditing ? 2 : 0 }}>
+            {isEditing ? (
+              <>
+                <IconButton onClick={onSave} title="Save" color="var(--accent-hover)" hoverBg="var(--accent-dim)" disabled={saving}>
+                  <CheckIcon />
+                </IconButton>
+                <IconButton onClick={onCancel} title="Cancel" color="var(--text-muted)" hoverBg="var(--border-subtle)" disabled={saving}>
+                  <XIcon />
+                </IconButton>
+              </>
+            ) : (
+              <IconButton onClick={onEdit} title={`Edit ${label}`} color="var(--text-muted)" hoverBg="var(--border-subtle)">
+                <PencilIcon />
               </IconButton>
-              <IconButton
-                onClick={onCancel}
-                title="Cancel"
-                color="var(--text-muted)"
-                hoverBg="var(--border-subtle)"
-              >
-                <XIcon />
-              </IconButton>
-            </>
-          ) : (
-            <IconButton
-              onClick={onEdit}
-              title={`Edit ${label}`}
-              color="var(--text-muted)"
-              hoverBg="var(--border-subtle)"
-            >
-              <PencilIcon />
-            </IconButton>
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -469,12 +650,14 @@ function IconButton({
   title,
   color,
   hoverBg,
+  disabled,
   children,
 }: {
   onClick: () => void;
   title: string;
   color: string;
   hoverBg: string;
+  disabled?: boolean;
   children: React.ReactNode;
 }) {
   const [hovered, setHovered] = useState(false);
@@ -483,6 +666,7 @@ function IconButton({
       type="button"
       title={title}
       onClick={onClick}
+      disabled={disabled}
       onMouseEnter={() => { setHovered(true); }}
       onMouseLeave={() => { setHovered(false); }}
       style={{
@@ -495,7 +679,8 @@ function IconButton({
         border: '1px solid var(--border-medium)',
         background: hovered ? hoverBg : 'transparent',
         color,
-        cursor: 'pointer',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.6 : 1,
         transition: 'all 150ms ease',
         padding: 0,
       }}
