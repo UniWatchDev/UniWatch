@@ -5,11 +5,9 @@ import { getAuthMeContract } from '@repo/contracts/auth';
 import type { RoomPreview } from '@repo/schemas/rooms';
 import { API_BASE_URL } from '@repo/consts/api';
 import type { RoomResponse, RoomStatus } from '@repo/schemas/rooms';
-import type { ChatMessage } from '@/types/room';
-import { MOCK_CHAT } from '@/data/mock-data';
-import { UserAvatar } from '@/components/user-avatar';
-import { MOCK_ROOMS, MOCK_CHAT } from '@/data/mock-data';
 import type { ChatMessage, Member } from '@/types/room';
+import { MOCK_CHAT, MOCK_MEMBERS } from '@/data/mock-data';
+import { UserAvatar } from '@/components/user-avatar';
 
 function StatusDot({ status }: { status: Member['status'] }) {
   const color = status === 'active' ? '#4ade80' : status === 'away' ? '#fbbf24' : '#64748b';
@@ -585,7 +583,7 @@ export function RoomPage() {
               Live member list coming with real-time integration.
             </p>
             <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {room.members.map((member) => (
+              {MOCK_MEMBERS.map((member) => (
                 <li key={member.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <div style={{ position: 'relative', flexShrink: 0 }}>
                     <UserAvatar name={member.name} avatarColor={member.avatarColor} size={32} />

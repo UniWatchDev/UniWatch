@@ -1,7 +1,7 @@
 /** Routes where the main app chrome is reduced (full-screen experiences). */
 const NAV_HIDDEN_PREFIXES = ['/room/'] as const;
 
-/** Auth flows — hide redundant sign-in CTAs and optional create-room. */
+/** Auth flows - hide redundant sign-in CTAs and optional create-room. */
 export const AUTH_PATH_PREFIXES = [
   '/login',
   '/register',

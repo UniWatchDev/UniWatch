@@ -144,7 +144,7 @@ export function EditProfileModal({ user, onClose, onSaved }: EditProfileModalPro
               autoComplete="family-name"
             />
             <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
-              Optional — leave empty to remove your last name from your profile.
+              Optional - leave empty to remove your last name from your profile.
             </p>
           </div>
           <div>

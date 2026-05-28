@@ -167,7 +167,7 @@ export function useCookieAuthModel() {
       verifyEmailResponseSchema.parse(
         JSON.parse(await response.text()) as unknown
       );
-      setStatus('Email verified — you can log in now.');
+      setStatus('Email verified - you can log in now.');
       return { ok: true };
     } catch (err) {
       setError(formatErr(err));
@@ -268,7 +268,7 @@ export function useCookieAuthModel() {
       }
       setSessionUser(null);
       setStatus(
-        'Password updated — refresh sessions were revoked and old access tokens no longer work.'
+        'Password updated - refresh sessions were revoked and old access tokens no longer work.'
       );
       return { ok: true };
     } catch (err) {
@@ -315,7 +315,7 @@ export function useCookieAuthModel() {
       rememberFirstNameFromRegistration(user.firstName, user.email);
       void recordLoginForGreeting();
       setSessionUser(user);
-      setStatus('Signed in — session cookies set.');
+      setStatus('Signed in - session cookies set.');
       return { ok: true, user };
     } catch (err) {
       setError(formatErr(err));
@@ -384,7 +384,7 @@ export function useCookieAuthModel() {
       if (response.status !== 204) {
         throw new Error(`logout HTTP ${String(response.status)}`);
       }
-      setStatus('Signed out — cookies cleared.');
+      setStatus('Signed out - cookies cleared.');
       return { ok: true };
     } catch (err) {
       setError(formatErr(err));
@@ -419,7 +419,7 @@ export function useCookieAuthModel() {
       );
       rememberFirstNameFromRegistration(user.firstName, user.email);
       setSessionUser(user);
-      setStatus('Password updated — you are still signed in.');
+      setStatus('Password updated - you are still signed in.');
       return { ok: true };
     } catch (err) {
       setError(formatErr(err));

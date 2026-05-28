@@ -33,7 +33,7 @@ export function Login() {
 
           {authRequired ? (
             <p className="auth-feedback-info" style={{ marginBottom: 20 }}>
-              Oops — log in first.
+              Oops - log in first.
             </p>
           ) : null}
 

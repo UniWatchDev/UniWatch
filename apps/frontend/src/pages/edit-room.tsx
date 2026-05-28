@@ -358,7 +358,7 @@ export function EditRoom() {
             </div>
           </EditRow>
 
-          {/* Password — only for private rooms */}
+          {/* Password - only for private rooms */}
           {room.room_type === 'private' && <EditRow
             label="Password"
             isEditing={editing.password}
