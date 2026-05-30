@@ -35,6 +35,7 @@ import { UserRepository } from '@/auth/user.repository';
 import type { UserDocument } from '@/auth/user.schema';
 import { MailService } from '@/mail/mail.service';
 import type { Env } from '@/utils/env.validation';
+import { isDuplicateKeyError } from '@/utils/is-duplicate-key-error';
 import { parseDurationToMs } from '@/utils/parse-duration-ms';
 
 const AUTH_RESEND_ACK_MESSAGE =
@@ -96,15 +97,6 @@ function userToLoginResponse(doc: UserDocument): LoginResponse {
     avatarId: avatarPresetIdSchema.parse(doc.avatarId),
     createdAt: doc.createdAt.toISOString()
   };
-}
-
-function isDuplicateKeyError(err: unknown): boolean {
-  return (
-    typeof err === 'object' &&
-    err !== null &&
-    'code' in err &&
-    (err as { code: number }).code === 11000
-  );
 }
 
 @Injectable()
