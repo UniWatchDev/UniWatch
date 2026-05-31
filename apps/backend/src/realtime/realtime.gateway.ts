@@ -11,6 +11,14 @@ import {
 } from '@nestjs/websockets';
 import type { Server, Socket } from 'socket.io';
 
+import {
+  joinRoomPayloadSchema,
+  leaveRoomPayloadSchema,
+  REALTIME_MAX_MESSAGES,
+  sendMessagePayloadSchema
+} from '@repo/schemas/realtime';
+import type { ConnectedUser, RealtimeRoomState } from '@repo/schemas/realtime';
+
 import { AUTH_ACCESS_COOKIE } from '@/auth/auth.consts';
 import type { JwtAccessPayload } from '@/auth/auth.types';
 import { RoomRepository } from '@/rooms/room.repository';
@@ -27,6 +35,26 @@ function parseCookies(header: string | undefined): Record<string, string> {
   );
 }
 
+function makeDefaultPlayback(): RealtimeRoomState['playback'] {
+  return { movieId: null, isPlaying: false, positionSec: 0, updatedAt: new Date().toISOString() };
+}
+
+function getOrCreateRoomState(
+  map: Map<string, RealtimeRoomState>,
+  roomId: string
+): RealtimeRoomState {
+  const existing = map.get(roomId);
+  if (existing) return existing;
+  const state: RealtimeRoomState = {
+    roomId,
+    connectedUsers: [],
+    messages: [],
+    playback: makeDefaultPlayback()
+  };
+  map.set(roomId, state);
+  return state;
+}
+
 @WebSocketGateway({
   cors: { origin: true, credentials: true }
 })
@@ -36,8 +64,11 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
 
   private readonly logger = new Logger(RealtimeGateway.name);
 
-  // socket.id → userId (JWT sub)
+  /** socket.id → userId (JWT sub) */
   private readonly socketToUser = new Map<string, string>();
+
+  /** roomId → in-memory runtime state (never persisted to MongoDB) */
+  private readonly roomStates = new Map<string, RealtimeRoomState>();
 
   constructor(
     private readonly jwt: JwtService,
@@ -71,6 +102,15 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
 
     for (const roomId of socket.rooms) {
       if (roomId === socket.id) continue; // default private room
+
+      const state = this.roomStates.get(roomId);
+      if (state) {
+        state.connectedUsers = state.connectedUsers.filter((u) => u.socketId !== socket.id);
+        if (state.connectedUsers.length === 0) {
+          this.roomStates.delete(roomId);
+        }
+      }
+
       this.server.to(roomId).emit('room:user-left', { userId, roomId });
     }
 
@@ -80,57 +120,106 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   @SubscribeMessage('room:join')
   async handleJoin(
     @ConnectedSocket() socket: Socket,
-    @MessageBody() data: { roomId: string }
+    @MessageBody() data: unknown
   ): Promise<void> {
     const userId = this.socketToUser.get(socket.id);
     if (!userId) {
       socket.emit('room:error', { message: 'Unauthorized' });
       return;
     }
-    const room = await this.rooms.findOneAccessibleById(data.roomId, userId);
+
+    const parsed = joinRoomPayloadSchema.safeParse(data);
+    if (!parsed.success) {
+      socket.emit('room:error', { message: 'Invalid payload' });
+      return;
+    }
+
+    const { roomId } = parsed.data;
+    const room = await this.rooms.findOneAccessibleById(roomId, userId);
     if (!room) {
       socket.emit('room:error', { message: 'Forbidden' });
       return;
     }
-    await socket.join(data.roomId);
-    this.server.to(data.roomId).emit('room:user-joined', { userId, roomId: data.roomId });
-    this.logger.debug(`${userId} joined room ${data.roomId}`);
+
+    await socket.join(roomId);
+
+    const state = getOrCreateRoomState(this.roomStates, roomId);
+    const alreadyPresent = state.connectedUsers.some((u) => u.socketId === socket.id);
+    if (!alreadyPresent) {
+      const user: ConnectedUser = { userId, socketId: socket.id, joinedAt: new Date().toISOString() };
+      state.connectedUsers.push(user);
+    }
+
+    this.server.to(roomId).emit('room:user-joined', { userId, roomId });
+    this.logger.debug(`${userId} joined room ${roomId}`);
   }
 
   @SubscribeMessage('room:leave')
   async handleLeave(
     @ConnectedSocket() socket: Socket,
-    @MessageBody() data: { roomId: string }
+    @MessageBody() data: unknown
   ): Promise<void> {
     const userId = this.socketToUser.get(socket.id);
-    await socket.leave(data.roomId);
-    this.server.to(data.roomId).emit('room:user-left', { userId, roomId: data.roomId });
-    this.logger.debug(`${String(userId)} left room ${data.roomId}`);
+
+    const parsed = leaveRoomPayloadSchema.safeParse(data);
+    if (!parsed.success) {
+      socket.emit('room:error', { message: 'Invalid payload' });
+      return;
+    }
+
+    const { roomId } = parsed.data;
+
+    const state = this.roomStates.get(roomId);
+    if (state) {
+      state.connectedUsers = state.connectedUsers.filter((u) => u.socketId !== socket.id);
+      if (state.connectedUsers.length === 0) {
+        this.roomStates.delete(roomId);
+      }
+    }
+
+    await socket.leave(roomId);
+    this.server.to(roomId).emit('room:user-left', { userId, roomId });
+    this.logger.debug(`${String(userId)} left room ${roomId}`);
   }
 
   @SubscribeMessage('room:message')
   handleMessage(
     @ConnectedSocket() socket: Socket,
-    @MessageBody() data: { roomId: string; content: string }
+    @MessageBody() data: unknown
   ): void {
     const userId = this.socketToUser.get(socket.id);
     if (!userId) {
       socket.emit('room:error', { message: 'Unauthorized' });
       return;
     }
-    if (!socket.rooms.has(data.roomId)) {
-      socket.emit('room:error', { message: 'Forbidden' });
-      return;
-    }
-    if (typeof data.content !== 'string' || data.content.trim().length === 0 || data.content.length > 2000) {
+
+    const parsed = sendMessagePayloadSchema.safeParse(data);
+    if (!parsed.success) {
       socket.emit('room:error', { message: 'Invalid message' });
       return;
     }
-    this.server.to(data.roomId).emit('room:message-received', {
+
+    const { roomId, content } = parsed.data;
+
+    if (!socket.rooms.has(roomId)) {
+      socket.emit('room:error', { message: 'Forbidden' });
+      return;
+    }
+
+    const message = {
       id: `${socket.id}-${String(Date.now())}`,
+      roomId,
       userId,
-      content: data.content,
+      content,
       timestamp: new Date().toISOString()
-    });
+    };
+
+    const state = getOrCreateRoomState(this.roomStates, roomId);
+    state.messages.push(message);
+    if (state.messages.length > REALTIME_MAX_MESSAGES) {
+      state.messages = state.messages.slice(-REALTIME_MAX_MESSAGES);
+    }
+
+    this.server.to(roomId).emit('room:message-received', message);
   }
 }

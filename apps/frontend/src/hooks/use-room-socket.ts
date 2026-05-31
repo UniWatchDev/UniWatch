@@ -2,21 +2,15 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { io, type Socket } from 'socket.io-client';
 
 import { API_BASE_URL } from '@repo/consts/api';
+import type {
+  RealtimeChatMessage,
+  RoomErrorEvent,
+  UserJoinedEvent,
+  UserLeftEvent
+} from '@repo/schemas/realtime';
 import type { ChatMessage, Member } from '@/types/room';
 
 export type SocketStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
-
-interface ServerMessage {
-  id: string;
-  userId: string;
-  content: string;
-  timestamp: string;
-}
-
-interface ServerPresence {
-  userId: string;
-  roomId: string;
-}
 
 interface UseRoomSocketOptions {
   roomId: string;
@@ -104,7 +98,7 @@ export function useRoomSocket({
       setSocketStatus('disconnected');
     });
 
-    socket.on('room:message-received', (data: ServerMessage) => {
+    socket.on('room:message-received', (data: RealtimeChatMessage) => {
       setMessages((prev) => [
         ...prev,
         {
@@ -117,18 +111,18 @@ export function useRoomSocket({
       ]);
     });
 
-    socket.on('room:user-joined', (data: ServerPresence) => {
+    socket.on('room:user-joined', (data: UserJoinedEvent) => {
       setMembers((prev) => {
         if (prev.some((m) => m.id === data.userId)) return prev;
         return [...prev, memberFromId(data.userId, false)];
       });
     });
 
-    socket.on('room:user-left', (data: ServerPresence) => {
+    socket.on('room:user-left', (data: UserLeftEvent) => {
       setMembers((prev) => prev.filter((m) => m.id !== data.userId));
     });
 
-    socket.on('room:error', (data: { message: string }) => {
+    socket.on('room:error', (data: RoomErrorEvent) => {
       setSocketStatus('error');
       console.error('[room:socket]', data.message);
     });
