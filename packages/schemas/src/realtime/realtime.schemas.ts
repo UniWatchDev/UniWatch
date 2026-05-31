@@ -7,7 +7,9 @@ import { z } from 'zod';
 export const connectedUserSchema = z.object({
   userId: z.string(),
   socketId: z.string(),
-  joinedAt: z.string().datetime()
+  joinedAt: z.string().datetime(),
+  userName: z.string(),
+  color: z.string()
 });
 
 export type ConnectedUser = z.infer<typeof connectedUserSchema>;
@@ -16,6 +18,8 @@ export const realtimeChatMessageSchema = z.object({
   id: z.string(),
   roomId: z.string(),
   userId: z.string(),
+  userName: z.string(),
+  color: z.string(),
   content: z.string().min(1).max(2000),
   timestamp: z.string().datetime()
 });
@@ -75,10 +79,20 @@ export type SendMessagePayload = z.infer<typeof sendMessagePayloadSchema>;
 
 export const userJoinedEventSchema = z.object({
   userId: z.string(),
-  roomId: z.string()
+  roomId: z.string(),
+  userName: z.string(),
+  color: z.string()
 });
 
 export type UserJoinedEvent = z.infer<typeof userJoinedEventSchema>;
+
+export const roomStateEventSchema = z.object({
+  connectedUsers: z.array(connectedUserSchema),
+  messages: z.array(realtimeChatMessageSchema),
+  playback: playbackStateSchema
+});
+
+export type RoomStateEvent = z.infer<typeof roomStateEventSchema>;
 
 export const userLeftEventSchema = z.object({
   userId: z.string(),

@@ -5,6 +5,7 @@ import { API_BASE_URL } from '@repo/consts/api';
 import type {
   RealtimeChatMessage,
   RoomErrorEvent,
+  RoomStateEvent,
   UserJoinedEvent,
   UserLeftEvent
 } from '@repo/schemas/realtime';
@@ -28,21 +29,21 @@ interface UseRoomSocketReturn {
   sendMessage: (content: string) => void;
 }
 
-const AVATAR_PALETTE = ['#f97316', '#38bdf8', '#a78bfa', '#4ade80', '#fb923c', '#f472b6'];
+const FALLBACK_AVATAR_PALETTE = ['#f97316', '#38bdf8', '#a78bfa', '#4ade80', '#fb923c', '#f472b6'];
 
 function colorFromId(id: string): string {
   let hash = 0;
   for (const ch of id) hash = (hash * 31 + ch.charCodeAt(0)) & 0xffff;
-  return AVATAR_PALETTE[hash % AVATAR_PALETTE.length] ?? '#64748b';
+  return FALLBACK_AVATAR_PALETTE[hash % FALLBACK_AVATAR_PALETTE.length] ?? '#64748b';
 }
 
-function memberFromId(id: string, isHost: boolean, displayName?: string): Member {
+function memberFromId(id: string, isHost: boolean, displayName?: string, color?: string): Member {
   const label = displayName ?? `user-${id.slice(-5)}`;
   return {
     id,
     name: label,
     username: label,
-    avatarColor: colorFromId(id),
+    avatarColor: color ?? colorFromId(id),
     isHost,
     status: 'active'
   };
@@ -91,11 +92,37 @@ export function useRoomSocket({
 
     socket.on('connect', () => {
       setSocketStatus('connected');
+      // Do not emit room:join here — wait for connection:ack.
+      // The gateway's handleConnection is async (JWT verify + DB lookup).
+      // Socket.IO acknowledges the TCP connection before that promise resolves,
+      // so emitting room:join on 'connect' races against handleConnection and
+      // causes handleJoin to find an empty socketToUser map → "Unauthorized".
+    });
+
+    socket.on('connection:ack', () => {
       socket.emit('room:join', { roomId });
     });
 
     socket.on('disconnect', () => {
       setSocketStatus('disconnected');
+    });
+
+    socket.on('room:state', (data: RoomStateEvent) => {
+      setMembers(
+        data.connectedUsers.map((u) =>
+          memberFromId(u.userId, u.userId === creatorId, u.userName, u.color)
+        )
+      );
+      setMessages(
+        data.messages.map((m) => ({
+          id: m.id,
+          userId: m.userId,
+          userName: m.userName,
+          color: m.color,
+          content: m.content,
+          timestamp: new Date(m.timestamp)
+        }))
+      );
     });
 
     socket.on('room:message-received', (data: RealtimeChatMessage) => {
@@ -104,7 +131,8 @@ export function useRoomSocket({
         {
           id: data.id,
           userId: data.userId,
-          userName: data.userId === currentUserId ? 'You' : `user-${data.userId.slice(-5)}`,
+          userName: data.userName,
+          color: data.color,
           content: data.content,
           timestamp: new Date(data.timestamp)
         }
@@ -114,7 +142,7 @@ export function useRoomSocket({
     socket.on('room:user-joined', (data: UserJoinedEvent) => {
       setMembers((prev) => {
         if (prev.some((m) => m.id === data.userId)) return prev;
-        return [...prev, memberFromId(data.userId, false)];
+        return [...prev, memberFromId(data.userId, data.userId === creatorId, data.userName, data.color)];
       });
     });
 
@@ -132,7 +160,7 @@ export function useRoomSocket({
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [roomId, disabled, currentUserId]);
+  }, [roomId, disabled, currentUserId, creatorId]);
 
   return { messages, members, socketStatus, sendMessage };
 }

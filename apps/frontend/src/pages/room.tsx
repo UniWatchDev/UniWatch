@@ -562,24 +562,13 @@ export function RoomPage() {
                 color: 'var(--text-muted)',
               }}
             >
-              In this room ({room.member_count})
+              Connected ({members.length})
             </h3>
-            <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-              <p style={{ margin: '0 0 4px' }}>
-                Host: <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>@{room.creator_name}</span>
-                {isOwner && <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--accent-hover)', fontWeight: 700 }}>YOU</span>}
+            {room.movie_name && (
+              <p style={{ margin: '0 0 10px', fontSize: 12, color: 'var(--text-muted)' }}>
+                Watching: {room.movie_name}
               </p>
-              {!isOwner && currentUserId !== null && (
-                <p style={{ margin: '0 0 4px', fontSize: 12, color: 'var(--text-muted)' }}>
-                  You joined as a member
-                </p>
-              )}
-              {room.movie_name && (
-                <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
-                  Watching: {room.movie_name}
-                </p>
-              )}
-            </div>
+            )}
             {socketStatus !== 'connected' && (
               <p style={{ margin: '10px 0 0', fontSize: 11, color: socketStatus === 'error' ? '#f87171' : 'var(--text-muted)', fontStyle: 'italic' }}>
                 {socketStatus === 'error' ? 'Connection error' : socketStatus === 'connecting' ? 'Connecting…' : 'Disconnected'}
@@ -613,6 +602,21 @@ export function RoomPage() {
                           }}
                         >
                           HOST
+                        </span>
+                      )}
+                      {member.id === currentUserId && (
+                        <span
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 700,
+                            padding: '1px 5px',
+                            borderRadius: 4,
+                            background: 'rgba(100,116,139,0.15)',
+                            color: 'var(--text-muted)',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          YOU
                         </span>
                       )}
                     </div>
@@ -652,7 +656,7 @@ export function RoomPage() {
                 messages.map((msg) => (
                   <div key={msg.id}>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: msg.userId === 'me' ? 'var(--accent-hover)' : 'var(--text-primary)' }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: msg.color }}>
                         {msg.userName}
                       </span>
                       <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{formatChatTime(msg.timestamp)}</span>

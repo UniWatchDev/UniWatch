@@ -21,7 +21,31 @@ import type { ConnectedUser, RealtimeRoomState } from '@repo/schemas/realtime';
 
 import { AUTH_ACCESS_COOKIE } from '@/auth/auth.consts';
 import type { JwtAccessPayload } from '@/auth/auth.types';
+import { UserRepository } from '@/auth/user.repository';
 import { RoomRepository } from '@/rooms/room.repository';
+
+// Stable palette used for the duration of a socket connection.
+const ROOM_COLORS = [
+  '#f97316', // orange
+  '#38bdf8', // sky
+  '#a78bfa', // violet
+  '#4ade80', // green
+  '#fb923c', // amber
+  '#f472b6', // pink
+  '#34d399', // emerald
+  '#60a5fa', // blue
+  '#fbbf24', // yellow
+  '#e879f9'  // fuchsia
+] as const satisfies readonly string[];
+
+function pickColor(usedColors: ReadonlySet<string>): string {
+  const available = ROOM_COLORS.filter((c) => !usedColors.has(c));
+  const pool = available.length > 0 ? available : [...ROOM_COLORS];
+  const idx = Math.floor(Math.random() * pool.length);
+  return pool[idx] ?? ROOM_COLORS[0];
+}
+
+type SocketUserInfo = { userId: string; userName: string };
 
 function parseCookies(header: string | undefined): Record<string, string> {
   if (!header) return {};
@@ -64,14 +88,15 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
 
   private readonly logger = new Logger(RealtimeGateway.name);
 
-  /** socket.id → userId (JWT sub) */
-  private readonly socketToUser = new Map<string, string>();
+  /** socket.id → { userId, userName } */
+  private readonly socketToUser = new Map<string, SocketUserInfo>();
 
   /** roomId → in-memory runtime state (never persisted to MongoDB) */
   private readonly roomStates = new Map<string, RealtimeRoomState>();
 
   constructor(
     private readonly jwt: JwtService,
+    private readonly users: UserRepository,
     private readonly rooms: RoomRepository
   ) {}
 
@@ -88,8 +113,16 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     try {
       // TODO: call authService.assertAccessTokenClaims(payload) to also check passwordVersion
       const payload = await this.jwt.verifyAsync<JwtAccessPayload>(token);
-      this.socketToUser.set(socket.id, payload.sub);
+      const user = await this.users.findById(payload.sub);
+      if (!user) {
+        socket.emit('room:error', { message: 'Unauthorized' });
+        socket.disconnect(true);
+        return;
+      }
+      this.socketToUser.set(socket.id, { userId: payload.sub, userName: user.userName });
       this.logger.debug(`connect ${socket.id} user=${payload.sub}`);
+      // Signal to the client that auth is complete and room events can be sent.
+      socket.emit('connection:ack');
     } catch {
       socket.emit('room:error', { message: 'Unauthorized' });
       socket.disconnect(true);
@@ -97,8 +130,12 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   handleDisconnect(socket: Socket): void {
-    const userId = this.socketToUser.get(socket.id);
+    const userInfo = this.socketToUser.get(socket.id);
     this.socketToUser.delete(socket.id);
+
+    if (!userInfo) return;
+
+    const { userId } = userInfo;
 
     for (const roomId of socket.rooms) {
       if (roomId === socket.id) continue; // default private room
@@ -106,12 +143,17 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       const state = this.roomStates.get(roomId);
       if (state) {
         state.connectedUsers = state.connectedUsers.filter((u) => u.socketId !== socket.id);
+        // Only notify the room if the user has no other active socket in this room.
+        // If they refreshed, their new socket already replaced the stale entry in
+        // handleJoin, so they're still present under a different socketId.
+        const stillConnected = state.connectedUsers.some((u) => u.userId === userId);
+        if (!stillConnected) {
+          this.server.to(roomId).emit('room:user-left', { userId, roomId });
+        }
         if (state.connectedUsers.length === 0) {
           this.roomStates.delete(roomId);
         }
       }
-
-      this.server.to(roomId).emit('room:user-left', { userId, roomId });
     }
 
     this.logger.debug(`disconnect ${socket.id}`);
@@ -122,8 +164,8 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     @ConnectedSocket() socket: Socket,
     @MessageBody() data: unknown
   ): Promise<void> {
-    const userId = this.socketToUser.get(socket.id);
-    if (!userId) {
+    const userInfo = this.socketToUser.get(socket.id);
+    if (!userInfo) {
       socket.emit('room:error', { message: 'Unauthorized' });
       return;
     }
@@ -135,6 +177,8 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     }
 
     const { roomId } = parsed.data;
+    const { userId, userName } = userInfo;
+
     const room = await this.rooms.findOneAccessibleById(roomId, userId);
     if (!room) {
       socket.emit('room:error', { message: 'Forbidden' });
@@ -144,13 +188,40 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     await socket.join(roomId);
 
     const state = getOrCreateRoomState(this.roomStates, roomId);
-    const alreadyPresent = state.connectedUsers.some((u) => u.socketId === socket.id);
-    if (!alreadyPresent) {
-      const user: ConnectedUser = { userId, socketId: socket.id, joinedAt: new Date().toISOString() };
-      state.connectedUsers.push(user);
-    }
 
-    this.server.to(roomId).emit('room:user-joined', { userId, roomId });
+    // Remove any stale entry for this userId before adding the current socket.
+    // This covers the refresh case: the new socket arrives before the old one's
+    // disconnect fires, leaving two entries for the same user.
+    const staleEntry = state.connectedUsers.find((u) => u.userId === userId);
+    state.connectedUsers = state.connectedUsers.filter((u) => u.userId !== userId);
+
+    // Reuse the previous color so the user keeps the same color after a refresh.
+    const usedColors = new Set(state.connectedUsers.map((u) => u.color));
+    const color = staleEntry?.color ?? pickColor(usedColors);
+
+    const user: ConnectedUser = {
+      userId,
+      userName,
+      color,
+      socketId: socket.id,
+      joinedAt: new Date().toISOString()
+    };
+    state.connectedUsers.push(user);
+
+    socket.emit('room:state', {
+      connectedUsers: state.connectedUsers,
+      messages: state.messages,
+      playback: state.playback
+    });
+
+    const joined = state.connectedUsers.find((u) => u.socketId === socket.id);
+    this.server.to(roomId).emit('room:user-joined', {
+      userId,
+      userName,
+      color: joined?.color ?? '#64748b',
+      roomId
+    });
+
     this.logger.debug(`${userId} joined room ${roomId}`);
   }
 
@@ -159,7 +230,8 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     @ConnectedSocket() socket: Socket,
     @MessageBody() data: unknown
   ): Promise<void> {
-    const userId = this.socketToUser.get(socket.id);
+    const userInfo = this.socketToUser.get(socket.id);
+    if (!userInfo) return;
 
     const parsed = leaveRoomPayloadSchema.safeParse(data);
     if (!parsed.success) {
@@ -168,6 +240,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     }
 
     const { roomId } = parsed.data;
+    const { userId } = userInfo;
 
     const state = this.roomStates.get(roomId);
     if (state) {
@@ -179,7 +252,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
 
     await socket.leave(roomId);
     this.server.to(roomId).emit('room:user-left', { userId, roomId });
-    this.logger.debug(`${String(userId)} left room ${roomId}`);
+    this.logger.debug(`${userId} left room ${roomId}`);
   }
 
   @SubscribeMessage('room:message')
@@ -187,8 +260,8 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     @ConnectedSocket() socket: Socket,
     @MessageBody() data: unknown
   ): void {
-    const userId = this.socketToUser.get(socket.id);
-    if (!userId) {
+    const userInfo = this.socketToUser.get(socket.id);
+    if (!userInfo) {
       socket.emit('room:error', { message: 'Unauthorized' });
       return;
     }
@@ -200,21 +273,27 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     }
 
     const { roomId, content } = parsed.data;
+    const { userId, userName } = userInfo;
 
     if (!socket.rooms.has(roomId)) {
       socket.emit('room:error', { message: 'Forbidden' });
       return;
     }
 
+    const state = getOrCreateRoomState(this.roomStates, roomId);
+    const sender = state.connectedUsers.find((u) => u.socketId === socket.id);
+    const color = sender?.color ?? '#64748b';
+
     const message = {
       id: `${socket.id}-${String(Date.now())}`,
       roomId,
       userId,
+      userName,
+      color,
       content,
       timestamp: new Date().toISOString()
     };
 
-    const state = getOrCreateRoomState(this.roomStates, roomId);
     state.messages.push(message);
     if (state.messages.length > REALTIME_MAX_MESSAGES) {
       state.messages = state.messages.slice(-REALTIME_MAX_MESSAGES);
