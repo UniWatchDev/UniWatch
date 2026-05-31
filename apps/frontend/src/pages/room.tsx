@@ -6,6 +6,7 @@ import { getRoomContract, previewRoomContract, joinRoomContract, leaveRoomContra
 import { getAuthMeContract } from '@repo/contracts/auth';
 import type { RoomPreview } from '@repo/schemas/rooms';
 import type { RoomResponse, RoomStatus } from '@repo/schemas/rooms';
+import { useRoomSocket } from '@/hooks/use-room-socket';
 import type { MovieResponse } from '@repo/schemas/movies';
 
 import { attachMovieToRoom } from '@/movies/attach-room-movie';
@@ -19,8 +20,7 @@ import type { PlaybackRate } from '@/movies/room-playback';
 import { useRoomMovie } from '@/movies/use-room-movie';
 import { prepareMovieForRoom } from '@/movies/prepare-movie-for-room';
 import { validateMovieFile } from '@/movies/upload-movie-file';
-import type { ChatMessage, Member } from '@/types/room';
-import { MOCK_CHAT, MOCK_MEMBERS } from '@/data/mock-data';
+import type { Member } from '@/types/room';
 import { UserAvatar } from '@/components/user-avatar';
 
 function StatusDot({ status }: { status: Member['status'] }) {
@@ -201,7 +201,6 @@ export function RoomPage() {
   const [ownerUploadError, setOwnerUploadError] = useState<string | null>(null);
   const [ownerUploadPercent, setOwnerUploadPercent] = useState<number | null>(null);
   const [showRoomPassword, setShowRoomPassword] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>(MOCK_CHAT);
   const [chatInput, setChatInput] = useState('');
   const chatEndRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -215,6 +214,15 @@ export function RoomPage() {
     isFailed: movieFailed
   } = useRoomMovie(room?.movie ?? null);
   const isOwner = currentUserId !== null && currentUserId === room?.creator;
+
+  const { messages, members, socketStatus, sendMessage: socketSendMessage } = useRoomSocket({
+    roomId: id ?? '',
+    disabled: loading || room === null,
+    currentUserId,
+    creatorId: room?.creator ?? '',
+    creatorName: room?.creator_name ?? undefined,
+    initialMemberIds: room?.allowed_users ?? []
+  });
 
   const loadRoom = (roomId: string, cancelled: { current: boolean }) => {
     setLoading(true);
@@ -258,6 +266,10 @@ export function RoomPage() {
     return () => { cancelled.current = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -624,18 +636,8 @@ export function RoomPage() {
   const sendMessage = () => {
     const text = chatInput.trim();
     if (!text) return;
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: `c${String(Date.now())}`,
-        userId: 'me',
-        userName: 'You',
-        content: text,
-        timestamp: new Date(),
-      },
-    ]);
+    socketSendMessage(text);
     setChatInput('');
-    setTimeout(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, 50);
   };
 
   const statusLabel: Record<RoomStatus, string> = {
@@ -775,7 +777,7 @@ export function RoomPage() {
                 color: 'var(--text-muted)',
               }}
             >
-              In this room ({room.member_count})
+              Connected ({members.length})
             </h3>
             <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
               <p style={{ margin: '0 0 4px' }}>
@@ -851,11 +853,13 @@ export function RoomPage() {
                 </div>
               </div>
             )}
-            <p style={{ margin: '10px 0 0', fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>
-              Live member list coming with real-time integration.
-            </p>
+            {socketStatus !== 'connected' && (
+              <p style={{ margin: '10px 0 0', fontSize: 11, color: socketStatus === 'error' ? '#f87171' : 'var(--text-muted)', fontStyle: 'italic' }}>
+                {socketStatus === 'error' ? 'Connection error' : socketStatus === 'connecting' ? 'Connecting…' : 'Disconnected'}
+              </p>
+            )}
             <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {MOCK_MEMBERS.map((member) => (
+              {members.map((member) => (
                 <li key={member.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <div style={{ position: 'relative', flexShrink: 0 }}>
                     <UserAvatar name={member.name} avatarColor={member.avatarColor} size={32} />
@@ -882,6 +886,21 @@ export function RoomPage() {
                           }}
                         >
                           HOST
+                        </span>
+                      )}
+                      {member.id === currentUserId && (
+                        <span
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 700,
+                            padding: '1px 5px',
+                            borderRadius: 4,
+                            background: 'rgba(100,116,139,0.15)',
+                            color: 'var(--text-muted)',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          YOU
                         </span>
                       )}
                     </div>
@@ -921,7 +940,7 @@ export function RoomPage() {
                 messages.map((msg) => (
                   <div key={msg.id}>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: msg.userId === 'me' ? 'var(--accent-hover)' : 'var(--text-primary)' }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: msg.color }}>
                         {msg.userName}
                       </span>
                       <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{formatChatTime(msg.timestamp)}</span>

@@ -9,7 +9,8 @@
     "./root": "./dist/root/root.schemas.js",
     "./movies": "./dist/movies/movie.schemas.js",
     "./rooms": "./dist/rooms/room.schemas.js",
-    "./profile": "./dist/profile/profile.schemas.js"
+    "./profile": "./dist/profile/profile.schemas.js",
+    "./realtime": "./dist/realtime/realtime.schemas.js"
   },
   "scripts": {
     "dev": "tsc --watch --preserveWatchOutput",
