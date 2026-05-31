@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 
 import { MoviesModule } from '@/movies/movies.module';
@@ -11,6 +12,7 @@ import { RoomCleanupService } from '@/rooms/room-cleanup.service';
 
 @Module({
   imports: [
+    ConfigModule,
     AuthModule,
     MoviesModule,
     MongooseModule.forFeature([{ name: RoomRecord.name, schema: RoomSchema }])

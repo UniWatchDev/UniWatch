@@ -15,9 +15,9 @@ Reusable monorepo baseline — not a product-specific app. Keep the starter gene
 
 ### Shared packages
 
-- `@repo/consts` — string constants: `API_BASE_URL`, endpoint paths (`/api`, `/api/auth/*` including register/login/refresh/me/logout/verify/resend/forgot/reset, `/api/health`, `/api/notes`, `/api/notes/:id`), starter copy. Leaf package, no internal deps.
-- `@repo/schemas` — Zod 4 schemas and inferred types. Subpaths: `/auth`, `/health`, `/notes`, `/movies`, `/rooms`, `/root`, `/errors` (RFC 7807 `problemDetailsSchema`). Notes exports include `noteIdParamsSchema` for UUID path params.
-- `@repo/contracts` — typed `EndpointContract<TResponse, TBody, TParams, TQuery>` objects. Each contract attaches `responseSchema` plus any of `bodySchema`/`paramsSchema`/`querySchema` as real Zod schemas from `@repo/schemas`. Subpaths: `/auth`, `/health`, `/notes`, `/root`. Depends on `@repo/consts`, `@repo/schemas`, `zod`.
+- `@repo/consts` — string constants: `API_BASE_URL`, endpoint paths (`/api`, `/api/auth/*` including register/login/refresh/me/logout/verify/resend/forgot/reset, `/api/health`, `/api/notes`, `/api/notes/:id`, `/api/movies`, `/api/movies/resolve`, `/api/movies/:id`, `/api/movies/:id/upload`, `/api/movies/:id/stream`), starter copy. Leaf package, no internal deps.
+- `@repo/schemas` — Zod 4 schemas and inferred types. Subpaths: `/auth`, `/health`, `/notes`, `/movies`, `/rooms`, `/root`, `/errors` (RFC 7807 `problemDetailsSchema`). Notes exports include `noteIdParamsSchema` for UUID path params. Movies include upload/stream response shapes and relaxed create schema (`name` + `language` required).
+- `@repo/contracts` — typed `EndpointContract<TResponse, TBody, TParams, TQuery>` objects. Each contract attaches `responseSchema` plus any of `bodySchema`/`paramsSchema`/`querySchema` as real Zod schemas from `@repo/schemas`. Subpaths: `/auth`, `/health`, `/notes`, `/movies`, `/root`. Depends on `@repo/consts`, `@repo/schemas`, `zod`.
 - `@repo/ui` — React components (button, card, code). Not currently consumed by any app.
 - `@repo/eslint-config` — ESLint 9 flat configs: `base`, `node`, `react-internal`, `next-js`.
 - `@repo/typescript-config` — TS configs: `base.json`, `node.json`, `nextjs.json`, `vite.json`, `react-library.json`.

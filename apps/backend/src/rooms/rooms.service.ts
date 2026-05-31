@@ -3,11 +3,13 @@ import {
   Injectable,
   NotFoundException
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Types } from 'mongoose';
 import type { CreateRoomInput, RoomPreview, RoomResponse, UpdateRoomInput } from '@repo/schemas/rooms';
-import { RoomType, type RoomDocument } from '@/rooms/room.schema';
+import { RoomType, RoomStatus, type RoomDocument } from '@/rooms/room.schema';
 import { MoviesService } from '@/movies/movies.service';
 import { RoomRepository } from '@/rooms/room.repository';
+import type { Env } from '@/utils/env.validation';
 
 type RefLike = Types.ObjectId | { _id: Types.ObjectId | string };
 type PopulatedUser = { _id: Types.ObjectId | string; userName?: string; firstName?: string };
@@ -56,7 +58,8 @@ function toResponse(doc: RoomDocument): RoomResponse {
 export class RoomsService {
   constructor(
     private readonly rooms: RoomRepository,
-    private readonly movies: MoviesService
+    private readonly movies: MoviesService,
+    private readonly config: ConfigService<Env, true>
   ) {}
 
   async list(): Promise<RoomResponse[]> {
@@ -75,8 +78,20 @@ export class RoomsService {
   }
 
   async create(userId: string, data: CreateRoomInput): Promise<RoomResponse> {
+    let movieName = data.movie_name;
+    let movieDescription = data.movie_description;
+    let roomStatus: RoomStatus = RoomStatus.PREPARING;
     if (data.movie !== undefined) {
-      await this.movies.get(data.movie, userId);
+      const movie = await this.movies.get(data.movie, userId);
+      if (movieName === undefined) {
+        movieName = movie.name;
+      }
+      if (movieDescription === undefined && movie.description != null) {
+        movieDescription = movie.description;
+      }
+      if (movie.has_file && movie.upload_status === 'ready') {
+        roomStatus = RoomStatus.READY;
+      }
     }
     const deactivateAt = data.deactivate_at !== undefined
       ? new Date(data.deactivate_at)
@@ -85,12 +100,13 @@ export class RoomsService {
       name: data.name,
       creator: new Types.ObjectId(userId),
       room_type: data.room_type,
+      status: roomStatus,
       deactivate_at: deactivateAt,
       ...(data.movie !== undefined && { movie: new Types.ObjectId(data.movie) }),
       ...(data.room_type !== 'public' && data.password !== undefined && { password: data.password }),
       ...(data.description !== undefined && { description: data.description }),
-      ...(data.movie_name !== undefined && { movie_name: data.movie_name }),
-      ...(data.movie_description !== undefined && { movie_description: data.movie_description })
+      ...(movieName !== undefined && { movie_name: movieName }),
+      ...(movieDescription !== undefined && { movie_description: movieDescription })
     });
     return toResponse(doc);
   }
@@ -114,8 +130,14 @@ export class RoomsService {
     if (data.movie_description !== undefined) patch['movie_description'] = data.movie_description;
     if (data.deactivate_at !== undefined) patch['deactivate_at'] = new Date(data.deactivate_at);
     if (data.movie !== undefined) {
-      await this.movies.get(data.movie, userId);
+      const movie = await this.movies.get(data.movie, userId);
       patch['movie'] = new Types.ObjectId(data.movie);
+      if (data.movie_name === undefined) {
+        patch['movie_name'] = movie.name;
+      }
+      if (data.movie_description === undefined && movie.description != null) {
+        patch['movie_description'] = movie.description;
+      }
     }
 
     const doc = await this.rooms.updateIfCreator(id, userId, patch);
@@ -173,9 +195,14 @@ export class RoomsService {
   }
 
   async delete(id: string, userId: string): Promise<{ success: true }> {
-    const doc = await this.rooms.softDeleteIfCreator(id, userId);
-    if (doc) return { success: true };
     const raw = await this.rooms.findRawById(id);
+    const movieIdBefore =
+      raw?.movie != null ? refToId(raw.movie as RefLike) : null;
+    const doc = await this.rooms.softDeleteIfCreator(id, userId);
+    if (doc) {
+      await this.scheduleLinkedMoviePurge(movieIdBefore);
+      return { success: true };
+    }
     if (!raw || raw.deleted_at) {
       throw new NotFoundException(`Room "${id}" not found`);
     }
@@ -191,6 +218,21 @@ export class RoomsService {
       throw new ForbiddenException('The room creator cannot leave their own room');
     }
     await this.rooms.removeUser(id, new Types.ObjectId(userId));
+    const updated = await this.rooms.findRawById(id);
+    if (updated && safeIds(updated.allowed_users).length === 0) {
+      await this.rooms.setDeactivatedAt(id, new Date());
+      const movieId = updated.movie != null ? refToId(updated.movie as RefLike) : null;
+      await this.scheduleLinkedMoviePurge(movieId);
+    }
     return { success: true };
+  }
+
+  private async scheduleLinkedMoviePurge(movieId: string | null): Promise<void> {
+    if (movieId == null) {
+      return;
+    }
+    const ttlHours = this.config.get('MOVIE_FILE_TTL_HOURS', { infer: true });
+    const purgeAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000);
+    await this.movies.scheduleFilePurge(movieId, purgeAt);
   }
 }

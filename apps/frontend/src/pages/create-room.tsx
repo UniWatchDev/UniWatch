@@ -1,58 +1,155 @@
-import { useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createRoomContract } from '@repo/contracts/rooms';
+import { createMovieContract } from '@repo/contracts/movies';
 import { API_BASE_URL } from '@repo/consts/api';
+
+import { formatFetchError, readHttpErrorMessage } from '@/auth/auth-fetch-helpers';
+import { useCookieAuth } from '@/auth/use-cookie-auth';
+import {
+  MovieMetadataFields,
+  type MovieMetadataFormValues,
+} from '@/movies/movie-metadata-fields';
+import { MovieUploadField } from '@/movies/movie-upload-field';
+import { MovieUploadProgress } from '@/movies/movie-upload-progress';
+import { prepareMovieForRoom } from '@/movies/prepare-movie-for-room';
 
 interface FormState {
   name: string;
   password: string;
   movieFile: File | null;
-  movieName: string;
-  movieDescription: string;
+  movie: MovieMetadataFormValues;
   isPrivate: boolean;
 }
 
+const emptyMovieMetadata = (): MovieMetadataFormValues => ({
+  name: '',
+  language: '',
+  director: '',
+  genre: '',
+  length: '',
+  rating: '',
+  actors: '',
+  description: '',
+});
+
 export function CreateRoom() {
   const navigate = useNavigate();
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { sessionUser, authInitialized } = useCookieAuth();
   const [form, setForm] = useState<FormState>({
     name: '',
     password: '',
     movieFile: null,
-    movieName: '',
-    movieDescription: '',
+    movie: emptyMovieMetadata(),
     isPrivate: false,
   });
-  const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
+  const [roomNameTouched, setRoomNameTouched] = useState(false);
+  const [errors, setErrors] = useState<Partial<Record<'roomName' | 'password' | 'movieFile' | keyof MovieMetadataFormValues, string>>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [uploadPercent, setUploadPercent] = useState<number | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (roomNameTouched || form.name.trim() !== '' || sessionUser?.userName == null) {
+      return;
+    }
+    setForm((prev) => ({
+      ...prev,
+      name: `${sessionUser.userName}'s Room`,
+    }));
+  }, [form.name, roomNameTouched, sessionUser?.userName]);
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
     setErrors((prev) => ({ ...prev, [key]: undefined }));
+    if (key === 'name') {
+      setRoomNameTouched(true);
+    }
+  };
+
+  const setMovie = <K extends keyof MovieMetadataFormValues>(key: K, value: MovieMetadataFormValues[K]) => {
+    setForm((prev) => ({ ...prev, movie: { ...prev.movie, [key]: value } }));
+    setErrors((prev) => ({ ...prev, [key]: undefined }));
+  };
+
+  const clearMovieUpload = () => {
+    setForm((prev) => ({
+      ...prev,
+      movieFile: null,
+      movie: emptyMovieMetadata(),
+    }));
+    setErrors((prev) => {
+      const next = { ...prev };
+      delete next.movieFile;
+      delete next.name;
+      delete next.language;
+      delete next.director;
+      delete next.genre;
+      delete next.length;
+      delete next.rating;
+      delete next.actors;
+      delete next.description;
+      return next;
+    });
   };
 
   const validate = (): boolean => {
     const next: typeof errors = {};
-    if (!form.name.trim()) next.name = 'Room name is required.';
+    if (!form.name.trim()) next.roomName = 'Room name is required.';
     if (form.isPrivate && !form.password.trim()) next.password = 'Password is required for private rooms.';
+    if (form.movieFile) {
+      if (!form.movie.name.trim()) next.name = 'Movie name is required when uploading a video.';
+      if (!form.movie.language) next.language = 'Language is required when uploading a video.';
+    }
     setErrors(next);
     return Object.keys(next).length === 0;
   };
 
   const handleSubmit = async (e: React.SyntheticEvent) => {
     e.preventDefault();
+    if (!authInitialized) return;
     if (!validate()) return;
     setSubmitting(true);
     setApiError(null);
+    setUploadPercent(null);
+
     try {
+      let movieId: string | undefined;
+      let movieName = form.movie.name.trim();
+      let movieDescription = form.movie.description.trim();
+
+      if (form.movieFile) {
+        setUploadPercent(0);
+        const movieBody = createMovieContract.bodySchema.parse({
+          name: form.movie.name.trim(),
+          language: form.movie.language,
+          ...(form.movie.director.trim() && { director: form.movie.director.trim() }),
+          ...(form.movie.genre && { genre: form.movie.genre }),
+          ...(form.movie.length.trim() && { length: Number(form.movie.length) }),
+          ...(form.movie.rating.trim() && { rating: Number(form.movie.rating) }),
+          ...(form.movie.actors.trim() && {
+            movie_actors: form.movie.actors.split(',').map((actor) => actor.trim()).filter((actor) => actor.length > 0),
+          }),
+          ...(form.movie.description.trim() && { description: form.movie.description.trim() }),
+        });
+        const movie = await prepareMovieForRoom(movieBody, form.movieFile, {
+          onProgress: (progress) => { setUploadPercent(progress.percent); },
+        });
+        movieId = movie.id;
+        movieName = movie.name;
+        movieDescription = movie.description ?? movieDescription;
+        setUploadPercent(null);
+      }
+
       const body = createRoomContract.bodySchema.parse({
         name: form.name.trim(),
         room_type: form.isPrivate ? 'private' : 'public',
         ...(form.password.trim() && { password: form.password.trim() }),
-        ...(form.movieName.trim() && { movie_name: form.movieName.trim() }),
-        ...(form.movieDescription.trim() && { movie_description: form.movieDescription.trim() }),
+        ...(movieId !== undefined && { movie: movieId }),
+        ...(movieName && { movie_name: movieName }),
+        ...(movieDescription && { movie_description: movieDescription }),
       });
+
       const res = await fetch(`${API_BASE_URL}${createRoomContract.path}`, {
         method: createRoomContract.method,
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -60,24 +157,15 @@ export function CreateRoom() {
         body: JSON.stringify(body),
       });
       if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`HTTP ${String(res.status)}: ${text}`);
+        throw new Error(await readHttpErrorMessage(res));
       }
       const room = createRoomContract.responseSchema.parse(await res.json());
       void navigate(`/room/${room.id}`);
     } catch (err: unknown) {
-      setApiError(err instanceof Error ? err.message : 'Failed to create room');
+      setApiError(formatFetchError(err));
     } finally {
       setSubmitting(false);
-    }
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0] ?? null;
-    set('movieFile', file);
-    if (file && !form.movieName) {
-      const nameWithoutExt = file.name.replace(/\.[^.]+$/, '');
-      set('movieName', nameWithoutExt);
+      setUploadPercent(null);
     }
   };
 
@@ -92,11 +180,7 @@ export function CreateRoom() {
         padding: '48px 16px',
       }}
     >
-      <div
-        className="card fade-up"
-        style={{ width: '100%', maxWidth: 520, padding: '32px' }}
-      >
-        {/* Header */}
+      <div className="card fade-up" style={{ width: '100%', maxWidth: 520, padding: '32px' }}>
         <div style={{ marginBottom: 28 }}>
           <button
             onClick={() => { void navigate('/rooms'); }}
@@ -123,7 +207,8 @@ export function CreateRoom() {
             Create a room
           </h1>
           <p style={{ marginTop: 6, fontSize: 14, color: 'var(--text-muted)' }}>
-            Set up your watch party in seconds.
+            Room name is the room title. Movie name is the video title. Video file is the uploaded file.
+            Fields marked * are required. If you do not change it, the room name starts as your username&apos;s Room.
           </p>
         </div>
 
@@ -143,35 +228,37 @@ export function CreateRoom() {
           </div>
         )}
 
+        {uploadPercent !== null && (
+          <div
+            style={{
+              marginBottom: 16,
+              padding: '14px 16px',
+              borderRadius: 10,
+              background: 'var(--accent-dim)',
+              border: '1px solid rgba(124,58,237,0.25)',
+            }}
+          >
+            <MovieUploadProgress percent={uploadPercent} label="Uploading your video" />
+          </div>
+        )}
+
         <form onSubmit={(e) => { void handleSubmit(e); }} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          {/* Room name */}
-          <FormField label="Room name" error={errors.name}>
+          <FormField label="Room name" error={errors.roomName} required>
             <input
               className="input"
               type="text"
-              placeholder="e.g. Movie Night 🍿"
+              placeholder={sessionUser?.userName != null ? `${sessionUser.userName}'s Room` : 'Enter a room name'}
               value={form.name}
               onChange={(e) => { set('name', e.target.value); }}
               maxLength={60}
             />
           </FormField>
 
-          {/* Visibility toggle */}
           <div>
             <label style={labelStyle}>Visibility</label>
             <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
-              <ToggleButton
-                active={!form.isPrivate}
-                onClick={() => { set('isPrivate', false); }}
-                icon="🌐"
-                label="Public"
-              />
-              <ToggleButton
-                active={form.isPrivate}
-                onClick={() => { set('isPrivate', true); }}
-                icon="🔒"
-                label="Private"
-              />
+              <ToggleButton active={!form.isPrivate} onClick={() => { set('isPrivate', false); }} icon="🌐" label="Public" />
+              <ToggleButton active={form.isPrivate} onClick={() => { set('isPrivate', true); }} icon="🔒" label="Private" />
             </div>
             <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>
               {form.isPrivate
@@ -180,9 +267,8 @@ export function CreateRoom() {
             </p>
           </div>
 
-          {/* Password (private only) */}
           {form.isPrivate && (
-            <FormField label="Password" error={errors.password}>
+            <FormField label="Password" error={errors.password} required>
               <input
                 className="input"
                 type="password"
@@ -197,89 +283,40 @@ export function CreateRoom() {
 
           <hr style={{ border: 'none', borderTop: '1px solid var(--border-subtle)', margin: '4px 0' }} />
 
-          {/* Movie upload */}
-          <div>
-            <label style={labelStyle}>
-              Movie file
-              <span style={{ color: 'var(--text-muted)', fontWeight: 400, marginLeft: 4 }}>(optional)</span>
-            </label>
-            <div
-              onClick={() => { fileInputRef.current?.click(); }}
-              style={{
-                marginTop: 6,
-                padding: '20px',
-                border: '2px dashed var(--border-medium)',
-                borderRadius: 10,
-                cursor: 'pointer',
-                textAlign: 'center',
-                transition: 'border-color 200ms ease, background 200ms ease',
-                background: form.movieFile ? 'var(--accent-dim)' : 'transparent',
-                borderColor: form.movieFile ? 'var(--accent)' : 'var(--border-medium)',
-              }}
-            >
-              {form.movieFile ? (
-                <div>
-                  <p style={{ fontSize: 24, margin: '0 0 6px' }}>🎬</p>
-                  <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 2px' }}>
-                    {form.movieFile.name}
-                  </p>
-                  <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>
-                    {(form.movieFile.size / 1024 / 1024).toFixed(1)} MB
-                  </p>
-                </div>
-              ) : (
-                <div>
-                  <p style={{ fontSize: 24, margin: '0 0 6px' }}>📁</p>
-                  <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '0 0 2px' }}>
-                    Click to upload a video file
-                  </p>
-                  <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>
-                    MP4, MKV, AVI, MOV supported
-                  </p>
-                </div>
-              )}
-            </div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="video/*"
-              aria-label="Upload movie file"
-              style={{ display: 'none' }}
-              onChange={handleFileChange}
-            />
-          </div>
+          <MovieUploadField
+            label="Video file"
+            file={form.movieFile}
+            error={errors.movieFile}
+            onFileChange={(file, validationError) => {
+              set('movieFile', file);
+              setErrors((prev) => ({
+                ...prev,
+                ...(validationError !== null ? { movieFile: validationError } : {}),
+              }));
+            }}
+            onRemove={clearMovieUpload}
+          />
 
-          {/* Movie name */}
-          <FormField label="Movie name" optional>
-            <input
-              className="input"
-              type="text"
-              placeholder="e.g. Inception (2010)"
-              value={form.movieName}
-              onChange={(e) => { set('movieName', e.target.value); }}
-              maxLength={120}
-            />
-          </FormField>
-
-          {/* Movie description */}
-          <FormField label="Movie description" optional>
-            <textarea
-              className="input"
-              placeholder="A short description of what you're watching…"
-              value={form.movieDescription}
-              onChange={(e) => { set('movieDescription', e.target.value); }}
-              maxLength={400}
-              rows={3}
-            />
-          </FormField>
+          <MovieMetadataFields
+            values={form.movie}
+            errors={errors}
+            onChange={setMovie}
+            requireCoreFields={form.movieFile !== null}
+          />
 
           <button
             className="btn-primary"
             type="submit"
-            disabled={submitting}
-            style={{ marginTop: 4, padding: '12px 24px', fontSize: 15, width: '100%', opacity: submitting ? 0.7 : 1 }}
+            disabled={submitting || !authInitialized}
+            style={{ marginTop: 4, padding: '12px 24px', fontSize: 15, width: '100%', opacity: submitting || !authInitialized ? 0.7 : 1 }}
           >
-            {submitting ? 'Creating…' : 'Create Room'}
+            {!authInitialized
+              ? 'Waiting for session…'
+              : submitting
+                ? uploadPercent !== null
+                  ? `Uploading… ${String(uploadPercent)}%`
+                  : 'Creating…'
+                : 'Create Room'}
           </button>
         </form>
       </div>
@@ -290,11 +327,13 @@ export function CreateRoom() {
 function FormField({
   label,
   optional,
+  required,
   error,
   children,
 }: {
   label: string;
   optional?: boolean | undefined;
+  required?: boolean | undefined;
   error?: string | undefined;
   children: React.ReactNode;
 }) {
@@ -302,6 +341,7 @@ function FormField({
     <div>
       <label style={labelStyle}>
         {label}
+        {required && <span style={{ color: '#f87171', marginLeft: 2 }}>*</span>}
         {optional && <span style={{ color: 'var(--text-muted)', fontWeight: 400, marginLeft: 4 }}>(optional)</span>}
       </label>
       <div style={{ marginTop: 6 }}>{children}</div>

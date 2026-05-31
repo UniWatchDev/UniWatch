@@ -21,7 +21,7 @@ import {
 import { AUTH_PATCH_ME_ENDPOINT } from '@repo/consts/profile';
 import { forgotPasswordAckSchema } from '@repo/schemas/auth';
 import { getUserProfileResponseSchema } from '@repo/schemas/profile';
-import { movieResponseSchema } from '@repo/schemas/movies';
+import { movieResponseSchema, movieStreamResponseSchema } from '@repo/schemas/movies';
 import { noteSchema } from '@repo/schemas/notes';
 import { roomResponseSchema } from '@repo/schemas/rooms';
 
@@ -438,14 +438,32 @@ describe('Backend bootstrap (e2e)', () => {
       .post('/api/movies')
       .send({
         name: `E2E Movie ${String(Date.now())}`,
+        language: 'english',
         director: 'Director',
         rating: 8,
         length: 120,
-        genre: 'drama',
-        language: 'english'
+        genre: 'drama'
       })
       .expect(201);
     const movie = movieResponseSchema.parse(movieRes.body as unknown);
+    expect(movie.upload_status).toBe('pending');
+    expect(movie.has_file).toBe(false);
+
+    const tinyMp4 = Buffer.from([
+      0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d,
+      0x00, 0x00, 0x02, 0x00, 0x69, 0x73, 0x6f, 0x6d, 0x69, 0x73, 0x6f, 0x32
+    ]);
+    const uploaded = await agent
+      .post(`/api/movies/${movie.id}/upload`)
+      .attach('file', tinyMp4, { filename: 'tiny.mp4', contentType: 'video/mp4' })
+      .expect(200);
+    const uploadedMovie = movieResponseSchema.parse(uploaded.body as unknown);
+    expect(uploadedMovie.upload_status).toBe('ready');
+    expect(uploadedMovie.has_file).toBe(true);
+    expect(uploadedMovie.file_uploaded_at).toEqual(expect.any(String));
+
+    const streamRes = await agent.get(`/api/movies/${movie.id}/stream`).expect(200);
+    movieStreamResponseSchema.parse(streamRes.body as unknown);
 
     const deactivateAt = new Date(Date.now() + 86_400_000).toISOString();
     const roomRes = await agent
@@ -486,6 +504,98 @@ describe('Backend bootstrap (e2e)', () => {
       .put(`/api/notes/${note.id}`)
       .send({ title: 'Hacked', content: 'No' })
       .expect(403);
+  });
+
+  it('domain: owner can attach an existing movie to a room later', async () => {
+    const agent = request.agent(app.getHttpServer());
+    const registerBody = uniqueRegisterBody('rmv');
+    await registerAndVerifyEmail(agent, registerBody);
+    await agent
+      .post(AUTH_LOGIN_ENDPOINT)
+      .send({
+        identifier: registerBody.email,
+        password: registerBody.password
+      })
+      .expect(200);
+
+    const movieRes = await agent
+      .post('/api/movies')
+      .send({
+        name: `Later Attached Movie ${String(Date.now())}`,
+        language: 'english',
+        director: 'Director'
+      })
+      .expect(201);
+    const movie = movieResponseSchema.parse(movieRes.body as unknown);
+
+    const roomRes = await agent
+      .post('/api/rooms')
+      .send({
+        name: 'Room Without Movie',
+        room_type: 'public'
+      })
+      .expect(201);
+    const room = roomResponseSchema.parse(roomRes.body as unknown);
+    expect(room.movie ?? null).toBeNull();
+
+    const patchRes = await agent
+      .patch(`/api/rooms/${room.id}`)
+      .send({ movie: movie.id })
+      .expect(200);
+    const updated = roomResponseSchema.parse(patchRes.body as unknown);
+    expect(updated.movie).toBe(movie.id);
+    expect(updated.movie_name).toBe(movie.name);
+  });
+
+  it('domain: movie resolve is idempotent; explicit create rejects duplicate names', async () => {
+    const agent = request.agent(app.getHttpServer());
+    const registerBody = uniqueRegisterBody('mvr');
+    await registerAndVerifyEmail(agent, registerBody);
+    await agent
+      .post(AUTH_LOGIN_ENDPOINT)
+      .send({
+        identifier: registerBody.email,
+        password: registerBody.password
+      })
+      .expect(200);
+
+    const movieName = `Resolve Movie ${String(Date.now())}`;
+    const movieBody = {
+      name: movieName,
+      language: 'english' as const,
+      director: 'Director'
+    };
+
+    const created = await agent.post('/api/movies/resolve').send(movieBody).expect(201);
+    const first = movieResponseSchema.parse(created.body as unknown);
+
+    const reused = await agent.post('/api/movies/resolve').send(movieBody).expect(200);
+    const second = movieResponseSchema.parse(reused.body as unknown);
+    expect(second.id).toBe(first.id);
+
+    await agent.post('/api/movies').send(movieBody).expect(409);
+
+    const tinyMp4 = Buffer.from([
+      0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d,
+      0x00, 0x00, 0x02, 0x00, 0x69, 0x73, 0x6f, 0x6d, 0x69, 0x73, 0x6f, 0x32
+    ]);
+    await agent
+      .post(`/api/movies/${first.id}/upload`)
+      .attach('file', tinyMp4, { filename: 'tiny.mp4', contentType: 'video/mp4' })
+      .expect(200);
+
+    const deactivateAt = new Date(Date.now() + 86_400_000).toISOString();
+    const roomRes = await agent
+      .post('/api/rooms')
+      .send({
+        name: 'Resolve Flow Room',
+        movie: first.id,
+        room_type: 'public',
+        deactivate_at: deactivateAt
+      })
+      .expect(201);
+    const room = roomResponseSchema.parse(roomRes.body as unknown);
+    expect(room.movie).toBe(first.id);
   });
 
   it('auth: refresh without cookies returns 401', async () => {

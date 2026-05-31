@@ -24,6 +24,12 @@ export enum MovieLanguage {
   OTHER = 'other'
 }
 
+export enum MovieUploadStatus {
+  PENDING = 'pending',
+  READY = 'ready',
+  FAILED = 'failed'
+}
+
 @Schema({
   timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' },
   collection: 'movies'
@@ -38,20 +44,50 @@ export class MovieRecord {
   @Prop({ type: [String], default: [] })
   movie_actors!: string[];
 
-  @Prop({ required: true })
+  @Prop({ required: true, default: 'Unknown' })
   director!: string;
 
-  @Prop({ required: true })
+  @Prop({ required: true, default: 0 })
   rating!: number;
 
-  @Prop({ required: true })
+  @Prop({ required: true, default: 0 })
   length!: number;
 
-  @Prop({ required: true, enum: MovieGenre })
+  @Prop({ required: true, enum: MovieGenre, default: MovieGenre.OTHER })
   genre!: MovieGenre;
 
   @Prop({ required: true, enum: MovieLanguage })
   language!: MovieLanguage;
+
+  @Prop({ type: String, default: null })
+  description?: string | null;
+
+  @Prop({ required: true, enum: MovieUploadStatus, default: MovieUploadStatus.PENDING })
+  upload_status!: MovieUploadStatus;
+
+  @Prop({ type: String, default: null })
+  storage_key?: string | null;
+
+  @Prop({ type: String, default: null })
+  thumbnail_key?: string | null;
+
+  @Prop({ type: String, default: null })
+  mime_type?: string | null;
+
+  @Prop({ type: Number, default: null })
+  size_bytes?: number | null;
+
+  @Prop({ type: Number, default: null })
+  duration_seconds?: number | null;
+
+  @Prop({ type: Date, default: null })
+  file_purge_at?: Date | null;
+
+  @Prop({ type: Date, default: null })
+  file_uploaded_at?: Date | null;
+
+  @Prop({ type: Date, default: null })
+  file_deleted_at?: Date | null;
 
   @Prop({ type: Date, default: null })
   deleted_at?: Date | null;
@@ -64,4 +100,8 @@ export type MovieDocument = HydratedDocument<MovieRecord> & {
 
 export const MovieSchema = SchemaFactory.createForClass(MovieRecord);
 
-MovieSchema.index({ ownerId: 1, name: 1 }, { unique: true });
+MovieSchema.index(
+  { ownerId: 1, name: 1 },
+  { unique: true, partialFilterExpression: { deleted_at: null } }
+);
+MovieSchema.index({ file_purge_at: 1, file_deleted_at: 1 });
