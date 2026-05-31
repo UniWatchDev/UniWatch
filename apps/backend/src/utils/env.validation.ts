@@ -82,7 +82,37 @@ const baseEnvSchema = z.object({
   /** Window (ms) for `/api/auth/*` rate limiting (see `ThrottlerModule` in `app.module.ts`). */
   AUTH_THROTTLE_TTL_MS: z.coerce.number().int().positive().default(60_000),
   /** Max requests per client IP per TTL window on throttled `/api/auth/*` routes. */
-  AUTH_THROTTLE_LIMIT: z.coerce.number().int().positive().default(60)
+  AUTH_THROTTLE_LIMIT: z.coerce.number().int().positive().default(60),
+  /**
+   * Object storage backend. Defaults to in-memory in development/test and S3 in production.
+   * Set to `s3` locally when exercising MinIO or AWS (see `env.development.template`).
+   */
+  STORAGE_DRIVER: z.enum(['memory', 's3']).optional(),
+  /** S3-compatible object storage (MinIO locally, AWS S3 in production). */
+  S3_ENDPOINT: z.url().default('http://127.0.0.1:9000'),
+  S3_REGION: z.string().min(1).default('us-east-1'),
+  S3_BUCKET: z.string().min(1).default('uniwatch-media'),
+  S3_ACCESS_KEY_ID: z.string().min(1).default('minioadmin'),
+  S3_SECRET_ACCESS_KEY: z.string().min(1).default('minioadmin'),
+  S3_FORCE_PATH_STYLE: z.preprocess(
+    (value) =>
+      value === undefined || value === null || value === ''
+        ? true
+        : value === 'true' || value === '1' || value === 'yes',
+    z.boolean()
+  ),
+  MOVIE_UPLOAD_MAX_BYTES: z.coerce.number().int().positive().default(1_073_741_824),
+  MOVIE_ALLOWED_MIMES: z
+    .string()
+    .default('video/mp4,video/quicktime')
+    .transform((value) =>
+      value
+        .split(',')
+        .map((part) => part.trim())
+        .filter((part) => part.length > 0)
+    ),
+  MOVIE_FILE_TTL_HOURS: z.coerce.number().int().positive().default(24),
+  MOVIE_STREAM_URL_EXPIRES_SECONDS: z.coerce.number().int().positive().default(900)
 });
 
 const envSchema = baseEnvSchema

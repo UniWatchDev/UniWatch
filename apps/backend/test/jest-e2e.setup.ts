@@ -14,3 +14,5 @@ process.env['MONGODB_URI'] =
   process.env['MONGODB_URI'] ?? 'mongodb://127.0.0.1:27017/uniwatch_e2e';
 process.env['AUTH_THROTTLE_LIMIT'] =
   process.env['AUTH_THROTTLE_LIMIT'] ?? '10000';
+process.env['S3_ENDPOINT'] = process.env['S3_ENDPOINT'] ?? 'http://127.0.0.1:9000';
+process.env['S3_BUCKET'] = process.env['S3_BUCKET'] ?? 'uniwatch-media-test';

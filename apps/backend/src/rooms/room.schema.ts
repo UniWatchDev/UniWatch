@@ -58,6 +58,9 @@ export class RoomRecord {
   deactivate_at!: Date;
 
   @Prop({ type: Date, default: null })
+  deactivated_at?: Date | null;
+
+  @Prop({ type: Date, default: null })
   deleted_at?: Date | null;
 }
 

@@ -9,7 +9,8 @@
     "./root": "./dist/root/root.consts.js",
     "./starter": "./dist/starter/starter.consts.js",
     "./profile": "./dist/profile/profile.consts.js",
-    "./rooms": "./dist/rooms/rooms.consts.js"
+    "./rooms": "./dist/rooms/rooms.consts.js",
+    "./movies": "./dist/movies/movies.consts.js"
   },
   "scripts": {
     "dev": "tsc --watch --preserveWatchOutput",

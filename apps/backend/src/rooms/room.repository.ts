@@ -46,6 +46,7 @@ export class RoomRepository {
     name: string;
     creator: Types.ObjectId;
     room_type: string;
+    status?: string;
     deactivate_at: Date;
     movie?: Types.ObjectId;
     password?: string;
@@ -68,8 +69,23 @@ export class RoomRepository {
     return this.model.findByIdAndUpdate(
       roomId,
       { $pull: { allowed_users: userId } },
-      { new: true }
+      { returnDocument: 'after' }
     );
+  }
+
+  setDeactivatedAt(roomId: string, deactivatedAt: Date): Promise<RoomDocument | null> {
+    return this.model.findByIdAndUpdate(
+      roomId,
+      { $set: { deactivated_at: deactivatedAt } },
+      { returnDocument: 'after' }
+    );
+  }
+
+  findRecentlySoftDeletedWithMovies(since: Date): Promise<RoomDocument[]> {
+    return this.model.find({
+      deleted_at: { $gte: since },
+      movie: { $ne: null }
+    });
   }
 
   banUser(roomId: string, userId: Types.ObjectId): Promise<RoomDocument | null> {
@@ -112,8 +128,16 @@ export class RoomRepository {
   async softDeleteOlderThan(cutoff: Date): Promise<{ deletedCount: number }> {
     const result = await this.model.updateMany(
       { deleted_at: null, created_at: { $lt: cutoff } },
-      { $set: { deleted_at: new Date() } }
+      { $set: { deleted_at: new Date(), deactivated_at: new Date() } }
     );
     return { deletedCount: result.modifiedCount };
+  }
+
+  findActiveOlderThan(cutoff: Date): Promise<RoomDocument[]> {
+    return this.model.find({
+      deleted_at: null,
+      created_at: { $lt: cutoff },
+      movie: { $ne: null }
+    });
   }
 }

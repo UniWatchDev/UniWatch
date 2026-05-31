@@ -22,11 +22,23 @@ export default defineConfig(({ mode }) => {
     },
     preview: {
       port,
-      strictPort: true
+      strictPort: true,
+      proxy: {
+        '/api': {
+          target: 'http://localhost:3000',
+          changeOrigin: true
+        }
+      }
     },
     server: {
       port,
-      strictPort: true
+      strictPort: true,
+      proxy: {
+        '/api': {
+          target: 'http://localhost:3000',
+          changeOrigin: true
+        }
+      }
     }
   };
 });

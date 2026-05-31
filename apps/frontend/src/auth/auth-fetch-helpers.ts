@@ -31,6 +31,13 @@ export function formatErr(err: unknown): string {
   return 'Something went wrong';
 }
 
+export function formatFetchError(err: unknown): string {
+  if (err instanceof TypeError) {
+    return 'Backend unavailable — ensure `pnpm dev` is running and port 3000 is up.';
+  }
+  return formatErr(err);
+}
+
 export async function readHttpErrorMessage(response: Response): Promise<string> {
   const raw = await response.text();
   if (raw.length === 0) {
