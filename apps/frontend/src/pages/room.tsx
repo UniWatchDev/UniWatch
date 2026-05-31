@@ -5,8 +5,7 @@ import { getAuthMeContract } from '@repo/contracts/auth';
 import type { RoomPreview } from '@repo/schemas/rooms';
 import { API_BASE_URL } from '@repo/consts/api';
 import type { RoomResponse, RoomStatus } from '@repo/schemas/rooms';
-import type { ChatMessage, Member } from '@/types/room';
-import { MOCK_CHAT, MOCK_MEMBERS } from '@/data/mock-data';
+import { useRoomSocket } from '@/hooks/use-room-socket';
 import { UserAvatar } from '@/components/user-avatar';
 
 function StatusDot({ status }: { status: Member['status'] }) {
@@ -169,9 +168,17 @@ export function RoomPage() {
   const [duration] = useState(8887);
   const [volume, setVolume] = useState(80);
   const [muted, setMuted] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>(MOCK_CHAT);
   const [chatInput, setChatInput] = useState('');
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  const { messages, members, socketStatus, sendMessage: socketSendMessage } = useRoomSocket({
+    roomId: id ?? '',
+    disabled: loading || room === null,
+    currentUserId,
+    creatorId: room?.creator ?? '',
+    creatorName: room?.creator_name ?? undefined,
+    initialMemberIds: room?.allowed_users ?? []
+  });
 
   const loadRoom = (roomId: string, cancelled: { current: boolean }) => {
     setLoading(true);
@@ -215,6 +222,10 @@ export function RoomPage() {
     return () => { cancelled.current = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
   const handleJoin = async () => {
     if (!id) return;
@@ -304,18 +315,8 @@ export function RoomPage() {
   const sendMessage = () => {
     const text = chatInput.trim();
     if (!text) return;
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: `c${String(Date.now())}`,
-        userId: 'me',
-        userName: 'You',
-        content: text,
-        timestamp: new Date(),
-      },
-    ]);
+    socketSendMessage(text);
     setChatInput('');
-    setTimeout(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, 50);
   };
 
   const statusLabel: Record<RoomStatus, string> = {
@@ -579,11 +580,13 @@ export function RoomPage() {
                 </p>
               )}
             </div>
-            <p style={{ margin: '10px 0 0', fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>
-              Live member list coming with real-time integration.
-            </p>
+            {socketStatus !== 'connected' && (
+              <p style={{ margin: '10px 0 0', fontSize: 11, color: socketStatus === 'error' ? '#f87171' : 'var(--text-muted)', fontStyle: 'italic' }}>
+                {socketStatus === 'error' ? 'Connection error' : socketStatus === 'connecting' ? 'Connecting…' : 'Disconnected'}
+              </p>
+            )}
             <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {MOCK_MEMBERS.map((member) => (
+              {members.map((member) => (
                 <li key={member.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <div style={{ position: 'relative', flexShrink: 0 }}>
                     <UserAvatar name={member.name} avatarColor={member.avatarColor} size={32} />
