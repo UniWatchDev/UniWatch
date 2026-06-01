@@ -14,5 +14,12 @@ process.env['MONGODB_URI'] =
   process.env['MONGODB_URI'] ?? 'mongodb://127.0.0.1:27017/uniwatch_e2e';
 process.env['AUTH_THROTTLE_LIMIT'] =
   process.env['AUTH_THROTTLE_LIMIT'] ?? '10000';
-process.env['S3_ENDPOINT'] = process.env['S3_ENDPOINT'] ?? 'http://127.0.0.1:9000';
-process.env['S3_BUCKET'] = process.env['S3_BUCKET'] ?? 'uniwatch-media-test';
+/** E2E uses in-memory storage; placeholders satisfy `S3StorageService` construction only. */
+process.env['S3_REGION'] = process.env['S3_REGION'] ?? 'auto';
+process.env['S3_BUCKET'] = process.env['S3_BUCKET'] ?? 'uniwatch-e2e';
+process.env['S3_ENDPOINT'] =
+  process.env['S3_ENDPOINT'] ??
+  'https://00000000000000000000000000000000.r2.cloudflarestorage.com';
+process.env['S3_ACCESS_KEY_ID'] = process.env['S3_ACCESS_KEY_ID'] ?? 'placeholder';
+process.env['S3_SECRET_ACCESS_KEY'] = process.env['S3_SECRET_ACCESS_KEY'] ?? 'placeholder';
+process.env['S3_FORCE_PATH_STYLE'] = process.env['S3_FORCE_PATH_STYLE'] ?? 'true';
