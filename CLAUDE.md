@@ -19,6 +19,10 @@
 | backend  | `AUTH_USE_REAL_EMAILS` | `false` in development / `true` in production | Enables real Resend delivery when `true`; JSON responses always include the verification/reset debug payloads. Set to `false` to skip SMTP delivery and save API calls. |
 | backend  | `SMTP_HOST` / `SMTP_PORT` / `SMTP_SECURE` / `SMTP_USER` / `SMTP_PASS` / `SMTP_FROM` | (optional when `AUTH_USE_REAL_EMAILS=false`) | When real delivery is enabled, verification + reset email is sent via **nodemailer** over **Resend SMTP** by default (`smtp.resend.com`, user `resend`, pass = Resend API key). See [Resend + Nodemailer](https://resend.com/docs/send-with-nodemailer-smtp). |
 | backend  | `APP_PUBLIC_ORIGIN`        | empty         | Optional `https://…` base for password-reset links in email (no trailing slash). |
+| backend  | `STORAGE_DRIVER`           | in-memory in dev/test; `s3` in production | `memory` \| `s3`. Set `s3` in `.env.development` for local R2 uploads. |
+| backend  | `S3_BUCKET`                | `uniwatch-dev` / `uniwatch-production` | Cloudflare R2 bucket per environment when object storage is active. |
+| backend  | `S3_ENDPOINT` / `S3_REGION` / `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | — | R2 S3 API: `https://<ACCOUNT_ID>.r2.cloudflarestorage.com`, region `auto`. Required when `STORAGE_DRIVER=s3` or `NODE_ENV=production`. |
+| backend  | `S3_FORCE_PATH_STYLE`      | `true`        | Use `true` for R2 (path-style avoids TLS handshake errors). |
 | frontend | `VITE_PORT`                | `5173`        | Read in `vite.config.ts`                                                                                   |
 | frontend | `VITE_API_BASE_URL`        | —             | Defined in `.env` examples but **not wired** — call sites use hardcoded `API_BASE_URL` from `@repo/consts` |
 | web      | `NEXT_PUBLIC_API_BASE_URL` | —             | Defined in `.env` examples but **not wired** — same hardcoded constant                                     |

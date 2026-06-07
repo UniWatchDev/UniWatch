@@ -85,15 +85,18 @@ const baseEnvSchema = z.object({
   AUTH_THROTTLE_LIMIT: z.coerce.number().int().positive().default(60),
   /**
    * Object storage backend. Defaults to in-memory in development/test and S3 in production.
-   * Set to `s3` locally when exercising MinIO or AWS (see `env.development.template`).
+   * Set to `s3` locally for Cloudflare R2 movie uploads (see `env.development.template`).
    */
   STORAGE_DRIVER: z.enum(['memory', 's3']).optional(),
-  /** S3-compatible object storage (MinIO locally, AWS S3 in production). */
-  S3_ENDPOINT: z.url().default('http://127.0.0.1:9000'),
-  S3_REGION: z.string().min(1).default('us-east-1'),
-  S3_BUCKET: z.string().min(1).default('uniwatch-media'),
-  S3_ACCESS_KEY_ID: z.string().min(1).default('minioadmin'),
-  S3_SECRET_ACCESS_KEY: z.string().min(1).default('minioadmin'),
+  /** S3-compatible API endpoint (Cloudflare R2: `https://<ACCOUNT_ID>.r2.cloudflarestorage.com`). */
+  S3_ENDPOINT: z.url().optional(),
+  /** R2 recommends `auto` for the AWS SDK region. */
+  S3_REGION: z.string().min(1).optional(),
+  /** R2 bucket: `uniwatch-dev` (development) or `uniwatch-production` (production) when omitted. */
+  S3_BUCKET: z.string().min(1).optional(),
+  S3_ACCESS_KEY_ID: z.string().min(1).optional(),
+  S3_SECRET_ACCESS_KEY: z.string().min(1).optional(),
+  /** R2 requires path-style URLs; default `true`. Set `false` only for AWS virtual-hosted buckets. */
   S3_FORCE_PATH_STYLE: z.preprocess(
     (value) =>
       value === undefined || value === null || value === ''
@@ -115,8 +118,50 @@ const baseEnvSchema = z.object({
   MOVIE_STREAM_URL_EXPIRES_SECONDS: z.coerce.number().int().positive().default(900)
 });
 
+/** Placeholder endpoint so `S3StorageService` can construct when storage driver is in-memory. */
+const R2_PLACEHOLDER_ENDPOINT =
+  'https://00000000000000000000000000000000.r2.cloudflarestorage.com' as const;
+
+function resolveStorageDriver(
+  nodeEnv: 'development' | 'production' | 'test',
+  storageDriver: 'memory' | 's3' | undefined
+): 'memory' | 's3' {
+  if (storageDriver === 's3') return 's3';
+  if (storageDriver === 'memory') return 'memory';
+  return nodeEnv === 'production' ? 's3' : 'memory';
+}
+
 const envSchema = baseEnvSchema
   .superRefine((data, ctx) => {
+    const storageDriver = resolveStorageDriver(data.NODE_ENV, data.STORAGE_DRIVER);
+    if (storageDriver === 's3') {
+      if (data.S3_ENDPOINT === undefined || data.S3_ENDPOINT.trim().length === 0) {
+        ctx.addIssue({
+          code: 'custom',
+          message:
+            'S3_ENDPOINT is required when using object storage (STORAGE_DRIVER=s3 or NODE_ENV=production)',
+          path: ['S3_ENDPOINT']
+        });
+      }
+      if (data.S3_ACCESS_KEY_ID === undefined || data.S3_ACCESS_KEY_ID.trim().length === 0) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'S3_ACCESS_KEY_ID is required when using object storage',
+          path: ['S3_ACCESS_KEY_ID']
+        });
+      }
+      if (
+        data.S3_SECRET_ACCESS_KEY === undefined ||
+        data.S3_SECRET_ACCESS_KEY.trim().length === 0
+      ) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'S3_SECRET_ACCESS_KEY is required when using object storage',
+          path: ['S3_SECRET_ACCESS_KEY']
+        });
+      }
+    }
+
     const origin = data.APP_PUBLIC_ORIGIN.trim();
     if (origin.length > 0 && !isValidHttpUrl(origin)) {
       ctx.addIssue({
@@ -169,7 +214,14 @@ const envSchema = baseEnvSchema
   .transform((data) => ({
     ...data,
     AUTH_USE_REAL_EMAILS:
-      data.AUTH_USE_REAL_EMAILS ?? data.NODE_ENV === 'production'
+      data.AUTH_USE_REAL_EMAILS ?? data.NODE_ENV === 'production',
+    S3_BUCKET:
+      data.S3_BUCKET ??
+      (data.NODE_ENV === 'production' ? 'uniwatch-production' : 'uniwatch-dev'),
+    S3_REGION: data.S3_REGION ?? 'auto',
+    S3_ENDPOINT: data.S3_ENDPOINT ?? R2_PLACEHOLDER_ENDPOINT,
+    S3_ACCESS_KEY_ID: data.S3_ACCESS_KEY_ID ?? 'placeholder',
+    S3_SECRET_ACCESS_KEY: data.S3_SECRET_ACCESS_KEY ?? 'placeholder'
   }));
 
 export type Env = z.infer<typeof envSchema>;
