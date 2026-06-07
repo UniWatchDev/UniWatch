@@ -378,6 +378,24 @@ textarea.input {
   letter-spacing: -0.01em;
 }
 
+.cinema-chat__send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: #415a77;
+  color: #fff;
+  cursor: pointer;
+  transition: opacity 150ms ease;
+}
+.cinema-chat__send:hover {
+  opacity: 0.8;
+}
+
 /* Presence rings */
 .ring-active  { box-shadow: 0 0 0 2px #4ade80; }
 .ring-away    { box-shadow: 0 0 0 2px var(--accent); }
@@ -739,9 +757,10 @@ textarea.input {
 .room-video-player__actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 12px;
   flex-wrap: wrap;
+  position: relative;
 }
 
 .room-video-player__transport-group,
@@ -753,8 +772,12 @@ textarea.input {
 }
 
 .room-video-player__transport-group {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
   justify-content: center;
-  flex: 1;
+  flex-wrap: nowrap;
+  pointer-events: auto;
 }
 
 .room-video-player__utility-group {
@@ -982,8 +1005,21 @@ textarea.input {
   }
 
   .room-video-player__seek-btn {
-    padding: 4px 6px;
-    font-size: 10px;
+    padding: 4px 8px;
+    font-size: 11px;
+    min-width: 0;
+  }
+
+  /* Keep −5s / play / +5s on one line so they stay symmetric */
+  .room-video-player__transport-group {
+    position: static;
+    transform: none;
+    flex: 1;
+    flex-wrap: nowrap;
+  }
+
+  .room-video-player__actions {
+    justify-content: space-between;
   }
 
   .room-video-player__utilities {
@@ -992,6 +1028,11 @@ textarea.input {
 
   .room-video-player__utility-group {
     gap: 8px;
+  }
+
+  /* Shrink volume slider on very narrow viewports */
+  .room-video-player__range--volume {
+    width: 60px;
   }
 }
 
@@ -1498,6 +1539,17 @@ input[type='range']::-moz-range-thumb {
     padding: 8px 14px;
   }
 
+  /* Icon-only nav buttons must stay square with a larger hit target */
+  .nav-sign-out {
+    padding: 0;
+    width: 44px;
+    height: 44px;
+  }
+  .nav-sign-out svg {
+    width: 22px;
+    height: 22px;
+  }
+
   /* Room: stack video + sidebar vertically */
   .room-main {
     flex-direction: column;
@@ -1505,17 +1557,35 @@ input[type='range']::-moz-range-thumb {
   }
   .room-player-column {
     flex: none;
-    min-height: 0;
     border-right: none;
     border-bottom: 1px solid var(--border-subtle);
   }
+  /* Let the area grow naturally — aspect-ratio moves to the stage */
   .room-video-area {
-    aspect-ratio: 16 / 9;
+    flex: none;
+    aspect-ratio: auto;
+  }
+  /* The player chain becomes natural height on mobile */
+  .room-video-area .room-video-player {
+    flex: none;
+    width: 100%;
+  }
+  .room-video-area .room-video-player__body {
     flex: none;
   }
+  /* Stage gets the 16:9 ratio so controls sit below it, not inside it */
+  .room-video-area .room-video-player__stage {
+    aspect-ratio: 16 / 9;
+    flex: none;
+    height: auto;
+    width: 100%;
+  }
+  /* Sidebar fills the remaining viewport height */
   .room-sidebar {
     width: 100%;
-    height: 340px;
+    flex: 1;
+    min-height: 200px;
+    height: auto;
     border-left: none;
     border-top: 1px solid var(--border-subtle);
   }

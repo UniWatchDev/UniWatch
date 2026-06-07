@@ -98,12 +98,7 @@ export function Lobby() {
       <div className="lobby-content relative z-10 mx-auto max-w-[1200px] px-4 pb-16 pt-6 sm:px-6 sm:pt-8">
 
         {/* Hero */}
-        {!loading && error === null && (
-          <FeaturedRoomHero
-            rooms={rooms}
-            onCreateRoom={() => { void navigate('/rooms/new'); }}
-          />
-        )}
+        <FeaturedRoomHero onCreateRoom={() => { void navigate('/rooms/new'); }} />
 
         {/* Toolbar */}
         <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">

@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Play, MessageSquare, Zap } from 'lucide-react';
+import { Play, MessageSquare, Zap, Users } from 'lucide-react';
 
 import { useCookieAuth } from '@/auth/use-cookie-auth';
 import { StarField } from '@/components/star-field';
@@ -16,12 +16,17 @@ const FEATURES = [
   {
     icon: MessageSquare,
     title: 'Live Chat',
-    desc: 'React, laugh, and talk in real time — everyone on the same moment.',
+    desc: 'React, laugh, and talk in real time everyone on the same moment.',
   },
   {
     icon: Zap,
     title: 'Perfect Sync',
     desc: 'Frame-perfect playback so nobody is a second ahead or behind.',
+  },
+  {
+    icon: Users,
+    title: 'Invite Friends',
+    desc: 'Share a room link and your crew joins instantly — no account required.',
   },
 ] as const;
 
@@ -160,7 +165,7 @@ export function LandingPage() {
               margin: '0 auto 36px',
             }}
           >
-            Watch any video perfectly in sync with your friends — live chat,
+            Watch any video perfectly in sync with your friends live chat,
             shared reactions, and rooms that feel like the same couch.
           </p>
         </div>
@@ -193,17 +198,6 @@ export function LandingPage() {
         </div>
 
         {/* Social proof hint */}
-        <div className="fade-up" style={{ animationDelay: '320ms', marginTop: 28 }}>
-          <p
-            style={{
-              fontSize: 12,
-              color: 'var(--text-muted)',
-              letterSpacing: '0.02em',
-            }}
-          >
-            Free to use · No credit card required
-          </p>
-        </div>
       </main>
 
       {/* Feature strip */}
@@ -212,18 +206,13 @@ export function LandingPage() {
         style={{
           animationDelay: '400ms',
           padding: '0 24px 36px',
+          maxWidth: 1280,
+          margin: '0 auto',
+          width: '100%',
           flexShrink: 0,
         }}
       >
-        <div
-          style={{
-            maxWidth: 820,
-            margin: '0 auto',
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-            gap: 12,
-          }}
-        >
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4" style={{ gap: 12 }}>
           {FEATURES.map(({ icon: Icon, title, desc }) => (
             <div
               key={title}

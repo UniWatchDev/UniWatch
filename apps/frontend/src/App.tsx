@@ -5,6 +5,8 @@ import { ThemeProvider } from '@/theme/theme-provider';
 import { CookieAuthProvider } from '@/auth/cookie-auth-provider';
 import { RequireAuth } from '@/auth/require-auth';
 import { NavBar } from '@/nav/nav-bar';
+import { SiteFooter } from '@/components/site-footer';
+import { shouldShowFooter } from '@/nav/nav-paths';
 import { ProtectedAppPage } from '@/protected-app-page';
 import { ChangePasswordPage } from '@/pages/change-password';
 import { CreateRoom } from '@/pages/create-room';
@@ -19,6 +21,8 @@ import { RoomPage } from '@/pages/room';
 import { VerifyEmailPage } from '@/pages/verify-email-page';
 import { ProfilePage } from '@/profile/profile-page';
 import { ProfileRedirect } from '@/profile/profile-redirect';
+import { AboutPage } from '@/pages/about';
+import { PrivacyPolicyPage } from '@/pages/privacy-policy';
 
 function AppShell() {
   const { pathname } = useLocation();
@@ -42,8 +46,11 @@ function AppShell() {
           <Route path="/room/:id" element={<RequireAuth><RoomPage /></RequireAuth>} />
           <Route path="/rooms/new" element={<RequireAuth><CreateRoom /></RequireAuth>} />
           <Route path="/rooms/:id/edit" element={<RequireAuth><EditRoom /></RequireAuth>} />
+          <Route path="/about" element={<AboutPage />} />
+          <Route path="/privacy" element={<PrivacyPolicyPage />} />
         </Routes>
       </div>
+      {shouldShowFooter(pathname) && <SiteFooter />}
     </div>
   );
 }

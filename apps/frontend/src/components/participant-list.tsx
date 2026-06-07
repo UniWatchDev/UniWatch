@@ -44,7 +44,7 @@ export function ParticipantList({ members, currentUserId }: ParticipantListProps
             key={member.id}
             className="flex items-center gap-3 rounded-lg px-2 py-2"
             style={{
-              background: isYou ? 'rgba(124,58,237,0.07)' : 'transparent',
+              background: isYou ? 'rgba(245,158,11,0.07)' : 'transparent',
             }}
           >
             <div
@@ -71,7 +71,8 @@ export function ParticipantList({ members, currentUserId }: ParticipantListProps
                 {member.isHost && (
                   <Badge
                     variant="outline"
-                    className="h-4 gap-0.5 border-amber-500/30 bg-amber-500/10 px-1 text-[9px] font-bold text-amber-400"
+                    className="h-4 gap-0.5 px-1 text-[9px] font-bold"
+                    style={{ borderColor: 'var(--accent-dim)', background: 'var(--accent-dim)', color: 'var(--accent)' }}
                   >
                     <Crown size={8} />
                     HOST

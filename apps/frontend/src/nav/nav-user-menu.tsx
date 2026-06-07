@@ -33,7 +33,7 @@ export function NavUserMenu({ user }: NavUserMenuProps) {
         <UserAvatar
           name={firstName}
           avatarId={user.avatarId}
-          avatarColor="#7c3aed"
+          avatarColor="var(--accent)"
           size={32}
         />
         <span className="navbar-user-text">

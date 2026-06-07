@@ -50,12 +50,6 @@ export function ForgotPasswordPage() {
             >
               Request reset link
             </button>
-            <p style={{ margin: 0, fontSize: 14, color: 'var(--text-secondary)' }}>
-              Have a token?{' '}
-              <Link to="/reset-password" className="auth-link">
-                Enter reset token
-              </Link>
-            </p>
             <p style={{ margin: 0, fontSize: 14 }}>
               <Link to="/login" className="auth-link">
                 Back to Sign In

@@ -83,8 +83,7 @@ export function CinemaChat({ messages, onSend }: CinemaChatProps) {
         <button
           type="button"
           onClick={handleSend}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-opacity hover:opacity-80"
-          style={{ background: '#7c3aed', color: '#fff' }}
+          className="cinema-chat__send"
         >
           <Send size={13} />
         </button>

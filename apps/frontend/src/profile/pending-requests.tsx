@@ -12,14 +12,14 @@ function BellIcon() {
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
       <path
         d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"
-        stroke="#fbbf24"
+        stroke="var(--accent)"
         strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
       <path
         d="M13.73 21a2 2 0 01-3.46 0"
-        stroke="#fbbf24"
+        stroke="var(--accent)"
         strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"

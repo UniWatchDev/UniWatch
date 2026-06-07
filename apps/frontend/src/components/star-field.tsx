@@ -168,7 +168,7 @@ export function StarField({ titleVisible = true }: { titleVisible?: boolean }) {
               lineHeight: 1.6,
             }}
           >
-            Watch any video perfectly in sync with your friends - live chat, shared reactions, and rooms
+            Watch any video perfectly in sync with your friends live chat, shared reactions, and rooms
             that feel like being on the same couch.
           </p>
         </div>

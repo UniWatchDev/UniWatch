@@ -44,7 +44,7 @@ export function CountdownOverlay({ members, onComplete }: CountdownOverlayProps)
     <div
       className="absolute inset-0 z-50 flex flex-col items-center justify-center"
       style={{
-        background: 'rgba(8, 8, 20, 0.9)',
+        background: 'rgba(12, 9, 6, 0.92)',
         backdropFilter: 'blur(12px)',
       }}
     >

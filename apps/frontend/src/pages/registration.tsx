@@ -6,6 +6,7 @@ import { passwordSchema } from '@repo/schemas/auth';
 import { rememberFirstNameFromRegistration } from '@/auth/profile-local';
 import { useCookieAuth } from '@/auth/use-cookie-auth';
 import { SiteFooter } from '@/components/site-footer';
+import { PasswordInput } from '@/components/ui/password-input';
 
 import { AuthPageShell } from './auth-page-shell';
 
@@ -260,10 +261,8 @@ export function Registration() {
               <label htmlFor="registration-password" style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
                 Password
               </label>
-              <input
+              <PasswordInput
                 id="registration-password"
-                type="password"
-                className="input"
                 autoComplete="new-password"
                 placeholder="••••••••"
                 value={password}
@@ -277,10 +276,8 @@ export function Registration() {
               <label htmlFor="registration-confirm" style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
                 Confirm password
               </label>
-              <input
+              <PasswordInput
                 id="registration-confirm"
-                type="password"
-                className="input"
                 autoComplete="new-password"
                 placeholder="••••••••"
                 value={confirmPassword}

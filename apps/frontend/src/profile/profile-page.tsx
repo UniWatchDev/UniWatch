@@ -8,7 +8,6 @@ import type { GetUserProfileResponse, UserProfile } from '@repo/schemas/profile'
 
 import { redirectToLogin } from '@/auth/auth-redirect';
 import { useCookieAuth } from '@/auth/use-cookie-auth';
-import { SiteFooter } from '@/components/site-footer';
 import {
   MOCK_ACHIEVEMENTS,
   MOCK_FRIEND_REQUESTS,
@@ -257,7 +256,6 @@ export function ProfilePage() {
         ) : null}
         {showPrivateBanner ? <PrivateProfileBanner /> : null}
       </main>
-      <SiteFooter />
       {editOpen && sessionUser !== null && isOwner ? (
         <EditProfileModal
           user={sessionUser}

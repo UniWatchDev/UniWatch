@@ -79,7 +79,7 @@ export function ProfileHeader({ identity, canEdit, onEdit }: ProfileHeaderProps)
                 textTransform: 'uppercase',
                 background: 'var(--accent-dim)',
                 color: 'var(--accent-hover)',
-                border: '1px solid rgba(124, 58, 237, 0.35)'
+                border: '1px solid rgba(245, 158, 11, 0.35)'
               }}
             >
               {identity.badge}

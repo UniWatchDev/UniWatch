@@ -44,7 +44,7 @@ export function CinemaRoomCard({ room }: CinemaRoomCardProps) {
       style={{
         aspectRatio: '16 / 9',
         border: '1px solid rgba(255,255,255,0.07)',
-        background: '#0d0d1a',
+        background: '#100d08',
         userSelect: 'none',
       }}
     >
@@ -53,9 +53,9 @@ export function CinemaRoomCard({ room }: CinemaRoomCardProps) {
         className="absolute inset-0"
         style={{
           background: `
-            radial-gradient(ellipse at 30% 40%, rgba(124, 58, 237, 0.18) 0%, transparent 65%),
-            radial-gradient(ellipse at 80% 20%, rgba(249, 115, 22, 0.12) 0%, transparent 60%),
-            linear-gradient(160deg, #0f0f1e 0%, #0d0d1a 100%)
+            radial-gradient(ellipse at 30% 40%, rgba(245, 158, 11, 0.14) 0%, transparent 65%),
+            radial-gradient(ellipse at 80% 20%, rgba(249, 115, 22, 0.10) 0%, transparent 60%),
+            linear-gradient(160deg, #1a1208 0%, #100d08 100%)
           `,
         }}
       />

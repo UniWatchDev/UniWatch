@@ -2,6 +2,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 
 import { useCookieAuth } from '@/auth/use-cookie-auth';
 import { SiteFooter } from '@/components/site-footer';
+import { PasswordInput } from '@/components/ui/password-input';
 
 import { AuthPageShell } from './auth-page-shell';
 
@@ -57,7 +58,7 @@ export function Login() {
                 id="login-identifier"
                 className="input"
                 autoComplete="username"
-                placeholder="you@example.com or your_handle"
+                placeholder="you@example.com"
                 value={loginIdentifier}
                 onChange={(e) => {
                   clearFeedback();
@@ -69,10 +70,8 @@ export function Login() {
               <label htmlFor="login-password" style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
                 Password
               </label>
-              <input
+              <PasswordInput
                 id="login-password"
-                type="password"
-                className="input"
                 autoComplete="current-password"
                 placeholder="••••••••"
                 value={loginPassword}

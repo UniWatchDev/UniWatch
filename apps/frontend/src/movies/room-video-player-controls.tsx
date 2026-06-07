@@ -143,9 +143,9 @@ export function RoomVideoPlayerControls({
             className="room-video-player__seek-btn room-video-player__seek-btn--primary"
             disabled={!canControl}
             onClick={stopAnd(() => { onSeekBy(-SEEK_STEPS_SECONDS[0]); })}
-            title="Back 30 seconds"
+            title="Back 5 seconds"
           >
-            −30s
+            −5s
           </button>
 
           <button
@@ -164,9 +164,9 @@ export function RoomVideoPlayerControls({
             className="room-video-player__seek-btn room-video-player__seek-btn--primary"
             disabled={!canControl}
             onClick={stopAnd(() => { onSeekBy(SEEK_STEPS_SECONDS[0]); })}
-            title="Forward 30 seconds"
+            title="Forward 5 seconds"
           >
-            +30s
+            +5s
           </button>
         </div>
 

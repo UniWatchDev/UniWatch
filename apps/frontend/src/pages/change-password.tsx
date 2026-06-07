@@ -6,6 +6,7 @@ import { passwordSchema } from '@repo/schemas/auth';
 import { redirectToLogin } from '@/auth/auth-redirect';
 import { useCookieAuth } from '@/auth/use-cookie-auth';
 import { SiteFooter } from '@/components/site-footer';
+import { PasswordInput } from '@/components/ui/password-input';
 
 import { AuthPageShell } from './auth-page-shell';
 
@@ -72,10 +73,8 @@ export function ChangePasswordPage() {
               <label htmlFor="change-current" style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
                 Current password
               </label>
-              <input
+              <PasswordInput
                 id="change-current"
-                type="password"
-                className="input"
                 autoComplete="current-password"
                 value={currentPassword}
                 onChange={(e) => {
@@ -88,10 +87,8 @@ export function ChangePasswordPage() {
               <label htmlFor="change-new" style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
                 New password
               </label>
-              <input
+              <PasswordInput
                 id="change-new"
-                type="password"
-                className="input"
                 autoComplete="new-password"
                 value={newPassword}
                 onChange={(e) => {
@@ -104,10 +101,8 @@ export function ChangePasswordPage() {
               <label htmlFor="change-confirm" style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
                 Confirm new password
               </label>
-              <input
+              <PasswordInput
                 id="change-confirm"
-                type="password"
-                className="input"
                 autoComplete="new-password"
                 value={confirmPassword}
                 onChange={(e) => {
