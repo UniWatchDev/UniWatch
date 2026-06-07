@@ -1,5 +1,7 @@
 import { useMemo } from 'react';
 
+import { useTheme } from '@/theme/use-theme';
+
 interface Star {
   id: number;
   x: number;
@@ -37,7 +39,7 @@ function CrossShape({ size, color }: { size: number; color: string }) {
   );
 }
 
-export function StarField() {
+export function StarField({ titleVisible = true }: { titleVisible?: boolean }) {
   const stars = useMemo<Star[]>(() => {
     const count = 22;
     return Array.from({ length: count }, (_, i) => ({
@@ -52,7 +54,10 @@ export function StarField() {
     }));
   }, []);
 
-  const colors = ['#8b5cf6', '#a78bfa', '#c4b5fd', '#7c3aed', '#ddd6fe'];
+  const { theme } = useTheme();
+  const colors = theme === 'dark'
+    ? ['#f59e0b', '#fbbf24', '#fb923c', '#d97706', '#fde68a']
+    : ['#415a77', '#778da9', '#1b263b', '#415a77', '#778da9'];
 
   return (
     <div
@@ -127,45 +132,47 @@ export function StarField() {
       </div>
 
       {/* Title */}
-      <div style={{ position: 'relative', zIndex: 1, textAlign: 'center' }}>
-        <p
-          style={{
-            fontSize: 12,
-            fontWeight: 700,
-            letterSpacing: '0.2em',
-            textTransform: 'uppercase',
-            color: 'var(--accent-hover)',
-            marginBottom: 12,
-          }}
-        >
-          ✦ The co-watching platform
-        </p>
-        <h1
-          className="display title-glow"
-          style={{
-            fontSize: 'clamp(36px, 6vw, 72px)',
-            fontWeight: 900,
-            color: 'var(--text-primary)',
-            margin: 0,
-            lineHeight: 1.1,
-          }}
-        >
-          Uni
-          <span className="gradient-text">Watch</span>
-        </h1>
-        <p
-          style={{
-            marginTop: 12,
-            fontSize: 'clamp(13px, 1.4vw, 16px)',
-            color: 'var(--text-secondary)',
-            maxWidth: 420,
-            lineHeight: 1.6,
-          }}
-        >
-          Watch any video perfectly in sync with your friends - live chat, shared reactions, and rooms
-          that feel like being on the same couch.
-        </p>
-      </div>
+      {titleVisible && (
+        <div style={{ position: 'relative', zIndex: 1, textAlign: 'center' }}>
+          <p
+            style={{
+              fontSize: 12,
+              fontWeight: 700,
+              letterSpacing: '0.2em',
+              textTransform: 'uppercase',
+              color: 'var(--accent-hover)',
+              marginBottom: 12,
+            }}
+          >
+            ✦ The co-watching platform
+          </p>
+          <h1
+            className="display title-glow"
+            style={{
+              fontSize: 'clamp(36px, 6vw, 72px)',
+              fontWeight: 900,
+              color: 'var(--text-primary)',
+              margin: 0,
+              lineHeight: 1.1,
+            }}
+          >
+            Uni
+            <span className="gradient-text">Watch</span>
+          </h1>
+          <p
+            style={{
+              marginTop: 12,
+              fontSize: 'clamp(13px, 1.4vw, 16px)',
+              color: 'var(--text-secondary)',
+              maxWidth: 420,
+              lineHeight: 1.6,
+            }}
+          >
+            Watch any video perfectly in sync with your friends - live chat, shared reactions, and rooms
+            that feel like being on the same couch.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

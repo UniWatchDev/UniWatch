@@ -136,10 +136,10 @@ export function Lobby() {
                 className="rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all"
                 style={{
                   border: filter === btn.value
-                    ? '1px solid rgba(245,158,11,0.55)'
-                    : '1px solid rgba(255,255,255,0.08)',
-                  background: filter === btn.value ? 'rgba(245,158,11,0.12)' : 'transparent',
-                  color: filter === btn.value ? '#fbbf24' : 'var(--text-muted)',
+                    ? '1px solid var(--accent)'
+                    : '1px solid var(--border-medium)',
+                  background: filter === btn.value ? 'var(--accent-dim)' : 'transparent',
+                  color: filter === btn.value ? 'var(--accent)' : 'var(--text-muted)',
                   fontFamily: 'var(--font-body)',
                   cursor: 'pointer',
                 }}
