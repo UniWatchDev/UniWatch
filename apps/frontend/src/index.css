@@ -11,19 +11,19 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 
-  --bg-primary: #f8fafc;
-  --bg-surface: #f1f5f9;
-  --bg-elevated: #e2e8f0;
+  --bg-primary: #e0e1dd;
+  --bg-surface: #f0f1ef;
+  --bg-elevated: #ffffff;
   --bg-input: #ffffff;
-  --bg-secondary: #e2e8f0;
+  --bg-secondary: #e8e9e6;
 
-  --border-subtle: rgba(0, 0, 0, 0.06);
-  --border-medium: rgba(0, 0, 0, 0.12);
-  --border-strong: rgba(0, 0, 0, 0.24);
+  --border-subtle: rgba(13, 27, 42, 0.07);
+  --border-medium: rgba(13, 27, 42, 0.14);
+  --border-strong: rgba(13, 27, 42, 0.28);
 
-  --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --text-muted: #94a3b8;
+  --text-primary: #0d1b2a;
+  --text-secondary: #415a77;
+  --text-muted: #778da9;
 
   --accent: #f59e0b;
   --accent-hover: #d97706;
@@ -31,19 +31,19 @@
   --accent-glow: rgba(245, 158, 11, 0.25);
 
   --status-watching-bg: rgba(249, 115, 22, 0.12);
-  --status-watching-text: #ea580c;
+  --status-watching-text: #c2410c;
   --status-watching-border: rgba(249, 115, 22, 0.35);
 
   --status-preparing-bg: rgba(245, 158, 11, 0.12);
-  --status-preparing-text: #d97706;
+  --status-preparing-text: #b45309;
   --status-preparing-border: rgba(245, 158, 11, 0.35);
 
   --status-ready-bg: rgba(34, 197, 94, 0.12);
-  --status-ready-text: #16a34a;
+  --status-ready-text: #15803d;
   --status-ready-border: rgba(34, 197, 94, 0.35);
 
-  --card-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-  --card-shadow-hover: 0 6px 28px rgba(245, 158, 11, 0.16);
+  --card-shadow: 0 2px 12px rgba(13, 27, 42, 0.08);
+  --card-shadow-hover: 0 6px 28px rgba(245, 158, 11, 0.18);
 
   --font-display: 'Cabinet Grotesk', 'Inter Tight', system-ui, sans-serif;
   --font-body: 'Satoshi', system-ui, sans-serif;
@@ -51,37 +51,37 @@
 
   --room-video-aspect: 16 / 9;
 
-  /* shadcn light overrides */
-  --background: #f8fafc;
-  --foreground: #0f172a;
-  --card: #f1f5f9;
-  --card-foreground: #0f172a;
+  /* shadcn twilight-sky light overrides */
+  --background: #e0e1dd;
+  --foreground: #0d1b2a;
+  --card: #f0f1ef;
+  --card-foreground: #0d1b2a;
   --popover: #ffffff;
-  --popover-foreground: #0f172a;
+  --popover-foreground: #0d1b2a;
   --primary: #f59e0b;
-  --primary-foreground: #0d0b06;
-  --secondary: #e2e8f0;
-  --secondary-foreground: #475569;
-  --muted: rgba(0, 0, 0, 0.06);
-  --muted-foreground: #94a3b8;
-  --accent-foreground: #0f172a;
-  --destructive: #ef4444;
-  --border: rgba(0, 0, 0, 0.08);
+  --primary-foreground: #0d1b2a;
+  --secondary: #e8e9e6;
+  --secondary-foreground: #415a77;
+  --muted: rgba(13, 27, 42, 0.07);
+  --muted-foreground: #778da9;
+  --accent-foreground: #0d1b2a;
+  --destructive: #dc2626;
+  --border: rgba(13, 27, 42, 0.10);
   --input: #ffffff;
   --ring: rgba(245, 158, 11, 0.5);
   --chart-1: #f59e0b;
   --chart-2: #fb923c;
-  --chart-3: #38bdf8;
-  --chart-4: #4ade80;
-  --chart-5: #f472b6;
+  --chart-3: #415a77;
+  --chart-4: #16a34a;
+  --chart-5: #778da9;
   --radius: 0.75rem;
-  --sidebar: #f8fafc;
-  --sidebar-foreground: #0f172a;
+  --sidebar: #e0e1dd;
+  --sidebar-foreground: #0d1b2a;
   --sidebar-primary: #f59e0b;
-  --sidebar-primary-foreground: #0d0b06;
+  --sidebar-primary-foreground: #0d1b2a;
   --sidebar-accent: rgba(245, 158, 11, 0.12);
-  --sidebar-accent-foreground: #0f172a;
-  --sidebar-border: rgba(0, 0, 0, 0.06);
+  --sidebar-accent-foreground: #0d1b2a;
+  --sidebar-border: rgba(13, 27, 42, 0.07);
   --sidebar-ring: rgba(245, 158, 11, 0.5);
 }
 
@@ -1046,7 +1046,7 @@ textarea.input {
   position: sticky;
   top: 0;
   z-index: 50;
-  background: rgba(248, 250, 252, 0.88);
+  background: rgba(224, 225, 221, 0.9);
   -webkit-backdrop-filter: blur(16px);
   backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--border-subtle);
@@ -1213,9 +1213,9 @@ input[type='range']::-moz-range-thumb {
 /* ── Profile page ───────────────────────────────────────────── */
 .profile-banner-gradient {
   background:
-    radial-gradient(ellipse at 20% 60%, rgba(245, 158, 11, 0.10) 0%, transparent 60%),
-    radial-gradient(ellipse at 80% 30%, rgba(249, 115, 22, 0.06) 0%, transparent 50%),
-    linear-gradient(160deg, #f1f5f9 0%, #e2e8f0 100%);
+    radial-gradient(ellipse at 20% 60%, rgba(65, 90, 119, 0.18) 0%, transparent 60%),
+    radial-gradient(ellipse at 80% 30%, rgba(119, 141, 169, 0.12) 0%, transparent 50%),
+    linear-gradient(160deg, #d4d6d1 0%, #e0e1dd 100%);
 }
 
 .dark .profile-banner-gradient {
