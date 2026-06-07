@@ -3,13 +3,28 @@ import { useNavigate } from 'react-router-dom';
 
 import { listRoomsContract } from '@repo/contracts/rooms';
 import { API_BASE_URL } from '@repo/consts/api';
-import { RoomCard } from '@/components/room-card';
 import { StarField } from '@/components/star-field';
+import { FeaturedRoomHero } from '@/components/featured-room-hero';
+import { CinemaRoomCard } from '@/components/cinema-room-card';
 import type { RoomResponse, RoomStatus } from '@/types/room';
+import { Search } from 'lucide-react';
 
 const REFRESH_INTERVAL_MS = 5_000;
 
 type FilterStatus = RoomStatus | 'all';
+
+const STATUS_SECTIONS: { status: RoomStatus; label: string; emoji: string }[] = [
+  { status: 'watching',  label: 'Watching Now',    emoji: '🔴' },
+  { status: 'ready',     label: 'Ready to Start',  emoji: '✅' },
+  { status: 'preparing', label: 'Preparing',        emoji: '⏳' },
+];
+
+const FILTER_BUTTONS: { label: string; value: FilterStatus }[] = [
+  { label: 'All',       value: 'all' },
+  { label: 'Watching',  value: 'watching' },
+  { label: 'Ready',     value: 'ready' },
+  { label: 'Preparing', value: 'preparing' },
+];
 
 export function Lobby() {
   const navigate = useNavigate();
@@ -67,178 +82,162 @@ export function Lobby() {
   }, []);
 
   const filtered = rooms.filter((r) => {
+    const q = query.toLowerCase();
     const matchesQuery =
-      r.name.toLowerCase().includes(query.toLowerCase()) ||
-      (r.movie_name?.toLowerCase().includes(query.toLowerCase()) ?? false) ||
-      (r.description?.toLowerCase().includes(query.toLowerCase()) ?? false);
+      r.name.toLowerCase().includes(q) ||
+      (r.movie_name?.toLowerCase().includes(q) ?? false) ||
+      (r.description?.toLowerCase().includes(q) ?? false);
     const matchesFilter = filter === 'all' || r.status === filter;
     return matchesQuery && matchesFilter;
   });
 
-  const filterButtons: { label: string; value: FilterStatus }[] = [
-    { label: 'All', value: 'all' },
-    { label: 'Watching', value: 'watching' },
-    { label: 'Preparing', value: 'preparing' },
-    { label: 'Ready', value: 'ready' },
-  ];
-
   return (
-    <>
-      <div style={{ minHeight: '100dvh', background: 'var(--bg-primary)' }}>
-        {/* Hero */}
-        <StarField />
+    <div className="relative min-h-dvh" style={{ background: 'var(--bg-primary)' }}>
+      <StarField />
 
-        {/* Main content */}
-        <div
-          style={{
-            maxWidth: 1200,
-            margin: '0 auto',
-            padding: '0 24px 48px',
-          }}
-        >
-          {/* Toolbar */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 16,
-              marginBottom: 24,
-              flexWrap: 'wrap',
-            }}
-          >
-            <h2
-              className="display"
-              style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}
-            >
-              Rooms
-            </h2>
-            <button
-              type="button"
-              className="btn-primary"
-              onClick={() => {
-                void navigate('/rooms/new');
-              }}
-            >
-              + Create a room
-            </button>
+      <div className="relative z-10 mx-auto max-w-[1200px] px-6 pb-16 pt-8">
+
+        {/* Hero */}
+        {!loading && error === null && (
+          <FeaturedRoomHero
+            rooms={rooms}
+            onCreateRoom={() => { void navigate('/rooms/new'); }}
+          />
+        )}
+
+        {/* Toolbar */}
+        <div className="mb-8 flex flex-wrap items-center gap-3">
+          <div className="relative min-w-0 flex-1" style={{ maxWidth: 400 }}>
+            <Search
+              size={14}
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2"
+              style={{ color: 'var(--text-muted)' }}
+            />
+            <input
+              className="input w-full py-2 pl-9 pr-3 text-sm"
+              type="search"
+              placeholder="Search rooms or movies…"
+              value={query}
+              onChange={(e) => { setQuery(e.target.value); }}
+            />
           </div>
 
-          {/* Search + filters */}
-          <div
-            style={{
-              display: 'flex',
-              gap: 12,
-              marginBottom: 28,
-              flexWrap: 'wrap',
-              alignItems: 'center',
-            }}
-          >
-            {/* Search input */}
-            <div style={{ position: 'relative', flex: '1 1 240px', minWidth: 0 }}>
-              <svg
-                width="15"
-                height="15"
-                viewBox="0 0 24 24"
-                fill="none"
-                aria-hidden
+          <div className="flex flex-wrap gap-1.5">
+            {FILTER_BUTTONS.map((btn) => (
+              <button
+                key={btn.value}
+                type="button"
+                onClick={() => { setFilter(btn.value); }}
+                className="rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all"
                 style={{
-                  position: 'absolute',
-                  left: 12,
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  color: 'var(--text-muted)',
-                  pointerEvents: 'none',
+                  border: filter === btn.value
+                    ? '1px solid rgba(124,58,237,0.55)'
+                    : '1px solid rgba(255,255,255,0.08)',
+                  background: filter === btn.value ? 'rgba(124,58,237,0.12)' : 'transparent',
+                  color: filter === btn.value ? '#a78bfa' : 'var(--text-muted)',
+                  fontFamily: 'var(--font-body)',
+                  cursor: 'pointer',
                 }}
               >
-                <circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="2" />
-                <path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-              </svg>
-              <input
-                className="input"
-                type="search"
-                placeholder="Search rooms or movies…"
-                value={query}
-                onChange={(e) => {
-                  setQuery(e.target.value);
-                }}
-                style={{ paddingLeft: 36 }}
-              />
-            </div>
-
-            {/* Filter pills */}
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {filterButtons.map((btn) => (
-                <button
-                  type="button"
-                  key={btn.value}
-                  onClick={() => {
-                    setFilter(btn.value);
-                  }}
-                  style={{
-                    padding: '7px 14px',
-                    borderRadius: 8,
-                    fontSize: 12,
-                    fontWeight: 600,
-                    fontFamily: 'var(--font-body)',
-                    cursor: 'pointer',
-                    border:
-                      filter === btn.value
-                        ? '1px solid var(--accent)'
-                        : '1px solid var(--border-medium)',
-                    background: filter === btn.value ? 'var(--accent-dim)' : 'transparent',
-                    color: filter === btn.value ? 'var(--accent-hover)' : 'var(--text-muted)',
-                    transition: 'all 200ms ease',
-                  }}
-                >
-                  {btn.label}
-                </button>
-              ))}
-            </div>
+                {btn.label}
+              </button>
+            ))}
           </div>
 
-          {/* Room grid */}
-          {loading ? (
-            <div style={{ textAlign: 'center', padding: '64px 16px', color: 'var(--text-muted)', fontSize: 15 }}>
-              Loading rooms…
-            </div>
-          ) : error !== null ? (
-            <div style={{ textAlign: 'center', padding: '64px 16px', color: '#f87171', fontSize: 15 }}>
-              {error}
-            </div>
-          ) : filtered.length === 0 ? (
-            <div
-              style={{
-                textAlign: 'center',
-                padding: '64px 16px',
-                color: 'var(--text-muted)',
-                fontSize: 15,
-              }}
-            >
-              <p style={{ fontSize: 32, marginBottom: 12 }}>🎬</p>
-              <p>No rooms found. Try a different search or create one!</p>
-            </div>
-          ) : (
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-                gap: 16,
-              }}
-            >
-              {filtered.map((room, i) => (
-                <div
-                  key={room.id}
-                  className="fade-up"
-                  style={{ animationDelay: `${String(i * 50)}ms` }}
-                >
-                  <RoomCard room={room} />
-                </div>
-              ))}
-            </div>
-          )}
+          <button
+            type="button"
+            className="btn-primary ml-auto whitespace-nowrap"
+            onClick={() => { void navigate('/rooms/new'); }}
+          >
+            + Create Room
+          </button>
         </div>
+
+        {/* Body */}
+        {loading ? (
+          <div
+            className="flex items-center justify-center py-24 text-sm"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            Loading rooms…
+          </div>
+        ) : error !== null ? (
+          <div className="flex items-center justify-center py-24 text-sm text-red-400">
+            {error}
+          </div>
+        ) : filter !== 'all' ? (
+          /* Flat grid for filtered view */
+          <>
+            <p className="mb-4 text-sm" style={{ color: 'var(--text-muted)' }}>
+              {filtered.length} room{filtered.length !== 1 ? 's' : ''} found
+            </p>
+            {filtered.length === 0 ? (
+              <EmptyState />
+            ) : (
+              <RoomGrid rooms={filtered} />
+            )}
+          </>
+        ) : (
+          /* Status-grouped sections for "All" */
+          <>
+            {STATUS_SECTIONS.map(({ status, label, emoji }) => {
+              const sectionRooms = filtered.filter((r) => r.status === status);
+              if (sectionRooms.length === 0) return null;
+              return (
+                <section key={status} className="mb-10">
+                  <div className="mb-4 flex items-center gap-2">
+                    <span className="text-base">{emoji}</span>
+                    <h2 className="cinema-section-title">{label}</h2>
+                    <span
+                      className="rounded-full px-2 py-0.5 text-xs font-bold"
+                      style={{
+                        background: 'rgba(255,255,255,0.06)',
+                        color: 'var(--text-muted)',
+                        fontFamily: 'var(--font-mono)',
+                      }}
+                    >
+                      {sectionRooms.length}
+                    </span>
+                  </div>
+                  <RoomGrid rooms={sectionRooms} />
+                </section>
+              );
+            })}
+
+            {filtered.length === 0 && <EmptyState />}
+          </>
+        )}
       </div>
-    </>
+    </div>
+  );
+}
+
+function RoomGrid({ rooms }: { rooms: RoomResponse[] }) {
+  return (
+    <div
+      className="grid gap-4"
+      style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}
+    >
+      {rooms.map((room, i) => (
+        <div
+          key={room.id}
+          className="fade-up"
+          style={{ animationDelay: `${String(i * 40)}ms` }}
+        >
+          <CinemaRoomCard room={room} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function EmptyState() {
+  return (
+    <div className="flex flex-col items-center justify-center py-24 text-center">
+      <span className="mb-3 text-4xl">🎬</span>
+      <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+        No rooms here yet. Create one and invite friends!
+      </p>
+    </div>
   );
 }

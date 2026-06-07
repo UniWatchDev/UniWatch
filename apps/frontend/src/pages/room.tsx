@@ -20,24 +20,12 @@ import type { PlaybackRate } from '@/movies/room-playback';
 import { useRoomMovie } from '@/movies/use-room-movie';
 import { prepareMovieForRoom } from '@/movies/prepare-movie-for-room';
 import { validateMovieFile } from '@/movies/upload-movie-file';
-import type { Member } from '@/types/room';
-import { UserAvatar } from '@/components/user-avatar';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { ParticipantList } from '@/components/participant-list';
+import { CinemaChat } from '@/components/cinema-chat';
+import { CountdownOverlay } from '@/components/countdown-overlay';
+import { Users, MessageSquare } from 'lucide-react';
 
-function StatusDot({ status }: { status: Member['status'] }) {
-  const color = status === 'active' ? '#4ade80' : status === 'away' ? '#fbbf24' : '#64748b';
-  return (
-    <span
-      style={{
-        display: 'inline-block',
-        width: 8,
-        height: 8,
-        borderRadius: '50%',
-        background: color,
-        flexShrink: 0,
-      }}
-    />
-  );
-}
 
 function RecentOwnedMoviePicker({
   movies,
@@ -104,9 +92,6 @@ function isRoomLoaded(room: RoomResponse | null): room is RoomResponse {
   return room !== null;
 }
 
-function formatChatTime(date: Date): string {
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
 
 async function fetchRoom(id: string): Promise<RoomResponse> {
   const path = getRoomContract.path.replace(':id', encodeURIComponent(id));
@@ -201,8 +186,7 @@ export function RoomPage() {
   const [ownerUploadError, setOwnerUploadError] = useState<string | null>(null);
   const [ownerUploadPercent, setOwnerUploadPercent] = useState<number | null>(null);
   const [showRoomPassword, setShowRoomPassword] = useState(false);
-  const [chatInput, setChatInput] = useState('');
-  const chatEndRef = useRef<HTMLDivElement>(null);
+  const [countdownDismissed, setCountdownDismissed] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
 
   const {
@@ -214,6 +198,12 @@ export function RoomPage() {
     isFailed: movieFailed
   } = useRoomMovie(room?.movie ?? null);
   const isOwner = currentUserId !== null && currentUserId === room?.creator;
+  const showCountdown =
+    room !== null &&
+    room.status === 'ready' &&
+    moviePlayable &&
+    !isPlaying &&
+    !countdownDismissed;
 
   const { messages, members, socketStatus, sendMessage: socketSendMessage } = useRoomSocket({
     roomId: id ?? '',
@@ -267,9 +257,6 @@ export function RoomPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -340,6 +327,7 @@ export function RoomPage() {
 
   useEffect(() => {
     setShowRoomPassword(false);
+    setCountdownDismissed(false);
   }, [room?.id]);
 
   const handleJoin = async () => {
@@ -633,12 +621,6 @@ export function RoomPage() {
     </div>
   ) : null;
 
-  const sendMessage = () => {
-    const text = chatInput.trim();
-    if (!text) return;
-    socketSendMessage(text);
-    setChatInput('');
-  };
 
   const statusLabel: Record<RoomStatus, string> = {
     watching: 'WATCHING',
@@ -712,9 +694,9 @@ export function RoomPage() {
 
       {/* Main area */}
       <div className="room-main">
-        {/* Video + controls */}
+        {/* Video column */}
         <div className="room-player-column">
-          <div className="room-video-area">
+          <div className="room-video-area" style={{ position: 'relative' }}>
             <RoomVideoPlayer
               roomName={room.name}
               movieName={room.movie_name}
@@ -751,260 +733,129 @@ export function RoomPage() {
               ownerActions={ownerMovieActions}
               placeholderText={ownerPlaceholderText}
             />
+            {showCountdown && (
+              <CountdownOverlay
+                members={members}
+                onComplete={() => { setCountdownDismissed(true); }}
+              />
+            )}
           </div>
         </div>
 
         {/* Sidebar */}
         <aside
           style={{
-            width: 280,
+            width: 320,
             display: 'flex',
             flexDirection: 'column',
             background: 'var(--bg-surface)',
+            borderLeft: '1px solid var(--border-subtle)',
             flexShrink: 0,
             overflow: 'hidden',
           }}
         >
-          {/* Room info */}
-          <section style={{ padding: '14px 16px', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0 }}>
-            <h3
-              style={{
-                margin: '0 0 10px',
-                fontSize: 12,
-                fontWeight: 700,
-                textTransform: 'uppercase',
-                letterSpacing: '0.08em',
-                color: 'var(--text-muted)',
-              }}
-            >
-              Connected ({members.length})
-            </h3>
-            <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-              <p style={{ margin: '0 0 4px' }}>
-                Host: <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>@{room.creator_name}</span>
-                {isOwner && <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--accent-hover)', fontWeight: 700 }}>YOU</span>}
-              </p>
-              {!isOwner && currentUserId !== null && (
-                <p style={{ margin: '0 0 4px', fontSize: 12, color: 'var(--text-muted)' }}>
-                  You joined as a member
-                </p>
-              )}
-              {room.movie_name && (
-                <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
-                  Watching: {room.movie_name}
-                </p>
-              )}
-            </div>
-            {isOwner && (
-              <div
+          {/* Room header */}
+          <div style={{ padding: '12px 16px 10px', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+              <span
                 style={{
-                  marginTop: 12,
-                  padding: '12px',
-                  borderRadius: 12,
-                  border: '1px solid var(--border-subtle)',
-                  background: 'var(--bg-primary)',
+                  fontFamily: 'var(--font-display)',
+                  fontSize: 14,
+                  fontWeight: 700,
+                  color: 'var(--text-primary)',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 8 }}>
-                  <div>
-                    <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Owner tools</p>
-                    <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.4 }}>
-                      Protected from other room members.
-                    </p>
-                  </div>
-                </div>
-                <div style={{ display: 'grid', gap: 10 }}>
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: 10,
-                      padding: '10px 12px',
-                      borderRadius: 10,
-                      background: 'var(--bg-surface)',
-                      border: '1px solid var(--border-subtle)',
-                    }}
-                  >
-                    <div style={{ minWidth: 0 }}>
-                      <p style={{ margin: 0, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)' }}>
-                        Room password
-                      </p>
-                      <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-primary)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {room.password == null ? 'No password set' : roomPasswordVisible ? room.password : '••••••••••'}
-                      </p>
-                    </div>
-                    {room.password != null && (
-                      <button
-                        type="button"
-                        className="btn-ghost"
-                        style={{ padding: '7px 10px', fontSize: 12, flexShrink: 0 }}
-                        onClick={() => { setShowRoomPassword((prev) => !prev); }}
-                      >
-                        {roomPasswordVisible ? 'Hide' : 'Reveal'}
-                      </button>
-                    )}
-                  </div>
-                  {room.password != null && roomPasswordVisible && (
-                    <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
-                      Exact password: <span style={{ color: 'var(--text-primary)', fontFamily: 'monospace' }}>{roomPassword}</span>
-                    </p>
-                  )}
-                </div>
-              </div>
+                {room.name}
+              </span>
+              {room.status !== undefined && (
+                <span className={statusClass[room.status]} style={{ flexShrink: 0 }}>
+                  {statusLabel[room.status]}
+                </span>
+              )}
+            </div>
+            {room.movie_name !== null && room.movie_name !== undefined && (
+              <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                {room.movie_name}
+              </p>
             )}
             {socketStatus !== 'connected' && (
-              <p style={{ margin: '10px 0 0', fontSize: 11, color: socketStatus === 'error' ? '#f87171' : 'var(--text-muted)', fontStyle: 'italic' }}>
+              <p style={{ margin: '6px 0 0', fontSize: 11, color: socketStatus === 'error' ? '#f87171' : 'var(--text-muted)', fontStyle: 'italic' }}>
                 {socketStatus === 'error' ? 'Connection error' : socketStatus === 'connecting' ? 'Connecting…' : 'Disconnected'}
               </p>
             )}
-            <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {members.map((member) => (
-                <li key={member.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div style={{ position: 'relative', flexShrink: 0 }}>
-                    <UserAvatar name={member.name} avatarColor={member.avatarColor} size={32} />
-                    <span style={{ position: 'absolute', bottom: 0, right: 0 }}>
-                      <StatusDot status={member.status} />
-                    </span>
-                  </div>
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {member.name}
-                      </span>
-                      {member.isHost && (
-                        <span
-                          style={{
-                            fontSize: 10,
-                            fontWeight: 700,
-                            padding: '1px 5px',
-                            borderRadius: 4,
-                            background: 'var(--accent-dim)',
-                            color: 'var(--accent-hover)',
-                            border: '1px solid rgba(124,58,237,0.25)',
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          HOST
-                        </span>
-                      )}
-                      {member.id === currentUserId && (
-                        <span
-                          style={{
-                            fontSize: 10,
-                            fontWeight: 700,
-                            padding: '1px 5px',
-                            borderRadius: 4,
-                            background: 'rgba(100,116,139,0.15)',
-                            color: 'var(--text-muted)',
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          YOU
-                        </span>
-                      )}
-                    </div>
-                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>@{member.username}</span>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </section>
+          </div>
 
-          {/* Chat */}
-          <section style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
-            <div style={{ padding: '12px 16px 8px', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0 }}>
-              <h3
+          {/* Owner tools — password reveal */}
+          {isOwner && (
+            <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0 }}>
+              <div
                 style={{
-                  margin: 0,
-                  fontSize: 12,
-                  fontWeight: 700,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.08em',
-                  color: 'var(--text-muted)',
+                  padding: '10px 12px',
+                  borderRadius: 10,
+                  background: 'var(--bg-primary)',
+                  border: '1px solid var(--border-subtle)',
                 }}
               >
-                Chat
-              </h3>
-            </div>
-
-            <div
-              className="soft-scroll"
-              style={{ flex: 1, overflowY: 'auto', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}
-            >
-              {messages.length === 0 ? (
-                <p style={{ color: 'var(--text-muted)', fontSize: 13, textAlign: 'center', marginTop: 16 }}>
-                  No messages yet. Say something!
+                <p style={{ margin: '0 0 6px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)' }}>
+                  Owner Tools
                 </p>
-              ) : (
-                messages.map((msg) => (
-                  <div key={msg.id}>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: msg.color }}>
-                        {msg.userName}
-                      </span>
-                      <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{formatChatTime(msg.timestamp)}</span>
-                    </div>
-                    <p style={{ margin: '2px 0 0', fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.4 }}>
-                      {msg.content}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)' }}>Room password</p>
+                    <p style={{ margin: '2px 0 0', fontSize: 13, color: 'var(--text-primary)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {room.password == null ? 'No password set' : roomPasswordVisible ? room.password : '••••••••••'}
                     </p>
                   </div>
-                ))
-              )}
-              <div ref={chatEndRef} />
+                  {room.password != null && (
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      style={{ padding: '5px 10px', fontSize: 12, flexShrink: 0 }}
+                      onClick={() => { setShowRoomPassword((prev) => !prev); }}
+                    >
+                      {roomPasswordVisible ? 'Hide' : 'Reveal'}
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
+          )}
 
-            <div
-              style={{
-                padding: '10px 12px',
-                borderTop: '1px solid var(--border-subtle)',
-                display: 'flex',
-                gap: 8,
-                flexShrink: 0,
-              }}
+          {/* Tabs: Participants | Chat */}
+          <Tabs defaultValue="participants" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <TabsList
+              className="mx-3 mb-0 mt-2 h-9 shrink-0 rounded-lg"
+              style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-subtle)' }}
             >
-              <input
-                className="input"
-                type="text"
-                placeholder="Say something…"
-                value={chatInput}
-                onChange={(e) => { setChatInput(e.target.value); }}
-                onKeyDown={(e) => { if (e.key === 'Enter') sendMessage(); }}
-                style={{ flex: 1, padding: '8px 12px', fontSize: 13 }}
-              />
-              <button
-                onClick={sendMessage}
-                style={{
-                  ...controlBtnStyle,
-                  background: 'var(--accent)',
-                  color: '#fff',
-                  padding: '8px 12px',
-                  borderRadius: 8,
-                  flexShrink: 0,
-                }}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M22 2L11 13M22 2L15 22l-4-9-9-4 20-7z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                </svg>
-              </button>
-            </div>
-          </section>
+              <TabsTrigger value="participants" className="flex flex-1 items-center gap-1.5 text-xs">
+                <Users size={12} />
+                Viewers ({members.length})
+              </TabsTrigger>
+              <TabsTrigger value="chat" className="flex flex-1 items-center gap-1.5 text-xs">
+                <MessageSquare size={12} />
+                Chat
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent
+              value="participants"
+              className="soft-scroll mt-1 min-h-0 flex-1 overflow-y-auto"
+            >
+              <ParticipantList members={members} currentUserId={currentUserId} />
+            </TabsContent>
+
+            <TabsContent
+              value="chat"
+              className="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden p-0"
+            >
+              <CinemaChat messages={messages} onSend={socketSendMessage} />
+            </TabsContent>
+          </Tabs>
         </aside>
       </div>
     </div>
   );
 }
-
-const controlBtnStyle: React.CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  padding: '7px 10px',
-  background: 'transparent',
-  color: 'var(--text-secondary)',
-  border: '1px solid var(--border-medium)',
-  borderRadius: 8,
-  cursor: 'pointer',
-  fontFamily: 'var(--font-body)',
-  transition: 'all 200ms ease',
-};
