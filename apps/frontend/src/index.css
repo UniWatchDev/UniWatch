@@ -613,13 +613,22 @@ textarea.input {
   backdrop-filter: blur(12px);
   color: #fff;
   cursor: pointer;
-  box-shadow: 0 8px 32px rgba(245, 158, 11, 0.22);
+  box-shadow: 0 8px 32px var(--accent-glow);
   transition: transform 180ms ease, background 180ms ease, box-shadow 180ms ease;
   z-index: 2;
 }
 
 .room-video-player__center-play:hover {
   transform: scale(1.06);
+  background: var(--accent-dim);
+  box-shadow: 0 12px 40px var(--accent-glow);
+}
+
+.dark .room-video-player__center-play {
+  box-shadow: 0 8px 32px rgba(245, 158, 11, 0.22);
+}
+
+.dark .room-video-player__center-play:hover {
   background: rgba(245, 158, 11, 0.22);
   box-shadow: 0 12px 40px rgba(245, 158, 11, 0.42);
 }
@@ -754,9 +763,15 @@ textarea.input {
 
 .room-video-player__controls--overlay .room-video-player__seek-btn:hover:not(:disabled),
 .room-video-player__controls--overlay .room-video-player__icon-btn:hover {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+  color: #fff;
+}
+
+.dark .room-video-player__controls--overlay .room-video-player__seek-btn:hover:not(:disabled),
+.dark .room-video-player__controls--overlay .room-video-player__icon-btn:hover {
   border-color: rgba(245, 158, 11, 0.65);
   background: rgba(245, 158, 11, 0.18);
-  color: #fff;
 }
 
 .room-video-player__controls--overlay .room-video-player__time,
@@ -865,6 +880,10 @@ textarea.input {
 
 .room-video-player__play-btn:hover:not(:disabled) {
   transform: scale(1.05);
+  box-shadow: 0 6px 24px var(--accent-glow);
+}
+
+.dark .room-video-player__play-btn:hover:not(:disabled) {
   box-shadow: 0 6px 24px rgba(245, 158, 11, 0.45);
 }
 
@@ -1025,12 +1044,22 @@ textarea.input {
   background: linear-gradient(
     90deg,
     transparent 0%,
+    rgba(65, 90, 119, 0.25) 30%,
+    rgba(119, 141, 169, 0.70) 70%,
+    #e0e1dd 100%
+  );
+  pointer-events: none;
+  animation: shoot var(--shoot-dur, 7s) ease-in var(--shoot-delay, 0s) infinite;
+}
+
+.dark .shooting-star {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
     rgba(245, 200, 100, 0.22) 30%,
     rgba(255, 230, 150, 0.72) 70%,
     #fffbf0 100%
   );
-  pointer-events: none;
-  animation: shoot var(--shoot-dur, 7s) ease-in var(--shoot-delay, 0s) infinite;
 }
 
 /* ── Gradient text ──────────────────────────────────────────── */
