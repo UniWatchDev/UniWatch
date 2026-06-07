@@ -14,15 +14,15 @@ const REFRESH_INTERVAL_MS = 5_000;
 type FilterStatus = RoomStatus | 'all';
 
 const STATUS_SECTIONS: { status: RoomStatus; label: string; emoji: string }[] = [
-  { status: 'watching',  label: 'Watching Now',    emoji: '🔴' },
-  { status: 'ready',     label: 'Ready to Start',  emoji: '✅' },
-  { status: 'preparing', label: 'Preparing',        emoji: '⏳' },
+  { status: 'watching', label: 'Watching Now', emoji: '🔴' },
+  { status: 'ready', label: 'Ready to Start', emoji: '✅' },
+  { status: 'preparing', label: 'Preparing', emoji: '⏳' },
 ];
 
 const FILTER_BUTTONS: { label: string; value: FilterStatus }[] = [
-  { label: 'All',       value: 'all' },
-  { label: 'Watching',  value: 'watching' },
-  { label: 'Ready',     value: 'ready' },
+  { label: 'All', value: 'all' },
+  { label: 'Watching', value: 'watching' },
+  { label: 'Ready', value: 'ready' },
   { label: 'Preparing', value: 'preparing' },
 ];
 
@@ -95,7 +95,7 @@ export function Lobby() {
     <div className="relative min-h-dvh" style={{ background: 'var(--bg-primary)' }}>
       <StarField />
 
-      <div className="relative z-10 mx-auto max-w-[1200px] px-6 pb-16 pt-8">
+      <div className="lobby-content relative z-10 mx-auto max-w-[1200px] px-4 pb-16 pt-6 sm:px-6 sm:pt-8">
 
         {/* Hero */}
         {!loading && error === null && (
@@ -106,22 +106,27 @@ export function Lobby() {
         )}
 
         {/* Toolbar */}
-        <div className="mb-8 flex flex-wrap items-center gap-3">
-          <div className="relative min-w-0 flex-1" style={{ maxWidth: 400 }}>
-            <Search
-              size={14}
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2"
-              style={{ color: 'var(--text-muted)' }}
-            />
-            <input
-              className="input w-full py-2 pl-9 pr-3 text-sm"
-              type="search"
-              placeholder="Search rooms or movies…"
-              value={query}
-              onChange={(e) => { setQuery(e.target.value); }}
-            />
+        <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+          {/* Row 1 on mobile: search + create button */}
+          <div className="flex items-center gap-3">
+            <div className="relative min-w-0 flex-1" style={{ maxWidth: 400 }}>
+              <Search
+                size={14}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2"
+                style={{ color: 'var(--text-muted)' }}
+              />
+              <input
+                className="input w-full text-sm"
+                style={{ padding: '8px 12px 8px 34px', minWidth: 220 }}
+                type="search"
+                placeholder="Search rooms & movies..."
+                value={query}
+                onChange={(e) => { setQuery(e.target.value); }}
+              />
+            </div>
           </div>
 
+          {/* Row 2 on mobile: filter pills */}
           <div className="flex flex-wrap gap-1.5">
             {FILTER_BUTTONS.map((btn) => (
               <button
@@ -131,10 +136,10 @@ export function Lobby() {
                 className="rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all"
                 style={{
                   border: filter === btn.value
-                    ? '1px solid rgba(124,58,237,0.55)'
+                    ? '1px solid rgba(245,158,11,0.55)'
                     : '1px solid rgba(255,255,255,0.08)',
-                  background: filter === btn.value ? 'rgba(124,58,237,0.12)' : 'transparent',
-                  color: filter === btn.value ? '#a78bfa' : 'var(--text-muted)',
+                  background: filter === btn.value ? 'rgba(245,158,11,0.12)' : 'transparent',
+                  color: filter === btn.value ? '#fbbf24' : 'var(--text-muted)',
                   fontFamily: 'var(--font-body)',
                   cursor: 'pointer',
                 }}
@@ -143,14 +148,6 @@ export function Lobby() {
               </button>
             ))}
           </div>
-
-          <button
-            type="button"
-            className="btn-primary ml-auto whitespace-nowrap"
-            onClick={() => { void navigate('/rooms/new'); }}
-          >
-            + Create Room
-          </button>
         </div>
 
         {/* Body */}
@@ -215,8 +212,8 @@ export function Lobby() {
 function RoomGrid({ rooms }: { rooms: RoomResponse[] }) {
   return (
     <div
-      className="grid gap-4"
-      style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}
+      className="grid gap-3 sm:gap-4"
+      style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 280px), 1fr))' }}
     >
       {rooms.map((room, i) => (
         <div
