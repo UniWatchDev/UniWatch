@@ -1,12 +1,12 @@
 import type { Member, ChatMessage, RoomResponse } from '@/types/room';
 
 export const MOCK_CHAT: ChatMessage[] = [
-  { id: 'c1', userId: 'm2', userName: 'Alex', content: 'omg this scene 🤯', timestamp: new Date(Date.now() - 5 * 60000) },
-  { id: 'c2', userId: 'm3', userName: 'Sam', content: "I knew it!! called it from min 10", timestamp: new Date(Date.now() - 4 * 60000) },
-  { id: 'c3', userId: 'm1', userName: 'moriel', content: 'no way wait what 😱', timestamp: new Date(Date.now() - 3 * 60000) },
-  { id: 'c4', userId: 'm2', userName: 'Alex', content: 'pause pause PAUSE', timestamp: new Date(Date.now() - 2 * 60000) },
-  { id: 'c5', userId: 'm1', userName: 'moriel', content: 'ok paused, what did you see?', timestamp: new Date(Date.now() - 90000) },
-  { id: 'c6', userId: 'm3', userName: 'Sam', content: 'look at the background in the previous frame', timestamp: new Date(Date.now() - 60000) },
+  { id: 'c1', userId: 'm2', userName: 'Alex',   color: '#38bdf8', content: 'omg this scene 🤯',                          timestamp: new Date(Date.now() - 5 * 60000) },
+  { id: 'c2', userId: 'm3', userName: 'Sam',    color: '#a78bfa', content: 'I knew it!! called it from min 10',           timestamp: new Date(Date.now() - 4 * 60000) },
+  { id: 'c3', userId: 'm1', userName: 'moriel', color: '#f97316', content: 'no way wait what 😱',                         timestamp: new Date(Date.now() - 3 * 60000) },
+  { id: 'c4', userId: 'm2', userName: 'Alex',   color: '#38bdf8', content: 'pause pause PAUSE',                           timestamp: new Date(Date.now() - 2 * 60000) },
+  { id: 'c5', userId: 'm1', userName: 'moriel', color: '#f97316', content: 'ok paused, what did you see?',                timestamp: new Date(Date.now() - 90000) },
+  { id: 'c6', userId: 'm3', userName: 'Sam',    color: '#a78bfa', content: 'look at the background in the previous frame',timestamp: new Date(Date.now() - 60000) },
 ];
 
 export const MOCK_MEMBERS: Member[] = [

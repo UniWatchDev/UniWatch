@@ -1,4 +1,4 @@
-export const SEEK_STEPS_SECONDS = [30] as const;
+export const SEEK_STEPS_SECONDS = [5] as const;
 
 export const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
 

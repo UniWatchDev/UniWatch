@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom';
+
 export function SiteFooter() {
   const year = new Date().getFullYear();
   return (
@@ -24,15 +26,15 @@ export function SiteFooter() {
       >
         <span>© {year} Uni-Watch. All rights reserved.</span>
         <nav style={{ display: 'flex', gap: 16 }}>
-          <a href="#about" className="site-footer-link">
+          <Link to="/about" className="site-footer-link">
             About
-          </a>
-          <a href="mailto:support@example.com" className="site-footer-link">
+          </Link>
+          <a href="mailto:support@uniwatch.com" className="site-footer-link">
             Contact
           </a>
-          <a href="#privacy" className="site-footer-link">
+          <Link to="/privacy" className="site-footer-link">
             Privacy Policy
-          </a>
+          </Link>
         </nav>
       </div>
     </footer>

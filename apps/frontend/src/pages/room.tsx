@@ -1,18 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { API_BASE_URL } from '@repo/consts/api';
-import { MOVIE_ALLOWED_FORMATS_LABEL } from '@repo/consts/movies';
 import { getRoomContract, previewRoomContract, joinRoomContract, leaveRoomContract } from '@repo/contracts/rooms';
 import { getAuthMeContract } from '@repo/contracts/auth';
 import type { RoomPreview } from '@repo/schemas/rooms';
 import type { RoomResponse, RoomStatus } from '@repo/schemas/rooms';
 import { useRoomSocket } from '@/hooks/use-room-socket';
-import type { MovieResponse } from '@repo/schemas/movies';
-
 import { attachMovieToRoom } from '@/movies/attach-room-movie';
-import { formatMovieUploadAge } from '@/movies/format-movie-upload-age';
-import { fetchOwnedMovies } from '@/movies/fetch-owned-movies';
-import { getRecentReadyOwnedMovies } from '@/movies/recent-owned-movies';
 import { MovieUploadField } from '@/movies/movie-upload-field';
 import { MovieUploadProgress } from '@/movies/movie-upload-progress';
 import { RoomVideoPlayer } from '@/movies/room-video-player';
@@ -20,76 +14,134 @@ import type { PlaybackRate } from '@/movies/room-playback';
 import { useRoomMovie } from '@/movies/use-room-movie';
 import { prepareMovieForRoom } from '@/movies/prepare-movie-for-room';
 import { validateMovieFile } from '@/movies/upload-movie-file';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { ParticipantList } from '@/components/participant-list';
+import { CinemaChat } from '@/components/cinema-chat';
+import { CountdownOverlay } from '@/components/countdown-overlay';
+import { Users, MessageSquare, Volume2, VolumeX, UserPlus, Check, Link } from 'lucide-react';
+import { MOCK_FRIENDS } from '@/data/mock-profile-data';
 import type { Member } from '@/types/room';
-import { UserAvatar } from '@/components/user-avatar';
 
-function StatusDot({ status }: { status: Member['status'] }) {
-  const color = status === 'active' ? '#4ade80' : status === 'away' ? '#fbbf24' : '#64748b';
-  return (
-    <span
-      style={{
-        display: 'inline-block',
-        width: 8,
-        height: 8,
-        borderRadius: '50%',
-        background: color,
-        flexShrink: 0,
-      }}
-    />
-  );
+function initials(name: string): string {
+  return name.split(' ').map((w) => w[0] ?? '').join('').slice(0, 2).toUpperCase();
 }
 
-function RecentOwnedMoviePicker({
-  movies,
-  selectedMovieId,
-  onSelect,
-  disabled,
-}: {
-  movies: readonly MovieResponse[];
-  selectedMovieId: string;
-  onSelect: (movieId: string) => void;
-  disabled?: boolean;
-}) {
+function InviteFriends({ members }: { members: Member[] }) {
+  const [copied, setCopied] = useState<string | null>(null);
+  const memberUsernames = new Set(members.map((m) => m.username));
+
+  const handleInvite = (friendId: string) => {
+    void navigator.clipboard.writeText(window.location.href).then(() => {
+      setCopied(friendId);
+      setTimeout(() => { setCopied(null); }, 2000);
+    });
+  };
+
   return (
-    <div style={{ display: 'grid', gap: 8 }}>
-      {movies.map((movie) => {
-        const isSelected = movie.id === selectedMovieId;
-        const ageLabel = formatMovieUploadAge(movie.file_uploaded_at) ?? 'Uploaded recently';
-        return (
-          <button
-            key={movie.id}
-            type="button"
-            disabled={disabled}
-            onClick={() => { onSelect(movie.id); }}
-            aria-pressed={isSelected}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 12,
-              width: '100%',
-              padding: '12px 14px',
-              borderRadius: 10,
-              border: isSelected ? '2px solid var(--accent)' : '1px solid var(--border-medium)',
-              background: isSelected ? 'var(--accent-dim)' : 'var(--bg-input)',
-              color: 'var(--text-primary)',
-              cursor: disabled ? 'not-allowed' : 'pointer',
-              opacity: disabled ? 0.7 : 1,
-              textAlign: 'left',
-            }}
-          >
-            <span style={{ minWidth: 0, fontSize: 14, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {movie.name}
-            </span>
-            <span style={{ flexShrink: 0, fontSize: 12, color: 'var(--text-muted)' }}>
-              {ageLabel}
-            </span>
-          </button>
-        );
-      })}
+    <div style={{ padding: '12px 12px 4px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+        <UserPlus size={13} style={{ color: 'var(--accent)' }} />
+        <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)' }}>
+          Invite Friends
+        </span>
+      </div>
+      {MOCK_FRIENDS.length === 0 ? (
+        <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '0 0 12px' }}>No friends yet.</p>
+      ) : (
+        <div style={{ display: 'grid', gap: 6, marginBottom: 12 }}>
+          {MOCK_FRIENDS.map((friend) => {
+            const inRoom = memberUsernames.has(friend.username);
+            const wasCopied = copied === friend.id;
+            return (
+              <div
+                key={friend.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '8px 10px',
+                  borderRadius: 10,
+                  border: '1px solid var(--border-subtle)',
+                  background: 'var(--bg-elevated)',
+                }}
+              >
+                <span
+                  style={{
+                    width: 30,
+                    height: 30,
+                    borderRadius: '50%',
+                    background: friend.avatarColor,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: '#fff',
+                    flexShrink: 0,
+                  }}
+                >
+                  {initials(friend.name)}
+                </span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {friend.name}
+                  </p>
+                  <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)' }}>@{friend.username}</p>
+                </div>
+                {inRoom ? (
+                  <span style={{ fontSize: 10, fontWeight: 700, color: '#4ade80', background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.25)', borderRadius: 99, padding: '2px 8px', flexShrink: 0 }}>
+                    In Room
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    title="Copy invite link"
+                    onClick={() => { handleInvite(friend.id); }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      padding: '4px 10px',
+                      borderRadius: 99,
+                      border: '1px solid var(--border-medium)',
+                      background: wasCopied ? 'rgba(74,222,128,0.1)' : 'var(--accent-dim)',
+                      color: wasCopied ? '#4ade80' : 'var(--accent)',
+                      fontSize: 11,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      flexShrink: 0,
+                      transition: 'all 150ms ease',
+                    }}
+                  >
+                    {wasCopied ? <Check size={11} /> : <Link size={11} />}
+                    {wasCopied ? 'Copied!' : 'Invite'}
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      <div style={{ borderTop: '1px solid var(--border-subtle)', marginBottom: 10 }} />
     </div>
   );
 }
+
+function playBeep() {
+  try {
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0.08, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.25);
+  } catch { /* audio not available */ }
+}
+
 
 function PencilIcon() {
   return (
@@ -100,13 +152,6 @@ function PencilIcon() {
   );
 }
 
-function isRoomLoaded(room: RoomResponse | null): room is RoomResponse {
-  return room !== null;
-}
-
-function formatChatTime(date: Date): string {
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
 
 async function fetchRoom(id: string): Promise<RoomResponse> {
   const path = getRoomContract.path.replace(':id', encodeURIComponent(id));
@@ -192,17 +237,15 @@ export function RoomPage() {
   const [videoReady, setVideoReady] = useState(false);
   const [videoError, setVideoError] = useState<string | null>(null);
   const [playbackRate, setPlaybackRate] = useState<PlaybackRate>(1);
-  const [ownedMovies, setOwnedMovies] = useState<MovieResponse[]>([]);
-  const [ownedMoviesLoading, setOwnedMoviesLoading] = useState(false);
-  const [ownedMoviesError, setOwnedMoviesError] = useState<string | null>(null);
-  const [selectedOwnedMovieId, setSelectedOwnedMovieId] = useState('');
   const [ownerMovieSaving, setOwnerMovieSaving] = useState(false);
+  const [activeTab, setActiveTab] = useState('participants');
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [chatSoundMuted, setChatSoundMuted] = useState(false);
   const [ownerUploadFile, setOwnerUploadFile] = useState<File | null>(null);
   const [ownerUploadError, setOwnerUploadError] = useState<string | null>(null);
   const [ownerUploadPercent, setOwnerUploadPercent] = useState<number | null>(null);
   const [showRoomPassword, setShowRoomPassword] = useState(false);
-  const [chatInput, setChatInput] = useState('');
-  const chatEndRef = useRef<HTMLDivElement>(null);
+  const [countdownDismissed, setCountdownDismissed] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
 
   const {
@@ -214,6 +257,12 @@ export function RoomPage() {
     isFailed: movieFailed
   } = useRoomMovie(room?.movie ?? null);
   const isOwner = currentUserId !== null && currentUserId === room?.creator;
+  const showCountdown =
+    room !== null &&
+    room.status === 'ready' &&
+    moviePlayable &&
+    !isPlaying &&
+    !countdownDismissed;
 
   const { messages, members, socketStatus, sendMessage: socketSendMessage } = useRoomSocket({
     roomId: id ?? '',
@@ -267,9 +316,6 @@ export function RoomPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -294,53 +340,31 @@ export function RoomPage() {
 
   useEffect(() => {
     if (!isOwner) {
-      setOwnedMovies([]);
-      setOwnedMoviesLoading(false);
-      setOwnedMoviesError(null);
       setOwnerUploadFile(null);
       setOwnerUploadError(null);
       setOwnerUploadPercent(null);
       setShowRoomPassword(false);
-      return;
     }
-
-    let cancelled = false;
-    setOwnedMoviesLoading(true);
-    setOwnedMoviesError(null);
-    void fetchOwnedMovies()
-      .then((movies) => {
-        if (!cancelled) {
-          setOwnedMovies(movies);
-        }
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          setOwnedMoviesError(err instanceof Error ? err.message : 'Failed to load your movies');
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setOwnedMoviesLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
   }, [isOwner]);
 
   useEffect(() => {
-    if (!isOwner || !isRoomLoaded(room)) return;
-    const readyOwnedMovies = getRecentReadyOwnedMovies(ownedMovies);
-    const fallbackMovieId = room.movie ?? readyOwnedMovies[0]?.id ?? '';
-    if (selectedOwnedMovieId.length === 0 || !readyOwnedMovies.some((movie) => movie.id === selectedOwnedMovieId)) {
-      setSelectedOwnedMovieId(fallbackMovieId);
-    }
-  }, [isOwner, ownedMovies, room, selectedOwnedMovieId]);
-
-  useEffect(() => {
     setShowRoomPassword(false);
+    setCountdownDismissed(false);
   }, [room?.id]);
+
+  const prevMessageCount = useRef(0);
+  useEffect(() => {
+    if (messages.length > prevMessageCount.current) {
+      const newFromOthers = messages
+        .slice(prevMessageCount.current)
+        .filter((m) => m.userId !== currentUserId);
+      if (newFromOthers.length > 0 && activeTab !== 'chat') {
+        if (!chatSoundMuted) playBeep();
+        setUnreadCount((n) => n + newFromOthers.length);
+      }
+    }
+    prevMessageCount.current = messages.length;
+  }, [messages, activeTab, chatSoundMuted, currentUserId]);
 
   const handleJoin = async () => {
     if (!id) return;
@@ -426,8 +450,6 @@ export function RoomPage() {
   }
 
   const canControlPlayback = moviePlayable && videoReady && videoError === null;
-  const ownedReadyMovies = getRecentReadyOwnedMovies(ownedMovies);
-  const selectedOwnedMovie = ownedReadyMovies.find((movie) => movie.id === selectedOwnedMovieId) ?? null;
 
   const syncVideoTime = () => {
     const video = videoRef.current;
@@ -463,21 +485,6 @@ export function RoomPage() {
     setIsPlaying(false);
   };
 
-  const handleAttachOwnedMovie = async () => {
-    if (!isOwner || room.movie != null || selectedOwnedMovie === null) return;
-    setOwnerMovieSaving(true);
-    setOwnedMoviesError(null);
-    try {
-      const updated = await attachMovieToRoom(room.id, selectedOwnedMovie);
-      setRoom(updated);
-      setOwnerUploadError(null);
-    } catch (err: unknown) {
-      setOwnedMoviesError(err instanceof Error ? err.message : 'Failed to attach movie');
-    } finally {
-      setOwnerMovieSaving(false);
-    }
-  };
-
   const clearOwnerUpload = () => {
     setOwnerUploadFile(null);
     setOwnerUploadError(null);
@@ -488,7 +495,7 @@ export function RoomPage() {
     setOwnerUploadFile(file);
     setOwnerUploadError(validationError);
     if (validationError === null) {
-      setOwnedMoviesError(null);
+      setOwnerUploadError(null);
     }
   };
 
@@ -549,96 +556,39 @@ export function RoomPage() {
     <div
       style={{
         alignSelf: 'stretch',
-        width: 'min(100%, 520px)',
+        width: 'min(100%, 420px)',
         marginTop: 16,
-        padding: '16px',
-        border: '1px solid rgba(124,58,237,0.18)',
+        padding: '20px',
+        border: '1px solid var(--border-medium)',
         borderRadius: 14,
-        background: 'rgba(19,19,31,0.88)',
+        background: 'rgba(20,15,8,0.9)',
         backdropFilter: 'blur(14px)',
         color: 'var(--text-primary)',
+        display: 'grid',
+        gap: 12,
       }}
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
-        <div style={{ fontSize: 14, fontWeight: 700 }}>Add a video to this room</div>
-        <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
-          Choose one of your recent videos from the last 24 hours or upload a new {MOVIE_ALLOWED_FORMATS_LABEL} file. Only you can see this panel.
-        </p>
-      </div>
-
-      {ownedMoviesError && (
-        <div
-          style={{
-            marginBottom: 12,
-            padding: '10px 12px',
-            borderRadius: 10,
-            border: '1px solid rgba(239,68,68,0.25)',
-            background: 'rgba(239,68,68,0.08)',
-            color: '#fca5a5',
-            fontSize: 12,
-          }}
-        >
-          {ownedMoviesError}
-        </div>
-      )}
-
-      <div style={{ display: 'grid', gap: 12 }}>
-        <div style={{ display: 'grid', gap: 8 }}>
-          <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>Your recent videos</label>
-          {ownedMoviesLoading ? (
-            <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>Loading your videos…</p>
-          ) : ownedReadyMovies.length > 0 ? (
-            <RecentOwnedMoviePicker
-              movies={ownedReadyMovies}
-              selectedMovieId={selectedOwnedMovieId}
-              onSelect={setSelectedOwnedMovieId}
-              disabled={ownerMovieSaving}
-            />
-          ) : (
-            <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
-              You do not have any videos uploaded in the last 24 hours yet.
-            </p>
-          )}
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={() => { void handleAttachOwnedMovie(); }}
-            disabled={ownerMovieSaving || selectedOwnedMovie === null}
-          >
-            Use selected video
-          </button>
-        </div>
-
-        <div style={{ display: 'grid', gap: 8 }}>
-          <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>Or upload a new one</label>
-          <MovieUploadField
-            label="Video file"
-            file={ownerUploadFile}
-            error={ownerUploadError ?? undefined}
-            onFileChange={handleOwnerUploadFileChange}
-            onRemove={clearOwnerUpload}
-            disabled={ownerMovieSaving}
-          />
-          <button
-            type="button"
-            className="btn-ghost"
-            onClick={() => { void handleOwnerMovieUpload(); }}
-            disabled={ownerMovieSaving || ownerUploadFile === null || ownerUploadError !== null}
-          >
-            {ownerMovieSaving ? 'Uploading…' : 'Upload selected video'}
-          </button>
-          {ownerUploadPercent !== null && <MovieUploadProgress percent={ownerUploadPercent} />}
-        </div>
-      </div>
+      <p style={{ margin: 0, fontSize: 13, fontWeight: 700 }}>Upload a movie</p>
+      <MovieUploadField
+        label="Video file"
+        file={ownerUploadFile}
+        error={ownerUploadError ?? undefined}
+        onFileChange={handleOwnerUploadFileChange}
+        onRemove={clearOwnerUpload}
+        disabled={ownerMovieSaving}
+      />
+      <button
+        type="button"
+        className="btn-primary"
+        onClick={() => { void handleOwnerMovieUpload(); }}
+        disabled={ownerMovieSaving || ownerUploadFile === null || ownerUploadError !== null}
+      >
+        {ownerMovieSaving ? 'Uploading…' : 'Upload'}
+      </button>
+      {ownerUploadPercent !== null && <MovieUploadProgress percent={ownerUploadPercent} />}
     </div>
   ) : null;
 
-  const sendMessage = () => {
-    const text = chatInput.trim();
-    if (!text) return;
-    socketSendMessage(text);
-    setChatInput('');
-  };
 
   const statusLabel: Record<RoomStatus, string> = {
     watching: 'WATCHING',
@@ -712,9 +662,9 @@ export function RoomPage() {
 
       {/* Main area */}
       <div className="room-main">
-        {/* Video + controls */}
+        {/* Video column */}
         <div className="room-player-column">
-          <div className="room-video-area">
+          <div className="room-video-area" style={{ position: 'relative' }}>
             <RoomVideoPlayer
               roomName={room.name}
               movieName={room.movie_name}
@@ -751,260 +701,131 @@ export function RoomPage() {
               ownerActions={ownerMovieActions}
               placeholderText={ownerPlaceholderText}
             />
+            {showCountdown && (
+              <CountdownOverlay
+                members={members}
+                onComplete={() => { setCountdownDismissed(true); }}
+              />
+            )}
           </div>
         </div>
 
         {/* Sidebar */}
         <aside
+          className="room-sidebar"
           style={{
-            width: 280,
             display: 'flex',
             flexDirection: 'column',
-            background: 'var(--bg-surface)',
-            flexShrink: 0,
             overflow: 'hidden',
           }}
         >
-          {/* Room info */}
-          <section style={{ padding: '14px 16px', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0 }}>
-            <h3
-              style={{
-                margin: '0 0 10px',
-                fontSize: 12,
-                fontWeight: 700,
-                textTransform: 'uppercase',
-                letterSpacing: '0.08em',
-                color: 'var(--text-muted)',
-              }}
-            >
-              Connected ({members.length})
-            </h3>
-            <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-              <p style={{ margin: '0 0 4px' }}>
-                Host: <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>@{room.creator_name}</span>
-                {isOwner && <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--accent-hover)', fontWeight: 700 }}>YOU</span>}
-              </p>
-              {!isOwner && currentUserId !== null && (
-                <p style={{ margin: '0 0 4px', fontSize: 12, color: 'var(--text-muted)' }}>
-                  You joined as a member
+          {/* Sidebar info bar — movie title + connection status only (room name is in the top header) */}
+          {(room.movie_name !== null && room.movie_name !== undefined) || socketStatus !== 'connected' ? (
+            <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0 }}>
+              {room.movie_name !== null && room.movie_name !== undefined && (
+                <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                  {room.movie_name}
                 </p>
               )}
-              {room.movie_name && (
-                <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
-                  Watching: {room.movie_name}
+              {socketStatus !== 'connected' && (
+                <p style={{ margin: room.movie_name !== null && room.movie_name !== undefined ? '4px 0 0' : 0, fontSize: 11, color: socketStatus === 'error' ? '#f87171' : 'var(--text-muted)', fontStyle: 'italic' }}>
+                  {socketStatus === 'error' ? 'Connection error' : socketStatus === 'connecting' ? 'Connecting…' : 'Disconnected'}
                 </p>
               )}
             </div>
-            {isOwner && (
+          ) : null}
+
+          {/* Owner tools — password reveal */}
+          {isOwner && (
+            <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0 }}>
               <div
                 style={{
-                  marginTop: 12,
-                  padding: '12px',
-                  borderRadius: 12,
-                  border: '1px solid var(--border-subtle)',
+                  padding: '10px 12px',
+                  borderRadius: 10,
                   background: 'var(--bg-primary)',
+                  border: '1px solid var(--border-subtle)',
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 8 }}>
-                  <div>
-                    <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Owner tools</p>
-                    <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.4 }}>
-                      Protected from other room members.
+                <p style={{ margin: '0 0 6px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)' }}>
+                  Owner Tools
+                </p>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)' }}>Room password</p>
+                    <p style={{ margin: '2px 0 0', fontSize: 13, color: 'var(--text-primary)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {room.password == null ? 'No password set' : roomPasswordVisible ? room.password : '••••••••••'}
                     </p>
                   </div>
-                </div>
-                <div style={{ display: 'grid', gap: 10 }}>
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: 10,
-                      padding: '10px 12px',
-                      borderRadius: 10,
-                      background: 'var(--bg-surface)',
-                      border: '1px solid var(--border-subtle)',
-                    }}
-                  >
-                    <div style={{ minWidth: 0 }}>
-                      <p style={{ margin: 0, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)' }}>
-                        Room password
-                      </p>
-                      <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-primary)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {room.password == null ? 'No password set' : roomPasswordVisible ? room.password : '••••••••••'}
-                      </p>
-                    </div>
-                    {room.password != null && (
-                      <button
-                        type="button"
-                        className="btn-ghost"
-                        style={{ padding: '7px 10px', fontSize: 12, flexShrink: 0 }}
-                        onClick={() => { setShowRoomPassword((prev) => !prev); }}
-                      >
-                        {roomPasswordVisible ? 'Hide' : 'Reveal'}
-                      </button>
-                    )}
-                  </div>
-                  {room.password != null && roomPasswordVisible && (
-                    <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
-                      Exact password: <span style={{ color: 'var(--text-primary)', fontFamily: 'monospace' }}>{roomPassword}</span>
-                    </p>
+                  {room.password != null && (
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      style={{ padding: '5px 10px', fontSize: 12, flexShrink: 0 }}
+                      onClick={() => { setShowRoomPassword((prev) => !prev); }}
+                    >
+                      {roomPasswordVisible ? 'Hide' : 'Reveal'}
+                    </button>
                   )}
                 </div>
               </div>
-            )}
-            {socketStatus !== 'connected' && (
-              <p style={{ margin: '10px 0 0', fontSize: 11, color: socketStatus === 'error' ? '#f87171' : 'var(--text-muted)', fontStyle: 'italic' }}>
-                {socketStatus === 'error' ? 'Connection error' : socketStatus === 'connecting' ? 'Connecting…' : 'Disconnected'}
-              </p>
-            )}
-            <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {members.map((member) => (
-                <li key={member.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div style={{ position: 'relative', flexShrink: 0 }}>
-                    <UserAvatar name={member.name} avatarColor={member.avatarColor} size={32} />
-                    <span style={{ position: 'absolute', bottom: 0, right: 0 }}>
-                      <StatusDot status={member.status} />
-                    </span>
-                  </div>
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {member.name}
-                      </span>
-                      {member.isHost && (
-                        <span
-                          style={{
-                            fontSize: 10,
-                            fontWeight: 700,
-                            padding: '1px 5px',
-                            borderRadius: 4,
-                            background: 'var(--accent-dim)',
-                            color: 'var(--accent-hover)',
-                            border: '1px solid rgba(124,58,237,0.25)',
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          HOST
-                        </span>
-                      )}
-                      {member.id === currentUserId && (
-                        <span
-                          style={{
-                            fontSize: 10,
-                            fontWeight: 700,
-                            padding: '1px 5px',
-                            borderRadius: 4,
-                            background: 'rgba(100,116,139,0.15)',
-                            color: 'var(--text-muted)',
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          YOU
-                        </span>
-                      )}
-                    </div>
-                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>@{member.username}</span>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </section>
+            </div>
+          )}
 
-          {/* Chat */}
-          <section style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
-            <div style={{ padding: '12px 16px 8px', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0 }}>
-              <h3
-                style={{
-                  margin: 0,
-                  fontSize: 12,
-                  fontWeight: 700,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.08em',
-                  color: 'var(--text-muted)',
-                }}
+          {/* Tabs: Participants | Chat */}
+          <Tabs
+            value={activeTab}
+            onValueChange={(tab) => {
+              setActiveTab(tab);
+              if (tab === 'chat') setUnreadCount(0);
+            }}
+            className="flex min-h-0 flex-1 flex-col overflow-hidden"
+          >
+            <div className="mx-3 mt-2 flex shrink-0 items-center gap-1.5">
+              <TabsList
+                className="h-9 flex-1 rounded-lg"
+                style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-subtle)' }}
               >
-                Chat
-              </h3>
-            </div>
-
-            <div
-              className="soft-scroll"
-              style={{ flex: 1, overflowY: 'auto', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}
-            >
-              {messages.length === 0 ? (
-                <p style={{ color: 'var(--text-muted)', fontSize: 13, textAlign: 'center', marginTop: 16 }}>
-                  No messages yet. Say something!
-                </p>
-              ) : (
-                messages.map((msg) => (
-                  <div key={msg.id}>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: msg.color }}>
-                        {msg.userName}
-                      </span>
-                      <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{formatChatTime(msg.timestamp)}</span>
-                    </div>
-                    <p style={{ margin: '2px 0 0', fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.4 }}>
-                      {msg.content}
-                    </p>
-                  </div>
-                ))
-              )}
-              <div ref={chatEndRef} />
-            </div>
-
-            <div
-              style={{
-                padding: '10px 12px',
-                borderTop: '1px solid var(--border-subtle)',
-                display: 'flex',
-                gap: 8,
-                flexShrink: 0,
-              }}
-            >
-              <input
-                className="input"
-                type="text"
-                placeholder="Say something…"
-                value={chatInput}
-                onChange={(e) => { setChatInput(e.target.value); }}
-                onKeyDown={(e) => { if (e.key === 'Enter') sendMessage(); }}
-                style={{ flex: 1, padding: '8px 12px', fontSize: 13 }}
-              />
+                <TabsTrigger value="participants" className="flex flex-1 items-center gap-1.5 text-xs">
+                  <Users size={12} />
+                  Viewers ({members.length})
+                </TabsTrigger>
+                <TabsTrigger value="chat" className="flex flex-1 items-center gap-1.5 text-xs">
+                  <MessageSquare size={12} />
+                  Chat{unreadCount > 0 ? ` (${String(unreadCount)})` : ''}
+                </TabsTrigger>
+              </TabsList>
               <button
-                onClick={sendMessage}
+                type="button"
+                title={chatSoundMuted ? 'Unmute chat sounds' : 'Mute chat sounds'}
+                onClick={() => { setChatSoundMuted((m) => !m); }}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-white/10"
                 style={{
-                  ...controlBtnStyle,
-                  background: 'var(--accent)',
-                  color: '#fff',
-                  padding: '8px 12px',
-                  borderRadius: 8,
-                  flexShrink: 0,
+                  border: '1px solid var(--border-subtle)',
+                  background: 'var(--bg-primary)',
+                  color: chatSoundMuted ? 'var(--text-muted)' : 'var(--accent)',
                 }}
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M22 2L11 13M22 2L15 22l-4-9-9-4 20-7z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                </svg>
+                {chatSoundMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
               </button>
             </div>
-          </section>
+
+            <TabsContent
+              value="participants"
+              className="soft-scroll mt-1 min-h-0 flex-1 overflow-y-auto"
+            >
+              <InviteFriends members={members} />
+              <ParticipantList members={members} currentUserId={currentUserId} />
+            </TabsContent>
+
+            <TabsContent
+              value="chat"
+              className="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden p-0"
+            >
+              <CinemaChat messages={messages} onSend={socketSendMessage} />
+            </TabsContent>
+          </Tabs>
         </aside>
       </div>
     </div>
   );
 }
-
-const controlBtnStyle: React.CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  padding: '7px 10px',
-  background: 'transparent',
-  color: 'var(--text-secondary)',
-  border: '1px solid var(--border-medium)',
-  borderRadius: 8,
-  cursor: 'pointer',
-  fontFamily: 'var(--font-body)',
-  transition: 'all 200ms ease',
-};

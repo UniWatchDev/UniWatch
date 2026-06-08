@@ -4,7 +4,7 @@ import globals from 'globals';
 import reactRefresh from 'eslint-plugin-react-refresh';
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  globalIgnores(['dist', '@/**', 'src/components/ui/**']),
   ...reactInternalConfig,
   {
     files: ['**/*.{ts,tsx}'],

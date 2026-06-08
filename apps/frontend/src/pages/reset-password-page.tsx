@@ -2,6 +2,7 @@ import { Link, useNavigate } from 'react-router-dom';
 
 import { useCookieAuth } from '@/auth/use-cookie-auth';
 import { SiteFooter } from '@/components/site-footer';
+import { PasswordInput } from '@/components/ui/password-input';
 
 import { AuthPageShell } from './auth-page-shell';
 
@@ -50,10 +51,8 @@ export function ResetPasswordPage() {
               <label htmlFor="reset-new-password" style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
                 New password
               </label>
-              <input
+              <PasswordInput
                 id="reset-new-password"
-                type="password"
-                className="input"
                 autoComplete="new-password"
                 value={resetNewPassword}
                 onChange={(e) => {
