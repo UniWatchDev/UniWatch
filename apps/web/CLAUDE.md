@@ -7,7 +7,7 @@
 
 ```
 src/app/
-  layout.tsx               — Server Component: root layout, loads Fraunces + Geist + Geist_Mono + IBM_Plex_Mono via next/font
+  layout.tsx               — Server Component: root layout, uses offline-safe serif/sans/mono fallbacks via CSS variables
   page.tsx                 — Server Component: magazine-editorial layout
   health-check.tsx         — Client: auto-pings /api/health, dot + latency
   auth-panel.tsx           — Client: register + email verify/resend + login (blocked until verified) + session, consts/schemas + cookies
@@ -35,14 +35,11 @@ src/app/
 
 ## Fonts
 
-Four Google fonts loaded via `next/font/google` in `layout.tsx`:
+System font stacks are defined in `globals.css` and mapped to Tailwind via `@theme inline`:
 
-- `Fraunces` (serif display + body, italic, SOFT + WONK + opsz axes) → `--font-serif`
-- `Geist` (sans body) → `--font-sans`
-- `Geist_Mono` → `--font-geist-mono`
-- `IBM_Plex_Mono` (mono figures, labels, status glyphs) → `--font-mono`
-
-All mapped to Tailwind via `@theme inline` in `globals.css`.
+- `--font-serif` → Georgia / Times stack
+- `--font-sans` → system UI stack
+- `--font-mono` and `--font-geist-mono` → monospace stack
 
 ## Tailwind v4
 
