@@ -17,14 +17,14 @@ Next.js 16 App Router server-rendered starter surface. Use for generic starter e
 - `src/app/notes-panel.tsx` — Client Component: full CRUD styled as a "Letters to the Editor" column (not mounted on the home page; kept for reuse).
 - `src/app/package-verification.tsx` — Client Component: runtime checks via static imports of each `@repo/*` package + live backend health.
 - `src/app/endpoint-explorer.tsx` — Client Component: lists contracts with "Try →".
-- `src/app/globals.css` — Tailwind v4 via `@import 'tailwindcss'` + `@theme inline`. Editorial palette (`--color-paper`, `--color-ink`, `--color-rule`, `--color-accent`) + keyframes (`fade-up`, `rule-draw`, `check-in`, `dot-pulse`).
+- `src/app/globals.css` — Tailwind v4 via `@import 'tailwindcss'`. Editorial CSS variables (`--color-paper`, `--color-ink`, `--color-rule`, `--color-accent`, font stacks) + keyframes (`fade-up`, `rule-draw`, `check-in`, `dot-pulse`).
 
 ## Conventions
 
 - Use the `@/` alias for local imports from `src/*`.
 - Server Components by default — push `"use client"` boundaries down.
 - React Compiler enabled — no manual memoization.
-- Tailwind v4 via PostCSS (`@tailwindcss/postcss`) — no `tailwind.config.js`. Tokens live in `globals.css` under `@theme inline`.
+- Tailwind v4 via PostCSS (`@tailwindcss/postcss`) — no `tailwind.config.js`. Tokens live in `globals.css` as CSS variables.
 - `@repo/*` packages are transpiled via `transpilePackages` in `next.config.ts`.
 - Visible copy lives in `@repo/consts/starter` (`STARTER_HEADLINE`, `STARTER_DECK`, `STARTER_LEDE`, `STARTER_STATS`, `STARTER_PITCH`). Update there, not inline.
 - Layout targets viewport-fit (100dvh × 100vw, no page scroll, desktop-only). Internal scroll allowed inside cards.

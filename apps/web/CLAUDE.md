@@ -14,7 +14,7 @@ src/app/
   notes-panel.tsx          — Client: full CRUD, styled as "Letters" column (optional; not on home page)
   package-verification.tsx — Client: static probes of every @repo/* export + live backend
   endpoint-explorer.tsx    — Client: every EndpointContract with Try button + JSON drawer
-  globals.css              — Tailwind v4 + @theme inline (editorial tokens + keyframes)
+  globals.css              — Tailwind v4 (editorial CSS variables + keyframes)
   favicon.ico
 ```
 
@@ -35,7 +35,7 @@ src/app/
 
 ## Fonts
 
-System font stacks are defined in `globals.css` and mapped to Tailwind via `@theme inline`:
+System font stacks are defined in `globals.css` as CSS variables:
 
 - `--font-serif` → Georgia / Times stack
 - `--font-sans` → system UI stack

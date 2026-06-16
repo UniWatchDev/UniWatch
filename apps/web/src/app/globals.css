@@ -16,22 +16,6 @@
   --font-geist-mono: 'SFMono-Regular', ui-monospace, 'Cascadia Mono', 'Segoe UI Mono', monospace;
 }
 
-@theme inline {
-  --color-paper: var(--color-paper);
-  --color-ink: var(--color-ink);
-  --color-rule: var(--color-rule);
-  --color-mute: var(--color-mute);
-  --color-accent: var(--color-accent);
-  --color-accent-soft: var(--color-accent-soft);
-  --color-ok: var(--color-ok);
-  --color-warn: var(--color-warn);
-  --color-fail: var(--color-fail);
-  --font-serif: var(--font-serif);
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-mono);
-  --font-geist-mono: var(--font-geist-mono);
-}
-
 html,
 body {
   height: 100dvh;
