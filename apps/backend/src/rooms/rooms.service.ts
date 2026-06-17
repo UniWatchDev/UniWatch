@@ -1,13 +1,17 @@
 import {
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException
 } from '@nestjs/common';
+import { forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Types } from 'mongoose';
 import type { CreateRoomInput, RoomPreview, RoomResponse, UpdateRoomInput } from '@repo/schemas/rooms';
 import { RoomType, RoomStatus, type RoomDocument } from '@/rooms/room.schema';
 import { MoviesService } from '@/movies/movies.service';
+import { RealtimeGateway } from '@/realtime/realtime.gateway';
+import { RoomStateService } from '@/realtime/services/room-state.service';
 import { RoomRepository } from '@/rooms/room.repository';
 import type { Env } from '@/utils/env.validation';
 
@@ -33,6 +37,7 @@ function toResponse(doc: RoomDocument): RoomResponse {
   const creatorDoc = doc.creator as unknown as PopulatedUser | null | undefined;
   const creatorId = creatorDoc != null ? String(creatorDoc._id) : '';
   const creatorName = creatorDoc?.userName ?? creatorDoc?.firstName ?? undefined;
+  const memberCount = allowedUsers.filter((userId) => userId !== creatorId).length;
   return {
     id: doc._id.toString(),
     name: doc.name,
@@ -50,8 +55,12 @@ function toResponse(doc: RoomDocument): RoomResponse {
     movie_name: doc.movie_name ?? null,
     movie_description: doc.movie_description ?? null,
     creator_name: creatorName,
-    member_count: allowedUsers.length
+    member_count: memberCount
   };
+}
+
+function getLiveMemberCount(roomState: RoomStateService, roomId: string): number {
+  return roomState.get(roomId)?.connectedUsers.length ?? 0;
 }
 
 @Injectable()
@@ -59,12 +68,18 @@ export class RoomsService {
   constructor(
     private readonly rooms: RoomRepository,
     private readonly movies: MoviesService,
-    private readonly config: ConfigService<Env, true>
+    private readonly config: ConfigService<Env, true>,
+    private readonly roomState: RoomStateService,
+    @Inject(forwardRef(() => RealtimeGateway))
+    private readonly realtimeGateway: RealtimeGateway
   ) {}
 
   async list(): Promise<RoomResponse[]> {
     const docs = await this.rooms.findAllActive();
-    return docs.map(toResponse);
+    return docs.map((doc) => ({
+      ...toResponse(doc),
+      member_count: getLiveMemberCount(this.roomState, doc._id.toString())
+    }));
   }
 
   async get(id: string, userId: string): Promise<RoomResponse> {
@@ -80,7 +95,7 @@ export class RoomsService {
   async create(userId: string, data: CreateRoomInput): Promise<RoomResponse> {
     let movieName = data.movie_name;
     let movieDescription = data.movie_description;
-    let roomStatus: RoomStatus = RoomStatus.PREPARING;
+    const roomStatus: RoomStatus = RoomStatus.WAITING;
     if (data.movie !== undefined) {
       const movie = await this.movies.get(data.movie, userId);
       if (movieName === undefined) {
@@ -88,9 +103,6 @@ export class RoomsService {
       }
       if (movieDescription === undefined && movie.description != null) {
         movieDescription = movie.description;
-      }
-      if (movie.has_file && movie.upload_status === 'ready') {
-        roomStatus = RoomStatus.READY;
       }
     }
     const deactivateAt = data.deactivate_at !== undefined
@@ -129,9 +141,16 @@ export class RoomsService {
     if (data.movie_name !== undefined) patch['movie_name'] = data.movie_name;
     if (data.movie_description !== undefined) patch['movie_description'] = data.movie_description;
     if (data.deactivate_at !== undefined) patch['deactivate_at'] = new Date(data.deactivate_at);
+    const roomBeforeUpdate =
+      data.movie !== undefined || data.movie_name !== undefined || data.movie_description !== undefined
+        ? await this.rooms.findRawById(id)
+        : null;
+    const previousMovieId =
+      roomBeforeUpdate?.movie != null ? refToId(roomBeforeUpdate.movie as RefLike) : null;
     if (data.movie !== undefined) {
       const movie = await this.movies.get(data.movie, userId);
       patch['movie'] = new Types.ObjectId(data.movie);
+      patch['status'] = RoomStatus.WAITING;
       if (data.movie_name === undefined) {
         patch['movie_name'] = movie.name;
       }
@@ -141,7 +160,43 @@ export class RoomsService {
     }
 
     const doc = await this.rooms.updateIfCreator(id, userId, patch);
-    if (doc) return toResponse(doc);
+    if (doc) {
+      const updatedMovieId = doc.movie != null ? refToId(doc.movie as RefLike) : null;
+      const shouldBroadcastMovieRefresh =
+        data.movie !== undefined ||
+        data.movie_name !== undefined ||
+        data.movie_description !== undefined;
+      const movieChanged = data.movie !== undefined && previousMovieId !== updatedMovieId;
+
+      if (shouldBroadcastMovieRefresh) {
+        const roomId = doc._id.toString();
+        if (updatedMovieId != null) {
+          const previousPlayback = this.roomState.get(roomId)?.playback ?? null;
+          if (movieChanged) {
+            this.roomState.syncMovie(roomId, updatedMovieId);
+            this.roomState.setAllUsersReady(roomId, false);
+            this.realtimeGateway.clearCountdown(roomId);
+            if (previousPlayback?.isPlaying) {
+              this.roomState.updatePlayback(roomId, {
+                movieId: updatedMovieId,
+                isPlaying: true,
+                positionSec: 0,
+                playbackRate: previousPlayback.playbackRate
+              });
+            }
+          }
+
+          const creatorId = doc.creator.toString();
+          const status = this.roomState.syncStatus(roomId, creatorId);
+          await this.rooms.setStatus(roomId, status);
+          this.realtimeGateway.emitRoomMovieUpdated(roomId, updatedMovieId);
+          this.realtimeGateway.emitRoomPlaybackChanged(roomId, null);
+          this.realtimeGateway.emitRoomState(roomId);
+        }
+      }
+
+      return toResponse(doc);
+    }
     const raw = await this.rooms.findRawById(id);
     if (!raw || raw.deleted_at) {
       throw new NotFoundException(`Room "${id}" not found`);
@@ -162,7 +217,7 @@ export class RoomsService {
       has_password: raw.password != null && raw.password.length > 0,
       status: raw.status,
       creator_name: previewCreator?.userName ?? previewCreator?.firstName ?? undefined,
-      member_count: safeIds(raw.allowed_users).length
+      member_count: getLiveMemberCount(this.roomState, raw._id.toString())
     };
   }
 

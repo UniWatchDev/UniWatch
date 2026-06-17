@@ -27,12 +27,14 @@ export function RoomVideoPlayer({
   videoReady,
   videoError,
   canControl,
+  showHostControls,
   currentTime,
   duration,
   isPlaying,
   playbackRate,
   muted,
   volume,
+  announcementText,
   onTogglePlay,
   onTimeUpdate,
   onLoadedMetadata,
@@ -62,12 +64,14 @@ export function RoomVideoPlayer({
   videoReady: boolean;
   videoError: string | null;
   canControl: boolean;
+  showHostControls: boolean;
   currentTime: number;
   duration: number;
   isPlaying: boolean;
   playbackRate: number;
   muted: boolean;
   volume: number;
+  announcementText?: string | null;
   onTogglePlay: () => void;
   onTimeUpdate: () => void;
   onLoadedMetadata: () => void;
@@ -116,9 +120,9 @@ export function RoomVideoPlayer({
   const controls = (
     <RoomVideoPlayerControls
       canControl={canControl}
+      showHostControls={showHostControls}
       currentTime={currentTime}
       duration={duration}
-      isPlaying={isPlaying}
       playbackRate={playbackRate}
       muted={muted}
       volume={volume}
@@ -127,7 +131,6 @@ export function RoomVideoPlayer({
       statusText={statusText}
       isLive={isLive}
       onScrub={onScrub}
-      onTogglePlay={onTogglePlay}
       onSeekBy={onSeekBy}
       onPlaybackRateChange={onPlaybackRateChange}
       onToggleMute={onToggleMute}
@@ -150,7 +153,6 @@ export function RoomVideoPlayer({
               ref={videoRef}
               className="room-video-player__video"
               src={mediaSrc}
-              crossOrigin="use-credentials"
               onClick={handleStageClick}
               onTimeUpdate={onTimeUpdate}
               onLoadedMetadata={onLoadedMetadata}
@@ -160,7 +162,7 @@ export function RoomVideoPlayer({
               onCanPlay={onCanPlay}
               onError={onVideoError}
               playsInline
-              preload="metadata"
+              preload="auto"
             />
           )}
 
@@ -207,6 +209,30 @@ export function RoomVideoPlayer({
                   </div>
                 )}
               </div>
+            </div>
+          )}
+
+          {announcementText && (
+            <div
+              className="room-video-player__overlay room-video-player__overlay--interactive"
+              style={{
+                top: 16,
+                left: '50%',
+                right: 'auto',
+                bottom: 'auto',
+                transform: 'translateX(-50%)',
+                width: 'auto',
+                maxWidth: 'min(90%, 520px)',
+                padding: '10px 14px',
+                borderRadius: 999,
+                background: 'rgba(18, 18, 28, 0.92)',
+                color: 'var(--text-primary)',
+                border: '1px solid var(--border-medium)',
+                boxShadow: '0 12px 30px rgba(0, 0, 0, 0.28)',
+                pointerEvents: 'none'
+              }}
+            >
+              {announcementText}
             </div>
           )}
 

@@ -19,7 +19,7 @@ export const createRoomSchema = z.strictObject({
 
 export type CreateRoomInput = z.infer<typeof createRoomSchema>;
 
-export const roomStatusSchema = z.enum(['watching', 'preparing', 'ready']);
+export const roomStatusSchema = z.enum(['waiting', 'ready', 'watching']);
 
 export type RoomStatus = z.infer<typeof roomStatusSchema>;
 

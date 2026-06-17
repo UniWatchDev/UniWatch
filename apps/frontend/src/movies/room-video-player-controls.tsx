@@ -1,3 +1,5 @@
+import { useState } from 'react';
+
 import {
   formatPlaybackTime,
   formatRateLabel,
@@ -5,23 +7,6 @@ import {
   SEEK_STEPS_SECONDS,
   type PlaybackRate
 } from '@/movies/room-playback';
-
-function PlayIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <polygon points="5,3 19,12 5,21" />
-    </svg>
-  );
-}
-
-function PauseIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <rect x="6" y="4" width="4" height="16" rx="1" />
-      <rect x="14" y="4" width="4" height="16" rx="1" />
-    </svg>
-  );
-}
 
 function VolumeIcon({ muted }: { muted: boolean }) {
   return muted ? (
@@ -59,11 +44,15 @@ function FullscreenIcon({ exit }: { exit: boolean }) {
   );
 }
 
+function isPlaybackRate(rate: number): rate is PlaybackRate {
+  return PLAYBACK_RATES.some((candidate) => candidate === rate);
+}
+
 export function RoomVideoPlayerControls({
   canControl,
+  showHostControls,
   currentTime,
   duration,
-  isPlaying,
   playbackRate,
   muted,
   volume,
@@ -72,7 +61,6 @@ export function RoomVideoPlayerControls({
   statusText,
   isLive,
   onScrub,
-  onTogglePlay,
   onSeekBy,
   onPlaybackRateChange,
   onToggleMute,
@@ -81,9 +69,9 @@ export function RoomVideoPlayerControls({
   onInteract,
 }: {
   canControl: boolean;
+  showHostControls: boolean;
   currentTime: number;
   duration: number;
-  isPlaying: boolean;
   playbackRate: number;
   muted: boolean;
   volume: number;
@@ -92,7 +80,6 @@ export function RoomVideoPlayerControls({
   statusText?: string;
   isLive?: boolean;
   onScrub: (seconds: number) => void;
-  onTogglePlay: () => void;
   onSeekBy: (deltaSeconds: number) => void;
   onPlaybackRateChange: (rate: PlaybackRate) => void;
   onToggleMute: () => void;
@@ -100,10 +87,25 @@ export function RoomVideoPlayerControls({
   onToggleFullscreen: () => void;
   onInteract: () => void;
 }) {
+  const [isScrubbing, setIsScrubbing] = useState(false);
+  const [scrubValue, setScrubValue] = useState(currentTime);
+
   const stopAnd = (fn: () => void) => () => {
     onInteract();
     fn();
   };
+
+  const commitScrub = () => {
+    if (!canControl) {
+      setIsScrubbing(false);
+      return;
+    }
+    onScrub(scrubValue);
+    setIsScrubbing(false);
+  };
+
+  const displayTime = isScrubbing ? scrubValue : currentTime;
+  const scrubMax = Math.max(duration, 0.001);
 
   return (
     <div className="room-video-player__controls-panel" onMouseMove={onInteract} onFocus={onInteract}>
@@ -122,77 +124,87 @@ export function RoomVideoPlayerControls({
       )}
 
       <div className="room-video-player__scrubber">
-        <span className="room-video-player__time">{formatPlaybackTime(currentTime)}</span>
+        <span className="room-video-player__time">{formatPlaybackTime(displayTime)}</span>
         <input
           type="range"
           className="room-video-player__range room-video-player__range--scrub"
           min={0}
-          max={Math.max(duration, 1)}
-          value={Math.floor(currentTime)}
+          max={scrubMax}
+          step="any"
+          value={displayTime}
           disabled={!canControl}
-          onChange={(e) => { onInteract(); onScrub(Number(e.target.value)); }}
+          onPointerDown={() => {
+            onInteract();
+            setIsScrubbing(true);
+            setScrubValue(currentTime);
+          }}
+          onPointerUp={commitScrub}
+          onPointerCancel={commitScrub}
+          onChange={(e) => {
+            onInteract();
+            const next = Number(e.target.value);
+            setScrubValue(next);
+            if (!isScrubbing) {
+              onScrub(next);
+            }
+          }}
           aria-label="Playback position"
         />
         <span className="room-video-player__time">{formatPlaybackTime(duration)}</span>
       </div>
 
       <div className="room-video-player__actions">
-        <div className="room-video-player__transport-group" aria-label="Playback controls">
-          <button
-            type="button"
-            className="room-video-player__seek-btn room-video-player__seek-btn--primary"
-            disabled={!canControl}
-            onClick={stopAnd(() => { onSeekBy(-SEEK_STEPS_SECONDS[0]); })}
-            title="Back 5 seconds"
-          >
-            −5s
-          </button>
+        {showHostControls && (
+          <div className="room-video-player__transport-group" aria-label="Playback controls">
+            <button
+              type="button"
+              className="room-video-player__seek-btn room-video-player__seek-btn--primary"
+              disabled={!canControl}
+              onClick={stopAnd(() => { onSeekBy(-SEEK_STEPS_SECONDS[0]); })}
+              title="Back 5 seconds"
+            >
+              −5s
+            </button>
 
-          <button
-            type="button"
-            className="room-video-player__play-btn"
-            disabled={!canControl}
-            onClick={stopAnd(onTogglePlay)}
-            title={isPlaying ? 'Pause' : 'Play'}
-            aria-label={isPlaying ? 'Pause' : 'Play'}
-          >
-            {isPlaying ? <PauseIcon /> : <PlayIcon />}
-          </button>
-
-          <button
-            type="button"
-            className="room-video-player__seek-btn room-video-player__seek-btn--primary"
-            disabled={!canControl}
-            onClick={stopAnd(() => { onSeekBy(SEEK_STEPS_SECONDS[0]); })}
-            title="Forward 5 seconds"
-          >
-            +5s
-          </button>
-        </div>
+            <button
+              type="button"
+              className="room-video-player__seek-btn room-video-player__seek-btn--primary"
+              disabled={!canControl}
+              onClick={stopAnd(() => { onSeekBy(SEEK_STEPS_SECONDS[0]); })}
+              title="Forward 5 seconds"
+            >
+              +5s
+            </button>
+          </div>
+        )}
 
         <div className="room-video-player__utility-group">
-          <label className="room-video-player__speed">
-            <span className="room-video-player__speed-label">Speed</span>
-            <select
-              className="room-video-player__speed-select"
-              value={String(playbackRate)}
-              disabled={!canControl}
-              onChange={(e) => {
-                onInteract();
-                const rate = Number(e.target.value);
-                if (PLAYBACK_RATES.includes(rate as PlaybackRate)) {
-                  onPlaybackRateChange(rate as PlaybackRate);
-                }
-              }}
-              aria-label="Playback speed"
-            >
-              {PLAYBACK_RATES.map((rate) => (
-                <option key={String(rate)} value={String(rate)}>
-                  {formatRateLabel(rate)}
-                </option>
-              ))}
-            </select>
-          </label>
+          {showHostControls && (
+            <>
+              <label className="room-video-player__speed">
+                <span className="room-video-player__speed-label">Speed</span>
+                <select
+                  className="room-video-player__speed-select"
+                  value={String(playbackRate)}
+                  disabled={!canControl}
+                  onChange={(e) => {
+                    onInteract();
+                    const rate = Number(e.target.value);
+                    if (isPlaybackRate(rate)) {
+                      onPlaybackRateChange(rate);
+                    }
+                  }}
+                  aria-label="Playback speed"
+                >
+                  {PLAYBACK_RATES.map((rate) => (
+                    <option key={String(rate)} value={String(rate)}>
+                      {formatRateLabel(rate)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
+          )}
 
           <div className="room-video-player__volume">
             <button

@@ -2,8 +2,10 @@ import { Injectable } from '@nestjs/common';
 
 import { REALTIME_MAX_MESSAGES } from '@repo/schemas/realtime';
 import type {
+  CountdownState,
   ConnectedUser,
   RealtimeChatMessage,
+  PlaybackState,
   RealtimeRoomState
 } from '@repo/schemas/realtime';
 
@@ -22,6 +24,8 @@ type RemovalResult = {
   /** Whether the same user still has another active socket in the room. */
   userStillConnected: boolean;
 };
+
+type RoomRuntimeStatus = RealtimeRoomState['status'];
 
 /**
  * Owns the in-memory, per-room runtime state (connected users, chat history,
@@ -43,9 +47,11 @@ export class RoomStateService {
 
     const state: RealtimeRoomState = {
       roomId,
+      status: 'waiting',
       connectedUsers: [],
       messages: [],
-      playback: this.makeDefaultPlayback()
+      playback: this.makeDefaultPlayback(),
+      countdown: this.makeDefaultCountdown()
     };
     this.roomStates.set(roomId, state);
     return state;
@@ -73,7 +79,8 @@ export class RoomStateService {
       userName,
       color,
       socketId,
-      joinedAt: new Date().toISOString()
+      joinedAt: new Date().toISOString(),
+      isReady: staleEntry?.isReady ?? false
     };
     state.connectedUsers.push(user);
     return user;
@@ -104,6 +111,36 @@ export class RoomStateService {
     return this.roomStates.get(roomId)?.connectedUsers.find((u) => u.socketId === socketId);
   }
 
+  setUserReady(roomId: string, userId: string, isReady: boolean): ConnectedUser | null {
+    const state = this.roomStates.get(roomId);
+    if (!state) return null;
+
+    const user = state.connectedUsers.find((entry) => entry.userId === userId);
+    if (!user) return null;
+
+    user.isReady = isReady;
+    return user;
+  }
+
+  setAllUsersReady(roomId: string, isReady: boolean): void {
+    const state = this.roomStates.get(roomId);
+    if (!state) return;
+
+    for (const user of state.connectedUsers) {
+      user.isReady = isReady;
+    }
+  }
+
+  setCountdown(roomId: string, countdown: CountdownState): CountdownState {
+    const state = this.getOrCreate(roomId);
+    state.countdown = countdown;
+    return state.countdown;
+  }
+
+  clearCountdown(roomId: string): CountdownState {
+    return this.setCountdown(roomId, this.makeDefaultCountdown());
+  }
+
   /** Append a chat message, trimming history to the most recent N messages. */
   addMessage(roomId: string, message: RealtimeChatMessage): void {
     const state = this.getOrCreate(roomId);
@@ -113,12 +150,99 @@ export class RoomStateService {
     }
   }
 
+  syncMovie(roomId: string, movieId: string | null): PlaybackState {
+    const state = this.getOrCreate(roomId);
+    if (state.playback.movieId === movieId) {
+      return state.playback;
+    }
+
+    state.playback = {
+      movieId,
+      isPlaying: false,
+      positionSec: 0,
+      playbackRate: 1,
+      updatedAt: new Date().toISOString()
+    };
+    return state.playback;
+  }
+
+  updatePlayback(roomId: string, playback: Omit<PlaybackState, 'updatedAt'>): PlaybackState {
+    const state = this.getOrCreate(roomId);
+    state.playback = {
+      ...playback,
+      updatedAt: new Date().toISOString()
+    };
+    return state.playback;
+  }
+
+  getMaterializedPlayback(roomId: string, at = new Date()): PlaybackState {
+    const state = this.roomStates.get(roomId);
+    if (!state) {
+      return this.makeDefaultPlayback();
+    }
+
+    if (!state.playback.isPlaying) {
+      return state.playback;
+    }
+
+    const elapsedMs = Math.max(0, at.getTime() - new Date(state.playback.updatedAt).getTime());
+    const positionSec = state.playback.positionSec + (elapsedMs / 1000) * state.playback.playbackRate;
+    return {
+      ...state.playback,
+      positionSec,
+      updatedAt: at.toISOString()
+    };
+  }
+
+  setStatus(roomId: string, status: RoomRuntimeStatus): RoomRuntimeStatus {
+    const state = this.getOrCreate(roomId);
+    state.status = status;
+    return state.status;
+  }
+
+  computeStatus(roomId: string, creatorId: string | null = null): RoomRuntimeStatus {
+    const state = this.roomStates.get(roomId);
+    if (!state || state.playback.movieId === null) {
+      return 'waiting';
+    }
+    if (state.connectedUsers.length === 0) {
+      return 'waiting';
+    }
+    if (state.playback.isPlaying) {
+      return 'watching';
+    }
+    const membersToCheck =
+      creatorId === null ? state.connectedUsers : state.connectedUsers.filter((user) => user.userId !== creatorId);
+    if (membersToCheck.length === 0) {
+      return 'waiting';
+    }
+    return membersToCheck.every((user) => user.isReady) ? 'ready' : 'waiting';
+  }
+
+  syncStatus(roomId: string, creatorId: string | null = null): RoomRuntimeStatus {
+    const state = this.roomStates.get(roomId);
+    if (!state) {
+      return 'waiting';
+    }
+
+    state.status = this.computeStatus(roomId, creatorId);
+    return state.status;
+  }
+
   private makeDefaultPlayback(): RealtimeRoomState['playback'] {
     return {
       movieId: null,
       isPlaying: false,
       positionSec: 0,
+      playbackRate: 1,
       updatedAt: new Date().toISOString()
+    };
+  }
+
+  private makeDefaultCountdown(): CountdownState {
+    return {
+      active: false,
+      endsAt: null
     };
   }
 }

@@ -1,11 +1,18 @@
+import { useState } from 'react';
+
 import type { Member } from '@/types/room';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { Crown } from 'lucide-react';
+import { AtSign, Ban, Crown, MoreVertical, UserPlus, UserX } from 'lucide-react';
 
 interface ParticipantListProps {
   members: Member[];
   currentUserId: string | null;
+  canModerate: boolean;
+  onAddFriend: (member: Member) => void;
+  onTagUser: (member: Member) => void;
+  onKickUser: (member: Member) => void;
+  onBlockUser: (member: Member) => void;
 }
 
 function initials(name: string): string {
@@ -23,7 +30,17 @@ function presenceRingClass(status: Member['status']): string {
   return 'ring-idle';
 }
 
-export function ParticipantList({ members, currentUserId }: ParticipantListProps) {
+export function ParticipantList({
+  members,
+  currentUserId,
+  canModerate,
+  onAddFriend,
+  onTagUser,
+  onKickUser,
+  onBlockUser
+}: ParticipantListProps) {
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+
   if (members.length === 0) {
     return (
       <p
@@ -39,10 +56,11 @@ export function ParticipantList({ members, currentUserId }: ParticipantListProps
     <ul className="flex flex-col gap-0.5 p-2">
       {members.map((member) => {
         const isYou = member.id === currentUserId;
+        const isMenuOpen = openMenuId === member.id;
         return (
           <li
             key={member.id}
-            className="flex items-center gap-3 rounded-lg px-2 py-2"
+            className="relative flex items-center gap-3 rounded-lg px-2 py-2"
             style={{
               background: isYou ? 'rgba(245,158,11,0.07)' : 'transparent',
             }}
@@ -86,6 +104,22 @@ export function ParticipantList({ members, currentUserId }: ParticipantListProps
                     YOU
                   </Badge>
                 )}
+                {member.isFriend && (
+                  <Badge
+                    variant="outline"
+                    className="h-4 border-sky-500/20 bg-sky-500/10 px-1 text-[9px] font-bold text-sky-300"
+                  >
+                    FRIEND
+                  </Badge>
+                )}
+                {member.isReady && (
+                  <Badge
+                    variant="outline"
+                    className="h-4 border-emerald-500/20 bg-emerald-500/10 px-1 text-[9px] font-bold text-emerald-300"
+                  >
+                    READY
+                  </Badge>
+                )}
               </div>
               <p
                 className="truncate text-[11px]"
@@ -94,6 +128,83 @@ export function ParticipantList({ members, currentUserId }: ParticipantListProps
                 @{member.username}
               </p>
             </div>
+
+            <button
+              type="button"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-white/10"
+              style={{ color: 'var(--text-muted)' }}
+              onClick={() => {
+                setOpenMenuId((current) => (current === member.id ? null : member.id));
+              }}
+              aria-label={`${member.name} options`}
+              aria-expanded={isMenuOpen}
+            >
+              <MoreVertical size={14} />
+            </button>
+
+            {isMenuOpen && (
+              <div
+                className="absolute right-2 top-10 z-20 w-44 overflow-hidden rounded-xl border"
+                style={{
+                  borderColor: 'var(--border-medium)',
+                  background: 'rgba(18, 12, 6, 0.98)',
+                  boxShadow: '0 18px 40px rgba(0, 0, 0, 0.3)'
+                }}
+              >
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-white/5"
+                  style={{ color: 'var(--text-primary)' }}
+                  onClick={() => {
+                    onAddFriend(member);
+                    setOpenMenuId(null);
+                  }}
+                >
+                  <UserPlus size={13} />
+                  Add as friend
+                </button>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-white/5"
+                  style={{ color: 'var(--text-primary)' }}
+                  onClick={() => {
+                    onTagUser(member);
+                    setOpenMenuId(null);
+                  }}
+                >
+                  <AtSign size={13} />
+                  Tag in chat
+                </button>
+                {canModerate && member.id !== currentUserId && (
+                  <>
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-white/5"
+                      style={{ color: 'var(--text-primary)' }}
+                      onClick={() => {
+                        onKickUser(member);
+                        setOpenMenuId(null);
+                      }}
+                    >
+                      <UserX size={13} />
+                      Kick from room
+                    </button>
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-white/5"
+                      style={{ color: '#fca5a5' }}
+                      onClick={() => {
+                        onBlockUser(member);
+                        setOpenMenuId(null);
+                      }}
+                    >
+                      <Ban size={13} />
+                      Block user
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
           </li>
         );
       })}

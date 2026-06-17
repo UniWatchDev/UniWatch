@@ -10,9 +10,9 @@ export const MOCK_CHAT: ChatMessage[] = [
 ];
 
 export const MOCK_MEMBERS: Member[] = [
-  { id: 'm1', name: 'moriel', username: 'moriel', avatarColor: '#f97316', isHost: true, status: 'active' },
-  { id: 'm2', name: 'Alex', username: 'alex_w', avatarColor: '#38bdf8', isHost: false, status: 'active' },
-  { id: 'm3', name: 'Sam', username: 'sam_movies', avatarColor: '#a78bfa', isHost: false, status: 'away' },
+  { id: 'm1', name: 'moriel', username: 'moriel', avatarColor: '#f97316', isHost: true, isReady: true, isFriend: false, status: 'active' },
+  { id: 'm2', name: 'Alex', username: 'alex_w', avatarColor: '#38bdf8', isHost: false, isReady: true, isFriend: true, status: 'active' },
+  { id: 'm3', name: 'Sam', username: 'sam_movies', avatarColor: '#a78bfa', isHost: false, isReady: false, isFriend: false, status: 'away' },
 ];
 
 export const MOCK_ROOMS: RoomResponse[] = [
@@ -42,7 +42,7 @@ export const MOCK_ROOMS: RoomResponse[] = [
     deactivate_at: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
     created_at: new Date(Date.now() - 10 * 60000).toISOString(),
     updated_at: new Date(Date.now() - 2 * 60000).toISOString(),
-    status: 'preparing',
+    status: 'waiting',
     movie_name: 'Dune: Part Two',
     description: 'Getting ready to enter Arrakis',
     creator_name: 'alex_w',

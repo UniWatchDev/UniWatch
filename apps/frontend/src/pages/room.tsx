@@ -1,16 +1,17 @@
-import { useState, useRef, useEffect } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { API_BASE_URL } from '@repo/consts/api';
 import { getRoomContract, previewRoomContract, joinRoomContract, leaveRoomContract } from '@repo/contracts/rooms';
 import { getAuthMeContract } from '@repo/contracts/auth';
 import type { RoomPreview } from '@repo/schemas/rooms';
+import type { PlaybackState } from '@repo/schemas/realtime';
 import type { RoomResponse, RoomStatus } from '@repo/schemas/rooms';
 import { useRoomSocket } from '@/hooks/use-room-socket';
 import { attachMovieToRoom } from '@/movies/attach-room-movie';
 import { MovieUploadField } from '@/movies/movie-upload-field';
 import { MovieUploadProgress } from '@/movies/movie-upload-progress';
 import { RoomVideoPlayer } from '@/movies/room-video-player';
-import type { PlaybackRate } from '@/movies/room-playback';
+import { PLAYBACK_RATES, type PlaybackRate } from '@/movies/room-playback';
 import { useRoomMovie } from '@/movies/use-room-movie';
 import { prepareMovieForRoom } from '@/movies/prepare-movie-for-room';
 import { validateMovieFile } from '@/movies/upload-movie-file';
@@ -18,12 +19,63 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ParticipantList } from '@/components/participant-list';
 import { CinemaChat } from '@/components/cinema-chat';
 import { CountdownOverlay } from '@/components/countdown-overlay';
+import { ForcePlayConfirmationModal } from '@/components/force-play-confirmation-modal';
 import { Users, MessageSquare, Volume2, VolumeX, UserPlus, Check, Link } from 'lucide-react';
 import { MOCK_FRIENDS } from '@/data/mock-profile-data';
 import type { Member } from '@/types/room';
 
 function initials(name: string): string {
   return name.split(' ').map((w) => w[0] ?? '').join('').slice(0, 2).toUpperCase();
+}
+
+interface PlaybackChangeEvent {
+  actorUserId: string | null;
+  playback: PlaybackState;
+}
+
+function isPlaybackRate(rate: number): rate is PlaybackRate {
+  return PLAYBACK_RATES.some((candidate) => candidate === rate);
+}
+
+function getHostPlaybackPosition(playback: PlaybackState, atMs = Date.now()): number {
+  if (!playback.isPlaying) {
+    return playback.positionSec;
+  }
+  const elapsedSeconds = Math.max(0, atMs - new Date(playback.updatedAt).getTime()) / 1000;
+  return playback.positionSec + elapsedSeconds * playback.playbackRate;
+}
+
+function computeRoomStatus(
+  hasMovie: boolean,
+  moviePlayable: boolean,
+  isPlaying: boolean,
+  members: Member[],
+  creatorId: string | null
+): RoomStatus {
+  if (!hasMovie || !moviePlayable) {
+    return 'waiting';
+  }
+  if (isPlaying) {
+    return 'watching';
+  }
+  if (members.length === 0) {
+    return 'waiting';
+  }
+  const membersToCheck = creatorId === null ? members : members.filter((member) => member.id !== creatorId);
+  if (membersToCheck.length === 0) {
+    return 'waiting';
+  }
+  return membersToCheck.every((member) => member.isReady) ? 'ready' : 'waiting';
+}
+
+function canCurrentUserAccessRoomMovie(
+  currentUserId: string | null,
+  room: RoomResponse | null
+): boolean {
+  if (currentUserId === null || room === null || room.movie === null) {
+    return false;
+  }
+  return currentUserId === room.creator || room.allowed_users.includes(currentUserId);
 }
 
 function InviteFriends({ members }: { members: Member[] }) {
@@ -238,15 +290,25 @@ export function RoomPage() {
   const [videoError, setVideoError] = useState<string | null>(null);
   const [playbackRate, setPlaybackRate] = useState<PlaybackRate>(1);
   const [ownerMovieSaving, setOwnerMovieSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState('participants');
+  const [activeTab, setActiveTab] = useState('chat');
   const [unreadCount, setUnreadCount] = useState(0);
   const [chatSoundMuted, setChatSoundMuted] = useState(false);
+  const [chatDraft, setChatDraft] = useState('');
   const [ownerUploadFile, setOwnerUploadFile] = useState<File | null>(null);
   const [ownerUploadError, setOwnerUploadError] = useState<string | null>(null);
   const [ownerUploadPercent, setOwnerUploadPercent] = useState<number | null>(null);
   const [showRoomPassword, setShowRoomPassword] = useState(false);
-  const [countdownDismissed, setCountdownDismissed] = useState(false);
+  const [forcePlayModalOpen, setForcePlayModalOpen] = useState(false);
+  const [movieAnnouncement, setMovieAnnouncement] = useState<string | null>(null);
+  const [remotePlaybackEvent, setRemotePlaybackEvent] = useState<PlaybackChangeEvent | null>(null);
+  const [friendIds, setFriendIds] = useState<string[]>(() => MOCK_FRIENDS.map((friend) => friend.id));
   const videoRef = useRef<HTMLVideoElement>(null);
+  const announcementTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastPlaybackEmitAtRef = useRef(0);
+  const initialPlaybackSyncRoomIdRef = useRef<string | null>(null);
+  const suppressPlaybackEmitRef = useRef(false);
+  const roomMovieId =
+    canCurrentUserAccessRoomMovie(currentUserId, room) && room !== null ? room.movie : null;
 
   const {
     loading: movieLoading,
@@ -255,23 +317,85 @@ export function RoomPage() {
     isUploading: movieUploading,
     isPlayable: moviePlayable,
     isFailed: movieFailed
-  } = useRoomMovie(room?.movie ?? null);
+  } = useRoomMovie(roomMovieId);
   const isOwner = currentUserId !== null && currentUserId === room?.creator;
-  const showCountdown =
-    room !== null &&
-    room.status === 'ready' &&
-    moviePlayable &&
-    !isPlaying &&
-    !countdownDismissed;
 
-  const { messages, members, socketStatus, sendMessage: socketSendMessage } = useRoomSocket({
+  const refreshRoom = useCallback(async () => {
+    if (id === undefined) return;
+    try {
+      const updated = await fetchRoom(id);
+      setRoom(updated);
+    } catch (err: unknown) {
+      console.error('[room]', err instanceof Error ? err.message : 'Failed to refresh room');
+    }
+  }, [id]);
+
+  const handleMovieUpdated = useCallback((movieId: string) => {
+    if (movieId.length === 0) return;
+    setMovieAnnouncement('Movie changed. Waiting for the host to play it.');
+    void refreshRoom();
+  }, [refreshRoom]);
+
+  const handlePlaybackChanged = useCallback((event: PlaybackChangeEvent) => {
+    setRemotePlaybackEvent(event);
+  }, []);
+
+  const {
+    messages,
+    members,
+    socketStatus,
+    roomState,
+    sendMessage: socketSendMessage,
+    sendReadyUpdate,
+    sendMovieUpdated,
+    sendPlaybackUpdate,
+    sendKickUser,
+    sendBlockUser
+  } = useRoomSocket({
     roomId: id ?? '',
     disabled: loading || room === null,
-    currentUserId,
     creatorId: room?.creator ?? '',
     creatorName: room?.creator_name ?? undefined,
-    initialMemberIds: room?.allowed_users ?? []
+    initialMemberIds: room?.allowed_users ?? [],
+    onMovieUpdated: handleMovieUpdated,
+    onPlaybackChanged: handlePlaybackChanged
   });
+
+  const displayMembers = members.map((member) => ({
+    ...member,
+    isFriend: friendIds.includes(member.id)
+  }));
+  const currentMember = displayMembers.find((member) => member.id === currentUserId) ?? null;
+  const isSoloHost = isOwner && displayMembers.length === 1;
+  const liveRoomStatus = computeRoomStatus(
+    room?.movie != null,
+    moviePlayable,
+    roomState.playback.isPlaying,
+    displayMembers,
+    room?.creator ?? null
+  );
+  const unreadyMembers = displayMembers.filter((member) => !member.isHost && !member.isReady);
+  const needsForcePlayConfirmation = isOwner && !isSoloHost && unreadyMembers.length > 0;
+  const showCountdown = roomState.countdown.active;
+  const readinessMembers = displayMembers.filter((member) => !member.isHost);
+  const handleAddFriend = (member: Member) => {
+    setFriendIds((prev) => (prev.includes(member.id) ? prev : [...prev, member.id]));
+  };
+  const handleTagUser = (member: Member) => {
+    setActiveTab('chat');
+    setChatDraft((draft) => {
+      const prefix = draft.length > 0 && !draft.endsWith(' ') ? `${draft} ` : draft;
+      return `${prefix}@${member.username} `;
+    });
+  };
+  const handleKickUser = (member: Member) => {
+    if (!isOwner) return;
+    sendKickUser(member.id);
+  };
+  const handleBlockUser = (member: Member) => {
+    if (!isOwner) return;
+    sendBlockUser(member.id);
+  };
 
   const loadRoom = (roomId: string, cancelled: { current: boolean }) => {
     setLoading(true);
@@ -349,8 +473,124 @@ export function RoomPage() {
 
   useEffect(() => {
     setShowRoomPassword(false);
-    setCountdownDismissed(false);
+    setForcePlayModalOpen(false);
+    setMovieAnnouncement(null);
+    setRemotePlaybackEvent(null);
   }, [room?.id]);
+
+  useEffect(() => {
+    if (movieAnnouncement === null) return;
+    if (announcementTimerRef.current !== null) {
+      clearTimeout(announcementTimerRef.current);
+    }
+    announcementTimerRef.current = setTimeout(() => {
+      setMovieAnnouncement(null);
+      announcementTimerRef.current = null;
+    }, 3500);
+
+    return () => {
+      if (announcementTimerRef.current !== null) {
+        clearTimeout(announcementTimerRef.current);
+        announcementTimerRef.current = null;
+      }
+    };
+  }, [movieAnnouncement]);
+
+  useEffect(() => {
+    initialPlaybackSyncRoomIdRef.current = null;
+  }, [room?.id, room?.movie]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (video === null || remotePlaybackEvent === null || room === null || !videoReady || mediaSrc === null) {
+      return;
+    }
+    if (remotePlaybackEvent.actorUserId !== null && remotePlaybackEvent.actorUserId === currentUserId) {
+      setRemotePlaybackEvent(null);
+      return;
+    }
+
+    const { playback } = remotePlaybackEvent;
+    if (playback.movieId !== room.movie) {
+      setMovieAnnouncement('Movie changed. Waiting for the host to play it.');
+      void refreshRoom();
+      return;
+    }
+
+    suppressPlaybackEmitRef.current = true;
+    try {
+      if (isPlaybackRate(playback.playbackRate) && video.playbackRate !== playback.playbackRate) {
+        video.playbackRate = playback.playbackRate;
+        setPlaybackRate(playback.playbackRate);
+      }
+
+      const truthPosition = getHostPlaybackPosition(playback);
+      const drift = Math.abs(video.currentTime - truthPosition);
+      if (playback.movieId !== room.movie || drift > 2) {
+        video.currentTime = truthPosition;
+        setCurrentTime(truthPosition);
+      }
+
+      setIsPlaying(playback.isPlaying);
+      if (playback.isPlaying) {
+        void video.play().catch(() => {
+          setVideoError('Playback failed. Check your connection and try again.');
+        });
+      } else {
+        video.pause();
+      }
+    } finally {
+      queueMicrotask(() => {
+        suppressPlaybackEmitRef.current = false;
+      });
+    }
+    setRemotePlaybackEvent(null);
+  }, [currentUserId, mediaSrc, refreshRoom, remotePlaybackEvent, room, videoReady]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (
+      video === null ||
+      room === null ||
+      room.movie === null ||
+      roomState.playback.movieId !== room.movie ||
+      !videoReady ||
+      mediaSrc === null ||
+      remotePlaybackEvent !== null
+    ) {
+      return;
+    }
+
+    if (initialPlaybackSyncRoomIdRef.current === room.id) {
+      return;
+    }
+
+    suppressPlaybackEmitRef.current = true;
+    try {
+      const truthPosition = getHostPlaybackPosition(roomState.playback);
+      if (isPlaybackRate(roomState.playback.playbackRate) && video.playbackRate !== roomState.playback.playbackRate) {
+        video.playbackRate = roomState.playback.playbackRate;
+        setPlaybackRate(roomState.playback.playbackRate);
+      }
+
+      video.currentTime = truthPosition;
+      setCurrentTime(truthPosition);
+      setIsPlaying(roomState.playback.isPlaying);
+      if (roomState.playback.isPlaying) {
+        void video.play().catch(() => {
+          setVideoError('Playback failed. Check your connection and try again.');
+        });
+      } else {
+        video.pause();
+      }
+    } finally {
+      queueMicrotask(() => {
+        suppressPlaybackEmitRef.current = false;
+      });
+    }
+
+    initialPlaybackSyncRoomIdRef.current = room.id;
+  }, [mediaSrc, remotePlaybackEvent, room, roomState.playback, videoReady]);
 
   const prevMessageCount = useRef(0);
   useEffect(() => {
@@ -449,7 +689,43 @@ export function RoomPage() {
     );
   }
 
-  const canControlPlayback = moviePlayable && videoReady && videoError === null;
+  const canControlPlayback = isOwner && moviePlayable && videoReady && videoError === null;
+  const canStartPlayback = canControlPlayback && (liveRoomStatus === 'ready' || isSoloHost);
+
+  const broadcastPlaybackState = (force: boolean) => {
+    const video = videoRef.current;
+    const movieId = room.movie;
+    if (
+      suppressPlaybackEmitRef.current ||
+      !isOwner ||
+      movieId == null ||
+      video === null ||
+      videoError !== null ||
+      !videoReady
+    ) {
+      return;
+    }
+
+    if (!force) {
+      if (video.paused || video.ended) {
+        return;
+      }
+      const now = Date.now();
+      if (now - lastPlaybackEmitAtRef.current < 1000) {
+        return;
+      }
+      lastPlaybackEmitAtRef.current = now;
+    } else {
+      lastPlaybackEmitAtRef.current = Date.now();
+    }
+
+    sendPlaybackUpdate({
+      movieId,
+      isPlaying: !video.paused && !video.ended,
+      positionSec: video.currentTime,
+      playbackRate: video.playbackRate
+    });
+  };
 
   const syncVideoTime = () => {
     const video = videoRef.current;
@@ -463,12 +739,46 @@ export function RoomPage() {
     const video = videoRef.current;
     if (video === null || !canControlPlayback) return;
     if (video.paused) {
-      void video.play().catch(() => {
-        setVideoError('Playback failed. Check your connection and try again.');
+      if (!canStartPlayback) {
+        if (needsForcePlayConfirmation) {
+          setForcePlayModalOpen(true);
+        }
+        return;
+      }
+      if (room.movie == null) return;
+      sendPlaybackUpdate({
+        movieId: room.movie,
+        isPlaying: true,
+        positionSec: video.currentTime,
+        playbackRate: video.playbackRate
       });
     } else {
+      if (room.movie == null) return;
+      sendPlaybackUpdate({
+        movieId: room.movie,
+        isPlaying: false,
+        positionSec: video.currentTime,
+        playbackRate: video.playbackRate
+      });
       video.pause();
     }
+  };
+
+  const cancelForcePlay = () => {
+    setForcePlayModalOpen(false);
+  };
+
+  const confirmForcePlay = () => {
+    const video = videoRef.current;
+    if (video === null || room.movie == null || !canControlPlayback) return;
+    setForcePlayModalOpen(false);
+    sendPlaybackUpdate({
+      movieId: room.movie,
+      isPlaying: true,
+      positionSec: video.currentTime,
+      playbackRate: video.playbackRate,
+      force: true
+    });
   };
 
   const seekBy = (deltaSeconds: number) => {
@@ -477,6 +787,7 @@ export function RoomPage() {
     const next = Math.min(Math.max(0, video.currentTime + deltaSeconds), video.duration || 0);
     video.currentTime = next;
     setCurrentTime(next);
+    broadcastPlaybackState(true);
   };
 
   const handleVideoError = () => {
@@ -526,6 +837,8 @@ export function RoomPage() {
       });
       const updated = await attachMovieToRoom(room.id, uploadedMovie);
       setRoom(updated);
+      setMovieAnnouncement('Movie changed. Waiting for the host to play it.');
+      sendMovieUpdated(updated.movie ?? uploadedMovie.id);
       clearOwnerUpload();
     } catch (err: unknown) {
       setOwnerUploadError(err instanceof Error ? err.message : 'Failed to upload video');
@@ -539,18 +852,32 @@ export function RoomPage() {
     const video = videoRef.current;
     if (video !== null) video.currentTime = seconds;
     setCurrentTime(seconds);
+    broadcastPlaybackState(true);
   };
 
-  const playbackStatusText = moviePlayable
-    ? (isPlaying ? 'LIVE' : videoReady ? 'READY' : 'LOADING')
+  const changePlaybackRate = (rate: PlaybackRate) => {
+    const video = videoRef.current;
+    if (video !== null) {
+      video.playbackRate = rate;
+    }
+    setPlaybackRate(rate);
+    broadcastPlaybackState(true);
+  };
+
+  const playbackStatusText = liveRoomStatus === 'watching'
+    ? 'LIVE'
     : movieUploading
       ? 'UPLOADING'
-      : 'PREPARING';
+      : liveRoomStatus === 'ready'
+        ? 'READY'
+        : 'WAITING';
   const ownerPlaceholderText = isOwner
     ? 'Choose one of your recent videos or upload a new one to start this room.'
     : 'Ask the owner to upload a movie.';
   const roomPassword = room.password ?? '';
   const roomPasswordVisible = isOwner && roomPassword.length > 0 && showRoomPassword;
+  const readyCount = readinessMembers.filter((member) => member.isReady).length;
+  const liveViewerCount = roomState.connectedUsers.length;
 
   const ownerMovieActions = isOwner && room.movie == null ? (
     <div
@@ -591,13 +918,13 @@ export function RoomPage() {
 
 
   const statusLabel: Record<RoomStatus, string> = {
+    waiting: 'WAITING',
+    ready: 'READY TO WATCH',
     watching: 'WATCHING',
-    preparing: 'PREPARING',
-    ready: 'READY',
   };
   const statusClass: Record<RoomStatus, string> = {
+    waiting: 'badge badge-waiting',
     watching: 'badge badge-watching',
-    preparing: 'badge badge-preparing',
     ready: 'badge badge-ready',
   };
 
@@ -627,9 +954,7 @@ export function RoomPage() {
           <span className="display" style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>
             {room.name}
           </span>
-          {room.status !== undefined && (
-              <span className={statusClass[room.status]}>{statusLabel[room.status]}</span>
-            )}
+          <span className={statusClass[liveRoomStatus]}>{statusLabel[liveRoomStatus]}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {isOwner && (
@@ -679,23 +1004,28 @@ export function RoomPage() {
               videoReady={videoReady}
               videoError={videoError}
               canControl={canControlPlayback}
+              showHostControls={isOwner}
               currentTime={currentTime}
               duration={duration}
               isPlaying={isPlaying}
               playbackRate={playbackRate}
               muted={muted}
               volume={volume}
+              announcementText={movieAnnouncement}
               onTogglePlay={togglePlay}
               onTimeUpdate={syncVideoTime}
               onLoadedMetadata={syncVideoTime}
               onPlay={() => { setIsPlaying(true); }}
               onPause={() => { setIsPlaying(false); }}
-              onEnded={() => { setIsPlaying(false); }}
+              onEnded={() => {
+                setIsPlaying(false);
+                broadcastPlaybackState(true);
+              }}
               onCanPlay={() => { setVideoReady(true); setVideoError(null); }}
               onVideoError={handleVideoError}
               onScrub={scrubTo}
               onSeekBy={seekBy}
-              onPlaybackRateChange={setPlaybackRate}
+              onPlaybackRateChange={changePlaybackRate}
               onToggleMute={() => { setMuted((m) => !m); }}
               onVolumeChange={(next) => { setVolume(next); setMuted(false); }}
               ownerActions={ownerMovieActions}
@@ -703,10 +1033,19 @@ export function RoomPage() {
             />
             {showCountdown && (
               <CountdownOverlay
-                members={members}
-                onComplete={() => { setCountdownDismissed(true); }}
+                key={roomState.countdown.endsAt ?? 'countdown'}
+                members={displayMembers}
+                endsAt={roomState.countdown.endsAt}
+                onComplete={() => {}}
               />
             )}
+            <ForcePlayConfirmationModal
+              open={forcePlayModalOpen}
+              currentUserId={currentUserId}
+              unreadyMembers={unreadyMembers}
+              onCancel={cancelForcePlay}
+              onConfirm={confirmForcePlay}
+            />
           </div>
         </div>
 
@@ -771,6 +1110,46 @@ export function RoomPage() {
             </div>
           )}
 
+          {!isOwner && room.movie != null && readinessMembers.length > 0 && (
+            <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0 }}>
+              <div
+                style={{
+                  padding: '10px 12px',
+                  borderRadius: 10,
+                  background: 'var(--bg-primary)',
+                  border: '1px solid var(--border-subtle)',
+                  display: 'grid',
+                  gap: 10
+                }}
+              >
+                <div>
+                  <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)' }}>
+                    Room readiness
+                  </p>
+                  <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
+                    {readyCount}/{readinessMembers.length} ready
+                  </p>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)' }}>Your status</p>
+                    <p style={{ margin: '2px 0 0', fontSize: 13, color: 'var(--text-primary)', fontWeight: 700 }}>
+                      {currentMember?.isReady ? 'Ready' : 'Not ready'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className={currentMember?.isReady ? 'btn-ghost' : 'btn-primary'}
+                    style={{ padding: '6px 12px', fontSize: 12, flexShrink: 0 }}
+                    onClick={() => { sendReadyUpdate(!(currentMember?.isReady ?? false)); }}
+                  >
+                    {currentMember?.isReady ? 'Unready' : 'Ready'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Tabs: Participants | Chat */}
           <Tabs
             value={activeTab}
@@ -787,7 +1166,7 @@ export function RoomPage() {
               >
                 <TabsTrigger value="participants" className="flex flex-1 items-center gap-1.5 text-xs">
                   <Users size={12} />
-                  Viewers ({members.length})
+                  Viewers ({liveViewerCount})
                 </TabsTrigger>
                 <TabsTrigger value="chat" className="flex flex-1 items-center gap-1.5 text-xs">
                   <MessageSquare size={12} />
@@ -813,15 +1192,28 @@ export function RoomPage() {
               value="participants"
               className="soft-scroll mt-1 min-h-0 flex-1 overflow-y-auto"
             >
-              <InviteFriends members={members} />
-              <ParticipantList members={members} currentUserId={currentUserId} />
+              <InviteFriends members={displayMembers} />
+              <ParticipantList
+                members={displayMembers}
+                currentUserId={currentUserId}
+                canModerate={isOwner}
+                onAddFriend={handleAddFriend}
+                onTagUser={handleTagUser}
+                onKickUser={handleKickUser}
+                onBlockUser={handleBlockUser}
+              />
             </TabsContent>
 
             <TabsContent
               value="chat"
               className="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden p-0"
             >
-              <CinemaChat messages={messages} onSend={socketSendMessage} />
+              <CinemaChat
+                messages={messages}
+                onSend={socketSendMessage}
+                draftMessage={chatDraft}
+                onDraftMessageChange={setChatDraft}
+              />
             </TabsContent>
           </Tabs>
         </aside>

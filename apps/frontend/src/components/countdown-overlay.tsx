@@ -1,14 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import type { Member } from '@/types/room';
 import { Avatar, AvatarFallback, AvatarGroup, AvatarGroupCount } from '@/components/ui/avatar';
 
 interface CountdownOverlayProps {
   members: Member[];
+  endsAt: string | null;
   onComplete: () => void;
 }
 
 const STEPS = ['3', '2', '1', '🎬'] as const;
 type Step = (typeof STEPS)[number];
+const TICK_MS = 250;
 
 function initials(name: string): string {
   return name
@@ -19,23 +21,35 @@ function initials(name: string): string {
     .toUpperCase();
 }
 
-export function CountdownOverlay({ members, onComplete }: CountdownOverlayProps) {
-  const [stepIndex, setStepIndex] = useState(0);
-  const [animKey, setAnimKey] = useState(0);
+function getStepIndex(endsAt: string | null, nowMs: number): number {
+  if (endsAt === null) return 0;
+  const remainingMs = new Date(endsAt).getTime() - nowMs;
+  if (!Number.isFinite(remainingMs)) return 0;
+  if (remainingMs <= 0) return STEPS.length;
+  const remainingSeconds = Math.ceil(remainingMs / 1000);
+  return Math.min(STEPS.length - 1, Math.max(0, 3 - remainingSeconds));
+}
+
+export function CountdownOverlay({ members, endsAt, onComplete }: CountdownOverlayProps) {
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => {
-    if (stepIndex >= STEPS.length) {
+    if (endsAt === null) return;
+    const timer = setInterval(() => {
+      setNowMs(Date.now());
+    }, TICK_MS);
+
+    return () => { clearInterval(timer); };
+  }, [endsAt]);
+
+  const stepIndex = getStepIndex(endsAt, nowMs);
+  const hasEnded = endsAt !== null && stepIndex >= STEPS.length;
+
+  useEffect(() => {
+    if (hasEnded) {
       onComplete();
-      return;
     }
-
-    const timer = setTimeout(() => {
-      setStepIndex((s) => s + 1);
-      setAnimKey((k) => k + 1);
-    }, 1000);
-
-    return () => { clearTimeout(timer); };
-  }, [stepIndex, onComplete]);
+  }, [hasEnded, onComplete]);
 
   const digit: Step = STEPS[stepIndex] ?? '🎬';
   const isFinal = digit === '🎬';
@@ -46,6 +60,7 @@ export function CountdownOverlay({ members, onComplete }: CountdownOverlayProps)
       style={{
         background: 'rgba(12, 9, 6, 0.92)',
         backdropFilter: 'blur(12px)',
+        pointerEvents: 'none'
       }}
     >
       {!isFinal && (
@@ -58,7 +73,7 @@ export function CountdownOverlay({ members, onComplete }: CountdownOverlayProps)
       )}
 
       <div
-        key={animKey}
+        key={digit}
         className="countdown-digit mb-6 select-none"
         style={{
           fontSize: isFinal ? 72 : 112,

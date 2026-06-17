@@ -411,7 +411,9 @@ export function EditRoom() {
 
   const movieFileDisplay = drafts.movieFile
     ? drafts.movieFile.name
-    : 'No new file selected';
+    : room.movie
+      ? 'Ready to replace the current file'
+      : 'No video file uploaded yet';
   const readyOwnedMovies = ownedMovies.filter((movie) => movie.has_file && movie.upload_status === 'ready');
   const selectedOwnedMovieAge = formatMovieUploadAge(ownedMovies.find((movie) => movie.id === selectedMovieId)?.file_uploaded_at);
   const roomTitleSummary = room.name;
@@ -667,7 +669,7 @@ export function EditRoom() {
               </EditRow>
 
               <EditRow
-                label="Video file"
+                label="Replace video file"
                 isEditing={editing.movieFile}
                 displayValue={movieFileDisplay}
                 canEdit={isOwner}
@@ -680,30 +682,77 @@ export function EditRoom() {
                   setMovieFileError(null);
                 }}
               >
-                <MovieUploadField
-                  label="Video file"
-                  file={drafts.movieFile}
-                  error={movieFileError ?? undefined}
-                  disabled={saving}
-                  onFileChange={(file, validationError) => {
-                    setDrafts((prev) => ({
-                      ...prev,
-                      movieFile: file,
-                      ...(file && !prev.movieName ? { movieName: file.name.replace(/\.[^.]+$/, '') } : {}),
-                    }));
-                    setMovieFileError(validationError);
-                  }}
-                  onRemove={() => {
-                    setDrafts((prev) => ({ ...prev, movieFile: null }));
-                    setMovieFileError(null);
-                  }}
-                />
-                <p style={{ margin: '8px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
-                  {drafts.movieFile
-                    ? 'This is the replacement file currently selected for upload. Remove it to pick a different one.'
-                    : `Upload a new file to replace the current room movie (${MOVIE_ALLOWED_FORMATS_LABEL}, up to 1 GB). The video file is separate from the room title and movie title.`}
-                </p>
-                {uploadPercent !== null && <MovieUploadProgress percent={uploadPercent} />}
+                <div style={{ display: 'grid', gap: 12 }}>
+                  <div style={{ display: 'grid', gap: 4 }}>
+                    <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                      Drop a new video file here or browse to replace the room movie. The file starts uploading only after you press the upload button below.
+                    </p>
+                    <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
+                      {room.movie
+                        ? `Current movie: ${room.movie_name ?? 'Untitled movie'}`
+                        : 'No movie is attached yet. Uploading a file will attach it to this room.'}
+                    </p>
+                  </div>
+
+                  <MovieUploadField
+                    label="Video file"
+                    file={drafts.movieFile}
+                    error={movieFileError ?? undefined}
+                    disabled={saving}
+                    onFileChange={(file, validationError) => {
+                      setDrafts((prev) => ({
+                        ...prev,
+                        movieFile: file,
+                        ...(file && !prev.movieName ? { movieName: file.name.replace(/\.[^.]+$/, '') } : {}),
+                      }));
+                      setMovieFileError(validationError);
+                    }}
+                    onRemove={() => {
+                      setDrafts((prev) => ({ ...prev, movieFile: null }));
+                      setMovieFileError(null);
+                    }}
+                  />
+
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    <button
+                      type="button"
+                      className="btn-primary"
+                      disabled={saving || drafts.movieFile === null}
+                      onClick={() => { void saveField('movieFile'); }}
+                      style={{ flex: 1, minWidth: 180, opacity: saving || drafts.movieFile === null ? 0.7 : 1 }}
+                    >
+                      {saving
+                        ? uploadPercent !== null
+                          ? `Uploading… ${String(uploadPercent)}%`
+                          : 'Uploading…'
+                        : room.movie
+                          ? 'Replace video file'
+                          : 'Upload video file'}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      disabled={saving || drafts.movieFile === null}
+                      onClick={() => {
+                        setDrafts((prev) => ({ ...prev, movieFile: null }));
+                        setMovieFileError(null);
+                      }}
+                      style={{ minWidth: 120 }}
+                    >
+                      Clear file
+                    </button>
+                  </div>
+
+                  <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                    {drafts.movieFile
+                      ? 'The selected file will replace the current room movie after upload finishes.'
+                      : `Supported formats: ${MOVIE_ALLOWED_FORMATS_LABEL}. Maximum size: 1 GB.`}
+                  </p>
+
+                  {uploadPercent !== null && (
+                    <MovieUploadProgress percent={uploadPercent} label="Uploading video to this room" />
+                  )}
+                </div>
               </EditRow>
 
               <EditRow
