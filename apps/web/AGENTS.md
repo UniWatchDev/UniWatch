@@ -26,6 +26,7 @@ Next.js 16 App Router server-rendered starter surface. Use for generic starter e
 - React Compiler enabled — no manual memoization.
 - Tailwind v4 via PostCSS (`@tailwindcss/postcss`) — no `tailwind.config.js`. Tokens live in `globals.css` as CSS variables.
 - `@repo/*` packages are transpiled via `transpilePackages` in `next.config.ts`.
+- `pnpm --filter web dev` uses `next dev --webpack` to avoid Turbopack persistence issues on this machine.
 - Visible copy lives in `@repo/consts/starter` (`STARTER_HEADLINE`, `STARTER_DECK`, `STARTER_LEDE`, `STARTER_STATS`, `STARTER_PITCH`). Update there, not inline.
 - Layout targets viewport-fit (100dvh × 100vw, no page scroll, desktop-only). Internal scroll allowed inside cards.
 - Aesthetic is editorial magazine — serif italic headlines, mono figures, hairline rules. Do not introduce rounded card chrome or gradients.

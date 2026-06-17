@@ -59,7 +59,7 @@ System font stacks are defined in `globals.css` as CSS variables:
 
 - `NEXT_PUBLIC_API_BASE_URL` — defined in `.env` examples but not yet wired into call sites; today every `fetch` uses the hardcoded `API_BASE_URL` from `@repo/consts/api`.
 - `NEXT_PUBLIC_FRONTEND_URL` — defined in `.env` examples, not used in code.
-- Port is pinned to `5172` via `cross-env PORT=5172` in `dev`, `start`, `preview`, and `start:prod` in `package.json` (override with `PORT` in the host env if your platform requires it).
+- Port is pinned to `5172` via `cross-env PORT=5172` in `dev`, `start`, `preview`, and `start:prod` in `package.json` (override with `PORT` in the host env if your platform requires it). `dev` uses `next dev --webpack` to avoid Turbopack persistence failures locally.
 
 ## Commands
 
