@@ -36,14 +36,16 @@ describe('RoomsService', () => {
   } as unknown as ConfigService<Env, true>;
 
   const roomStateService = {
-    get: jest.fn()
+    get: jest.fn(),
+    syncStatus: jest.fn()
   } as unknown as jest.Mocked<RoomStateService>;
 
   const realtimeGateway = {
     emitRoomMovieUpdated: jest.fn(),
     emitRoomPlaybackChanged: jest.fn(),
     emitRoomState: jest.fn(),
-    clearCountdown: jest.fn()
+    clearCountdown: jest.fn(),
+    removeRoomMember: jest.fn()
   } as unknown as jest.Mocked<RealtimeGateway>;
 
   beforeEach(async () => {
@@ -109,5 +111,39 @@ describe('RoomsService', () => {
 
     const rooms = await service.list();
     expect(rooms[0]?.member_count).toBe(2);
+  });
+
+  it('clears live room membership when a user leaves', async () => {
+    const roomId = new Types.ObjectId().toString();
+    const userId = new Types.ObjectId().toString();
+    const creatorId = new Types.ObjectId().toString();
+
+    roomsRepo.findRawById.mockResolvedValueOnce({
+      _id: new Types.ObjectId(roomId),
+      creator: new Types.ObjectId(creatorId),
+      deleted_at: null,
+      room_type: 'public',
+      movie: null,
+      allowed_users: [new Types.ObjectId(userId)],
+      banned_users: [],
+      password: null
+    } as never);
+    roomsRepo.removeUser.mockResolvedValueOnce(undefined as never);
+    roomsRepo.findRawById.mockResolvedValueOnce({
+      _id: new Types.ObjectId(roomId),
+      creator: new Types.ObjectId(creatorId),
+      deleted_at: null,
+      room_type: 'public',
+      movie: null,
+      allowed_users: [],
+      banned_users: [],
+      password: null
+    } as never);
+    roomStateService.syncStatus.mockReturnValue('waiting');
+
+    await expect(service.leave(roomId, userId)).resolves.toEqual({ success: true });
+    expect((realtimeGateway.removeRoomMember as jest.Mock).mock.calls).toEqual([[roomId, userId]]);
+    expect((roomStateService.syncStatus as jest.Mock).mock.calls).toEqual([[roomId, creatorId]]);
+    expect((roomsRepo.setStatus as jest.Mock).mock.calls).toEqual([[roomId, 'waiting']]);
   });
 });

@@ -39,7 +39,8 @@ describe('RealtimeGateway countdown flow', () => {
 
     roomEmit = jest.fn();
     (gateway as unknown as { server: { to: (roomId: string) => { emit: jest.Mock } } }).server = {
-      to: jest.fn(() => ({ emit: roomEmit }))
+      to: jest.fn(() => ({ emit: roomEmit })),
+      sockets: { sockets: new Map() }
     } as never;
 
     (gateway as unknown as { socketToUser: Map<string, { userId: string; userName: string }> })
@@ -66,6 +67,132 @@ describe('RealtimeGateway countdown flow', () => {
   afterEach(() => {
     jest.clearAllTimers();
     jest.useRealTimers();
+  });
+
+  it('keeps the room member until the last socket for that user disconnects', () => {
+    const socketTwoId = 'socket-2';
+
+    (gateway as unknown as {
+      socketToUser: Map<string, { userId: string; userName: string }>;
+      userToSockets: Map<string, Set<string>>;
+    }).socketToUser.set(socketTwoId, {
+      userId: hostId,
+      userName: 'Host'
+    });
+    (gateway as unknown as {
+      socketToUser: Map<string, { userId: string; userName: string }>;
+      userToSockets: Map<string, Set<string>>;
+    }).userToSockets.set(hostId, new Set(['socket-1', socketTwoId]));
+
+    roomState.joinUser({
+      roomId,
+      userId: hostId,
+      userName: 'Host',
+      socketId: socketTwoId
+    });
+
+    gateway.handleDisconnect({
+      id: 'socket-1',
+      rooms: new Set([roomId]),
+      emit: jest.fn(),
+      disconnect: jest.fn()
+    } as never);
+
+    const stateAfterFirstDisconnect = roomState.get(roomId);
+    expect(stateAfterFirstDisconnect?.connectedUsers).toHaveLength(1);
+    expect(stateAfterFirstDisconnect?.connectedUsers[0]?.socketIds).toEqual([socketTwoId]);
+    expect(roomEmit).not.toHaveBeenCalledWith('room:user-left', expect.anything());
+
+    gateway.handleDisconnect({
+      id: socketTwoId,
+      rooms: new Set([roomId]),
+      emit: jest.fn(),
+      disconnect: jest.fn()
+    } as never);
+
+    expect(roomState.get(roomId)).toBeUndefined();
+    expect(roomEmit).toHaveBeenCalledWith('room:user-left', { userId: hostId, roomId });
+  });
+
+  it('disconnects every live socket for a moderated user in the room', async () => {
+    const viewerId = new Types.ObjectId().toString();
+    const socketTwoId = 'socket-2';
+    const socketThreeId = 'socket-3';
+    const viewerSocketTwo = {
+      emit: jest.fn(),
+      disconnect: jest.fn()
+    };
+    const viewerSocketThree = {
+      emit: jest.fn(),
+      disconnect: jest.fn()
+    };
+
+    rooms.findOneAccessibleById.mockResolvedValue({
+      _id: new Types.ObjectId(roomId),
+      creator: new Types.ObjectId(hostId),
+      movie: new Types.ObjectId(initialMovieId),
+      movie_name: 'Room movie'
+    } as never);
+
+    (gateway as unknown as {
+      socketToUser: Map<string, { userId: string; userName: string }>;
+      userToSockets: Map<string, Set<string>>;
+      server: { sockets: { sockets: Map<string, { emit: jest.Mock; disconnect: jest.Mock }> } };
+    }).socketToUser.set(socketTwoId, {
+      userId: viewerId,
+      userName: 'Viewer'
+    });
+    (gateway as unknown as {
+      socketToUser: Map<string, { userId: string; userName: string }>;
+      userToSockets: Map<string, Set<string>>;
+      server: { sockets: { sockets: Map<string, { emit: jest.Mock; disconnect: jest.Mock }> } };
+    }).socketToUser.set(socketThreeId, {
+      userId: viewerId,
+      userName: 'Viewer'
+    });
+    (gateway as unknown as {
+      socketToUser: Map<string, { userId: string; userName: string }>;
+      userToSockets: Map<string, Set<string>>;
+      server: { sockets: { sockets: Map<string, { emit: jest.Mock; disconnect: jest.Mock }> } };
+    }).userToSockets.set(viewerId, new Set([socketTwoId, socketThreeId]));
+    (gateway as unknown as {
+      server: { sockets: { sockets: Map<string, { emit: jest.Mock; disconnect: jest.Mock }> } };
+    }).server.sockets.sockets.set(socketTwoId, viewerSocketTwo);
+    (gateway as unknown as {
+      server: { sockets: { sockets: Map<string, { emit: jest.Mock; disconnect: jest.Mock }> } };
+    }).server.sockets.sockets.set(socketThreeId, viewerSocketThree);
+
+    roomState.joinUser({
+      roomId,
+      userId: viewerId,
+      userName: 'Viewer',
+      socketId: socketTwoId
+    });
+    roomState.joinUser({
+      roomId,
+      userId: viewerId,
+      userName: 'Viewer',
+      socketId: socketThreeId
+    });
+
+    await gateway.handleKickUser({
+      id: 'socket-1',
+      rooms: new Set([roomId]),
+      emit: jest.fn(),
+      disconnect: jest.fn()
+    } as never, {
+      roomId,
+      targetUserId: viewerId
+    });
+
+    expect(viewerSocketTwo.emit).toHaveBeenCalledWith('room:error', {
+      message: 'kicked from the room'
+    });
+    expect(viewerSocketThree.emit).toHaveBeenCalledWith('room:error', {
+      message: 'kicked from the room'
+    });
+    expect(viewerSocketTwo.disconnect).toHaveBeenCalledWith(true);
+    expect(viewerSocketThree.disconnect).toHaveBeenCalledWith(true);
   });
 
   it('queues playback until the countdown ends', async () => {

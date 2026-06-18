@@ -272,6 +272,8 @@ export class RoomsService {
     if (refToId(raw.creator as RefLike | null | undefined) === userId) {
       throw new ForbiddenException('The room creator cannot leave their own room');
     }
+
+    this.realtimeGateway.removeRoomMember(id, userId);
     await this.rooms.removeUser(id, new Types.ObjectId(userId));
     const updated = await this.rooms.findRawById(id);
     if (updated && safeIds(updated.allowed_users).length === 0) {
@@ -279,6 +281,9 @@ export class RoomsService {
       const movieId = updated.movie != null ? refToId(updated.movie as RefLike) : null;
       await this.scheduleLinkedMoviePurge(movieId);
     }
+    const creatorId = refToId(raw.creator as RefLike | null | undefined);
+    const status = this.roomState.syncStatus(id, creatorId);
+    await this.rooms.setStatus(id, status);
     return { success: true };
   }
 

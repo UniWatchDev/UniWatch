@@ -25,6 +25,7 @@ describe('RoomStateService', () => {
       socketId: 'socket-1'
     });
     expect(joined.isReady).toBe(false);
+    expect(joined.socketIds).toEqual(['socket-1']);
     expect(service.syncStatus(roomId)).toBe('waiting');
 
     service.syncMovie(roomId, 'movie-1');
@@ -43,11 +44,12 @@ describe('RoomStateService', () => {
     expect(playback.isPlaying).toBe(true);
     expect(playback.positionSec).toBeGreaterThan(43);
 
-    service.removeSocket(roomId, 'socket-1');
+    const removed = service.removeSocket(roomId, 'socket-1');
+    expect(removed?.userStillConnected).toBe(false);
     expect(service.syncStatus(roomId)).toBe('waiting');
   });
 
-  it('preserves a user ready flag across a refresh socket swap', () => {
+  it('preserves a user ready flag across multiple sockets in the same room', () => {
     const roomId = 'room-2';
     service.joinUser({
       roomId,
@@ -65,6 +67,36 @@ describe('RoomStateService', () => {
     });
 
     expect(rejoined.isReady).toBe(true);
+    expect(rejoined.socketIds).toEqual(['socket-old', 'socket-new']);
+
+    const stillConnected = service.removeSocket(roomId, 'socket-old');
+    expect(stillConnected?.userStillConnected).toBe(true);
+    expect(service.get(roomId)?.connectedUsers).toHaveLength(1);
+
+    const lastSocketRemoved = service.removeSocket(roomId, 'socket-new');
+    expect(lastSocketRemoved?.userStillConnected).toBe(false);
+    expect(service.get(roomId)).toBeUndefined();
+  });
+
+  it('removes every socket for a user when they leave the room entirely', () => {
+    const roomId = 'room-4';
+    service.joinUser({
+      roomId,
+      userId: 'user-1',
+      userName: 'User One',
+      socketId: 'socket-1'
+    });
+    service.joinUser({
+      roomId,
+      userId: 'user-1',
+      userName: 'User One',
+      socketId: 'socket-2'
+    });
+
+    const removed = service.removeUser(roomId, 'user-1');
+
+    expect(removed?.socketIds).toEqual(['socket-1', 'socket-2']);
+    expect(service.get(roomId)).toBeUndefined();
   });
 
   it('ignores the creator when computing readiness status', () => {

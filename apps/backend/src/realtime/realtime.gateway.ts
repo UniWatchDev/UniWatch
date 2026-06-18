@@ -56,6 +56,8 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
 
   /** socket.id → authenticated user identity */
   private readonly socketToUser = new Map<string, SocketUserInfo>();
+  /** userId → active socket ids */
+  private readonly userToSockets = new Map<string, Set<string>>();
   private readonly countdownTimers = new Map<string, NodeJS.Timeout>();
   private readonly pendingPlaybackStarts = new Map<string, PendingPlaybackStart>();
 
@@ -85,6 +87,29 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     this.cancelCountdown(roomId);
   }
 
+  removeRoomMember(roomId: string, userId: string): void {
+    const state = this.roomState.get(roomId);
+    if (!state) return;
+
+    const result = this.roomState.removeUser(roomId, userId);
+    if (!result) return;
+
+    for (const socketId of result.socketIds) {
+      const targetSocket = this.server.sockets.sockets.get(socketId);
+      if (targetSocket) {
+        void targetSocket.leave(roomId);
+      }
+    }
+
+    this.server.to(roomId).emit('room:user-left', { userId, roomId });
+
+    if (this.roomState.get(roomId)) {
+      this.emitRoomState(roomId);
+    } else {
+      this.cancelCountdown(roomId);
+    }
+  }
+
   async handleConnection(socket: Socket): Promise<void> {
     const userInfo = await this.socketAuth.authenticate(socket);
     if (!userInfo) {
@@ -93,6 +118,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     }
 
     this.socketToUser.set(socket.id, userInfo);
+    this.addUserSocket(userInfo.userId, socket.id);
     this.logger.debug(`connect ${socket.id} user=${userInfo.userId}`);
     // Signal to the client that auth is complete and room events can be sent.
     socket.emit('connection:ack');
@@ -103,17 +129,19 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     this.socketToUser.delete(socket.id);
     if (!userInfo) return;
 
+    this.removeUserSocket(userInfo.userId, socket.id);
+
     for (const roomId of socket.rooms) {
       if (roomId === socket.id) continue; // default private room
 
       const result = this.roomState.removeSocket(roomId, socket.id);
-      // Only notify the room if the user has no other active socket in it.
-      // On a refresh the new socket already replaced the stale entry in
-      // handleJoin, so the user is still present under a different socketId.
+      // Only notify the room when this was the user's last live socket there.
       if (result && !result.userStillConnected) {
         this.server.to(roomId).emit('room:user-left', { userId: userInfo.userId, roomId });
       }
-      if (!this.roomState.get(roomId)) {
+      if (this.roomState.get(roomId)) {
+        this.emitRoomState(roomId);
+      } else {
         this.cancelCountdown(roomId);
       }
       void this.syncRoomStatus(roomId);
@@ -150,6 +178,8 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
 
     await socket.join(roomId);
 
+    const roomState = this.roomState.getOrCreate(roomId);
+    const wasAlreadyConnected = roomState.connectedUsers.some((user) => user.userId === userId);
     this.roomState.syncMovie(roomId, this.resolveRoomMovieId(room.movie));
     const user = this.roomState.joinUser({ roomId, userId, userName, socketId: socket.id });
     const state = this.roomState.getOrCreate(roomId);
@@ -165,13 +195,15 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       countdown: state.countdown
     });
 
-    this.server.to(roomId).emit('room:user-joined', {
-      userId,
-      userName,
-      color: user.color,
-      isReady: user.isReady,
-      roomId
-    });
+    if (!wasAlreadyConnected) {
+      this.server.to(roomId).emit('room:user-joined', {
+        userId,
+        userName,
+        color: user.color,
+        isReady: user.isReady,
+        roomId
+      });
+    }
 
     this.logger.debug(`${userId} joined room ${roomId}`);
   }
@@ -193,22 +225,21 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     const { roomId } = parsed.data;
     const { userId } = userInfo;
 
-    const room = await this.rooms.findOneAccessibleById(roomId, userId);
-    if (!room) {
-      socket.emit('room:error', { message: 'Forbidden' });
-      return;
-    }
-
     const result = this.roomState.removeSocket(roomId, socket.id);
     await socket.leave(roomId);
 
     if (result && !result.userStillConnected) {
       this.server.to(roomId).emit('room:user-left', { userId, roomId });
     }
-    if (!this.roomState.get(roomId)) {
+    if (this.roomState.get(roomId)) {
+      this.emitRoomState(roomId);
+    } else {
       this.cancelCountdown(roomId);
     }
-    await this.syncRoomStatus(roomId, creatorRefToId(room.creator));
+    const room = await this.rooms.findRawById(roomId).catch(() => null);
+    if (room != null) {
+      await this.syncRoomStatus(roomId, creatorRefToId(room.creator as CreatorRefLike));
+    }
     this.logger.debug(`${userId} left room ${roomId}`);
   }
 
@@ -629,9 +660,13 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       return 0;
     }
 
-    const socketIds = state.connectedUsers
-      .filter((user) => user.userId === targetUserId)
-      .map((user) => user.socketId);
+    const socketIds = new Set<string>();
+    for (const user of state.connectedUsers) {
+      if (user.userId !== targetUserId) continue;
+      for (const socketId of user.socketIds) {
+        socketIds.add(socketId);
+      }
+    }
 
     for (const socketId of socketIds) {
       const targetSocket = this.server.sockets.sockets.get(socketId);
@@ -641,6 +676,26 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       }
     }
 
-    return socketIds.length;
+    return socketIds.size;
+  }
+
+  private addUserSocket(userId: string, socketId: string): void {
+    const sockets = this.userToSockets.get(userId);
+    if (sockets) {
+      sockets.add(socketId);
+      return;
+    }
+
+    this.userToSockets.set(userId, new Set([socketId]));
+  }
+
+  private removeUserSocket(userId: string, socketId: string): void {
+    const sockets = this.userToSockets.get(userId);
+    if (!sockets) return;
+
+    sockets.delete(socketId);
+    if (sockets.size === 0) {
+      this.userToSockets.delete(userId);
+    }
   }
 }

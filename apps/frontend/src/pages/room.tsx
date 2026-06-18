@@ -877,7 +877,7 @@ export function RoomPage() {
   const roomPassword = room.password ?? '';
   const roomPasswordVisible = isOwner && roomPassword.length > 0 && showRoomPassword;
   const readyCount = readinessMembers.filter((member) => member.isReady).length;
-  const liveViewerCount = roomState.connectedUsers.length;
+  const liveViewerCount = displayMembers.length;
 
   const ownerMovieActions = isOwner && room.movie == null ? (
     <div

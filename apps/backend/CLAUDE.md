@@ -46,6 +46,9 @@ src/
     auth.dto.ts          — nestjs-zod DTOs wrapping `@repo/schemas/auth`
     auth.consts.ts       — cookie names for access / refresh tokens
     auth.types.ts        — JwtAccessPayload + global `Express.Request` merge (`authPayload`)
+  realtime/
+    realtime.module.ts    — RealtimeModule
+    realtime.gateway.ts   — authenticated Socket.IO room lifecycle, chat, movie updates, playback sync, and per-user multi-socket tracking. The gateway owns the user → live socket registry; `RoomStateService` keeps room membership per user and tracks all active socket ids for that member.
 test/
   app.e2e-spec.ts        — supertest e2e suite: verifies /api prefix, x-request-id echo + UUID fallback + unsafe-id rejection, ProblemDetails shape + traceId propagation, Swagger served at /docs, auth register/login/refresh/me/logout
   jest-e2e.setup.ts      — sets JWT_* env defaults so e2e can boot without a real `.env`

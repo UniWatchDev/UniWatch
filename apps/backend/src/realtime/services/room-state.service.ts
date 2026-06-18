@@ -25,6 +25,11 @@ type RemovalResult = {
   userStillConnected: boolean;
 };
 
+type UserRemovalResult = {
+  removed: ConnectedUser | null;
+  socketIds: string[];
+};
+
 type RoomRuntimeStatus = RealtimeRoomState['status'];
 
 /**
@@ -68,19 +73,25 @@ export class RoomStateService {
   joinUser({ roomId, userId, userName, socketId }: JoinUserInput): ConnectedUser {
     const state = this.getOrCreate(roomId);
 
-    const staleEntry = state.connectedUsers.find((u) => u.userId === userId);
-    state.connectedUsers = state.connectedUsers.filter((u) => u.userId !== userId);
+    const existing = state.connectedUsers.find((u) => u.userId === userId);
+    if (existing) {
+      if (!existing.socketIds.includes(socketId)) {
+        existing.socketIds = [...existing.socketIds, socketId];
+      }
+      existing.socketId = socketId;
+      existing.userName = userName;
+      return existing;
+    }
 
     const usedColors = new Set(state.connectedUsers.map((u) => u.color));
-    const color = staleEntry?.color ?? pickColor(usedColors);
-
     const user: ConnectedUser = {
       userId,
       userName,
-      color,
+      color: pickColor(usedColors),
       socketId,
+      socketIds: [socketId],
       joinedAt: new Date().toISOString(),
-      isReady: staleEntry?.isReady ?? false
+      isReady: false
     };
     state.connectedUsers.push(user);
     return user;
@@ -94,11 +105,27 @@ export class RoomStateService {
     const state = this.roomStates.get(roomId);
     if (!state) return null;
 
-    const removed = state.connectedUsers.find((u) => u.socketId === socketId) ?? null;
-    state.connectedUsers = state.connectedUsers.filter((u) => u.socketId !== socketId);
+    const user = state.connectedUsers.find((u) => u.socketIds.includes(socketId)) ?? null;
+    if (!user) {
+      return null;
+    }
 
-    const userStillConnected =
-      removed !== null && state.connectedUsers.some((u) => u.userId === removed.userId);
+    const removed = {
+      ...user,
+      socketIds: [...user.socketIds]
+    };
+
+    user.socketIds = user.socketIds.filter((id) => id !== socketId);
+    if (user.socketIds.length > 0) {
+      const nextSocketId = user.socketIds[0];
+      if (nextSocketId !== undefined) {
+        user.socketId = nextSocketId;
+      }
+    } else {
+      state.connectedUsers = state.connectedUsers.filter((entry) => entry !== user);
+    }
+
+    const userStillConnected = user.socketIds.length > 0;
 
     if (state.connectedUsers.length === 0) {
       this.roomStates.delete(roomId);
@@ -107,8 +134,32 @@ export class RoomStateService {
     return { removed, userStillConnected };
   }
 
+  removeUser(roomId: string, userId: string): UserRemovalResult | null {
+    const state = this.roomStates.get(roomId);
+    if (!state) return null;
+
+    const user = state.connectedUsers.find((entry) => entry.userId === userId) ?? null;
+    if (!user) return null;
+
+    const removed = {
+      ...user,
+      socketIds: [...user.socketIds]
+    };
+
+    state.connectedUsers = state.connectedUsers.filter((entry) => entry.userId !== userId);
+
+    if (state.connectedUsers.length === 0) {
+      this.roomStates.delete(roomId);
+    }
+
+    return {
+      removed,
+      socketIds: removed.socketIds
+    };
+  }
+
   findSocketUser(roomId: string, socketId: string): ConnectedUser | undefined {
-    return this.roomStates.get(roomId)?.connectedUsers.find((u) => u.socketId === socketId);
+    return this.roomStates.get(roomId)?.connectedUsers.find((u) => u.socketIds.includes(socketId));
   }
 
   setUserReady(roomId: string, userId: string, isReady: boolean): ConnectedUser | null {

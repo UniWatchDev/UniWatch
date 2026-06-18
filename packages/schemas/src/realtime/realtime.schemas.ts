@@ -9,6 +9,7 @@ export const roomStatusSchema = z.enum(['waiting', 'ready', 'watching']);
 export const connectedUserSchema = z.object({
   userId: z.string(),
   socketId: z.string(),
+  socketIds: z.array(z.string()).min(1),
   joinedAt: z.string().datetime(),
   userName: z.string(),
   color: z.string(),
