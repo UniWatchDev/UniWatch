@@ -1,14 +1,17 @@
 import { z } from 'zod';
 
+import { roomStatusSchema } from '../rooms/room.schemas.js';
+
 // ---------------------------------------------------------------------------
 // Leaf schemas
 // ---------------------------------------------------------------------------
 
-export const roomStatusSchema = z.enum(['waiting', 'ready', 'watching']);
+// Re-exported so realtime consumers can keep importing the room status enum
+// from a single place without duplicating the literal union.
+export { roomStatusSchema };
 
 export const connectedUserSchema = z.object({
   userId: z.string(),
-  socketId: z.string(),
   socketIds: z.array(z.string()).min(1),
   joinedAt: z.string().datetime(),
   userName: z.string(),

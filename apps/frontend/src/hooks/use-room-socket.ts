@@ -2,8 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { io, type Socket } from 'socket.io-client';
 
 import { API_BASE_URL } from '@repo/consts/api';
+import { REALTIME_CLIENT_EVENTS, REALTIME_SERVER_EVENTS } from '@repo/consts/realtime';
 import type { PlaybackState, CountdownState } from '@repo/schemas/realtime';
 import {
+  joinRoomPayloadSchema,
+  leaveRoomPayloadSchema,
   roomModerateUserPayloadSchema,
   realtimeChatMessageSchema,
   roomErrorEventSchema,
@@ -22,6 +25,11 @@ import type { ChatMessage, Member } from '@/types/room';
 
 export type SocketStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
 
+export interface PlaybackChangeEvent {
+  actorUserId: string | null;
+  playback: PlaybackState;
+}
+
 interface UseRoomSocketOptions {
   roomId: string;
   disabled: boolean;
@@ -36,6 +44,7 @@ interface UseRoomSocketReturn {
   messages: ChatMessage[];
   members: Member[];
   socketStatus: SocketStatus;
+  roomError: string | null;
   roomState: {
     status: RoomStatus;
     countdown: CountdownState;
@@ -48,11 +57,6 @@ interface UseRoomSocketReturn {
   sendPlaybackUpdate: (playback: PlaybackUpdateInput) => void;
   sendKickUser: (targetUserId: string) => void;
   sendBlockUser: (targetUserId: string) => void;
-}
-
-interface PlaybackChangeEvent {
-  actorUserId: string | null;
-  playback: PlaybackState;
 }
 
 interface PlaybackUpdateInput {
@@ -109,6 +113,7 @@ export function useRoomSocket({
     buildInitialMembers(creatorId, creatorName, initialMemberIds)
   );
   const [socketStatus, setSocketStatus] = useState<SocketStatus>('connecting');
+  const [roomError, setRoomError] = useState<string | null>(null);
   const [roomState, setRoomState] = useState<UseRoomSocketReturn['roomState']>(() => ({
     status: 'waiting',
     countdown: { active: false, endsAt: null },
@@ -126,7 +131,7 @@ export function useRoomSocket({
   const sendMessage = useCallback(
     (content: string) => {
       const payload = sendMessagePayloadSchema.parse({ roomId, content });
-      socketRef.current?.emit('room:message', payload);
+      socketRef.current?.emit(REALTIME_CLIENT_EVENTS.message, payload);
     },
     [roomId]
   );
@@ -134,7 +139,7 @@ export function useRoomSocket({
   const sendReadyUpdate = useCallback(
     (isReady: boolean) => {
       const payload = roomReadyUpdatePayloadSchema.parse({ roomId, isReady });
-      socketRef.current?.emit('room:ready-update', payload);
+      socketRef.current?.emit(REALTIME_CLIENT_EVENTS.readyUpdate, payload);
     },
     [roomId]
   );
@@ -142,7 +147,7 @@ export function useRoomSocket({
   const sendMovieUpdated = useCallback(
     (movieId: string) => {
       const payload = roomMovieUpdatedPayloadSchema.parse({ roomId, movieId });
-      socketRef.current?.emit('room:movie-updated', payload);
+      socketRef.current?.emit(REALTIME_CLIENT_EVENTS.movieUpdated, payload);
     },
     [roomId]
   );
@@ -150,7 +155,7 @@ export function useRoomSocket({
   const sendPlaybackUpdate = useCallback(
     (playback: PlaybackUpdateInput) => {
       const payload = roomPlaybackUpdatePayloadSchema.parse({ roomId, ...playback });
-      socketRef.current?.emit('room:playback-update', payload);
+      socketRef.current?.emit(REALTIME_CLIENT_EVENTS.playbackUpdate, payload);
     },
     [roomId]
   );
@@ -158,7 +163,7 @@ export function useRoomSocket({
   const sendKickUser = useCallback(
     (targetUserId: string) => {
       const payload = roomModerateUserPayloadSchema.parse({ roomId, targetUserId });
-      socketRef.current?.emit('room:kick-user', payload);
+      socketRef.current?.emit(REALTIME_CLIENT_EVENTS.kickUser, payload);
     },
     [roomId]
   );
@@ -166,7 +171,7 @@ export function useRoomSocket({
   const sendBlockUser = useCallback(
     (targetUserId: string) => {
       const payload = roomModerateUserPayloadSchema.parse({ roomId, targetUserId });
-      socketRef.current?.emit('room:block-user', payload);
+      socketRef.current?.emit(REALTIME_CLIENT_EVENTS.blockUser, payload);
     },
     [roomId]
   );
@@ -193,18 +198,25 @@ export function useRoomSocket({
       // The gateway's handleConnection is async (JWT verify + DB lookup).
       // Socket.IO acknowledges the TCP connection before that promise resolves,
       // so emitting room:join on 'connect' races against handleConnection and
-      // causes handleJoin to find an empty socketToUser map → "Unauthorized".
+      // causes handleJoin to find an empty registry → "Unauthorized".
     });
 
-    socket.on('connection:ack', () => {
-      socket.emit('room:join', { roomId });
+    socket.on('connect_error', () => {
+      setSocketStatus('error');
+    });
+
+    // Fires on the first connection AND on every Socket.IO reconnect, since the
+    // gateway re-runs handleConnection per connection. Re-emitting room:join here
+    // is what restores room membership after a dropped socket reconnects.
+    socket.on(REALTIME_SERVER_EVENTS.connectionAck, () => {
+      socket.emit(REALTIME_CLIENT_EVENTS.join, joinRoomPayloadSchema.parse({ roomId }));
     });
 
     socket.on('disconnect', () => {
       setSocketStatus('disconnected');
     });
 
-    socket.on('room:state', (data: unknown) => {
+    socket.on(REALTIME_SERVER_EVENTS.roomState, (data: unknown) => {
       const parsed = roomStateEventSchema.safeParse(data);
       if (!parsed.success) {
         setSocketStatus('error');
@@ -212,6 +224,7 @@ export function useRoomSocket({
         return;
       }
 
+      setRoomError(null);
       setRoomState({
         status: parsed.data.status,
         countdown: parsed.data.countdown,
@@ -242,7 +255,7 @@ export function useRoomSocket({
       setSocketStatus('connected');
     });
 
-    socket.on('room:message-received', (data: unknown) => {
+    socket.on(REALTIME_SERVER_EVENTS.messageReceived, (data: unknown) => {
       const parsed = roomMessageSchema.safeParse(data);
       if (!parsed.success) {
         console.error('[room:socket]', 'Invalid room:message-received payload');
@@ -262,7 +275,7 @@ export function useRoomSocket({
       ]);
     });
 
-    socket.on('room:user-joined', (data: unknown) => {
+    socket.on(REALTIME_SERVER_EVENTS.userJoined, (data: unknown) => {
       const parsed = roomUserJoinedSchema.safeParse(data);
       if (!parsed.success) {
         console.error('[room:socket]', 'Invalid room:user-joined payload');
@@ -286,7 +299,7 @@ export function useRoomSocket({
       });
     });
 
-    socket.on('room:user-left', (data: unknown) => {
+    socket.on(REALTIME_SERVER_EVENTS.userLeft, (data: unknown) => {
       const parsed = roomUserLeftSchema.safeParse(data);
       if (!parsed.success) {
         console.error('[room:socket]', 'Invalid room:user-left payload');
@@ -296,19 +309,19 @@ export function useRoomSocket({
       setMembers((prev) => prev.filter((m) => m.id !== parsed.data.userId));
     });
 
-    socket.on('room:error', (data: unknown) => {
+    socket.on(REALTIME_SERVER_EVENTS.error, (data: unknown) => {
       const parsed = roomErrorEventSchema.safeParse(data);
       if (!parsed.success) {
-        setSocketStatus('error');
+        setRoomError('Realtime error');
         console.error('[room:socket]', 'Invalid room:error payload');
         return;
       }
 
-      setSocketStatus('error');
+      setRoomError(parsed.data.message);
       console.error('[room:socket]', parsed.data.message);
     });
 
-    socket.on('room:movie-updated', (data: unknown) => {
+    socket.on(REALTIME_SERVER_EVENTS.movieUpdated, (data: unknown) => {
       const parsed = roomMovieUpdatedEventSchema.safeParse(data);
       if (!parsed.success) {
         console.error('[room:socket]', 'Invalid room:movie-updated payload');
@@ -318,7 +331,7 @@ export function useRoomSocket({
       onMovieUpdated?.(parsed.data.movieId);
     });
 
-    socket.on('room:playback-changed', (data: unknown) => {
+    socket.on(REALTIME_SERVER_EVENTS.playbackChanged, (data: unknown) => {
       const parsed = roomPlaybackChangedEventSchema.safeParse(data);
       if (!parsed.success) {
         console.error('[room:socket]', 'Invalid room:playback-changed payload');
@@ -333,7 +346,7 @@ export function useRoomSocket({
     });
 
     return () => {
-      socket.emit('room:leave', { roomId });
+      socket.emit(REALTIME_CLIENT_EVENTS.leave, leaveRoomPayloadSchema.parse({ roomId }));
       socket.disconnect();
       socketRef.current = null;
     };
@@ -343,6 +356,7 @@ export function useRoomSocket({
     messages,
     members,
     socketStatus,
+    roomError,
     roomState,
     sendMessage,
     sendReadyUpdate,

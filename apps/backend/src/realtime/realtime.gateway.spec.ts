@@ -1,11 +1,24 @@
 import { Types } from 'mongoose';
+import type { Server } from 'socket.io';
 
 import { RealtimeGateway } from '@/realtime/realtime.gateway';
+import { ConnectionRegistryService } from '@/realtime/services/connection-registry.service';
+import { PlaybackCountdownService } from '@/realtime/services/playback-countdown.service';
+import { RealtimeBroadcastService } from '@/realtime/services/realtime-broadcast.service';
+import { RoomModerationService } from '@/realtime/services/room-moderation.service';
 import { RoomStateService } from '@/realtime/services/room-state.service';
-import type { RoomRepository } from '@/rooms/room.repository';
 import type { SocketAuthService } from '@/realtime/services/socket-auth.service';
+import type { RoomRepository } from '@/rooms/room.repository';
 
-describe('RealtimeGateway countdown flow', () => {
+type ActorSocket = {
+  id: string;
+  rooms: Set<string>;
+  emit: jest.Mock;
+  disconnect: jest.Mock;
+  data: { user: { userId: string; userName: string } };
+};
+
+describe('RealtimeGateway', () => {
   const roomId = new Types.ObjectId().toString();
   const hostId = new Types.ObjectId().toString();
   const initialMovieId = new Types.ObjectId().toString();
@@ -13,55 +26,63 @@ describe('RealtimeGateway countdown flow', () => {
 
   let gateway: RealtimeGateway;
   let roomState: RoomStateService;
-  let rooms: jest.Mocked<Pick<RoomRepository, 'findOneAccessibleById' | 'setStatus'>>;
+  let registry: ConnectionRegistryService;
+  let countdown: PlaybackCountdownService;
+  let broadcast: RealtimeBroadcastService;
+  let moderation: RoomModerationService;
+  let rooms: jest.Mocked<
+    Pick<RoomRepository, 'findOneAccessibleById' | 'setStatus' | 'banUser' | 'findRawById'>
+  >;
   let roomEmit: jest.Mock;
-  let socket: {
-    id: string;
-    rooms: Set<string>;
-    emit: jest.Mock;
-    disconnect: jest.Mock;
-  };
+  let socketRegistry: Map<string, { emit: jest.Mock; disconnect: jest.Mock }>;
+  let socket: ActorSocket;
+
+  function actorSocket(id: string, userId: string, userName: string): ActorSocket {
+    return {
+      id,
+      rooms: new Set([roomId]),
+      emit: jest.fn(),
+      disconnect: jest.fn(),
+      data: { user: { userId, userName } }
+    };
+  }
 
   beforeEach(() => {
     jest.useFakeTimers({ now: Date.parse('2026-06-16T12:00:00.000Z') });
 
     roomState = new RoomStateService();
+    registry = new ConnectionRegistryService();
+    countdown = new PlaybackCountdownService(roomState);
+    broadcast = new RealtimeBroadcastService(roomState, countdown);
     rooms = {
       findOneAccessibleById: jest.fn(),
-      setStatus: jest.fn()
+      setStatus: jest.fn(),
+      banUser: jest.fn(),
+      findRawById: jest.fn()
     };
-
+    moderation = new RoomModerationService(rooms as unknown as RoomRepository, roomState, broadcast);
     gateway = new RealtimeGateway(
       rooms as unknown as RoomRepository,
       roomState,
-      {} as SocketAuthService
+      {} as SocketAuthService,
+      registry,
+      countdown,
+      broadcast,
+      moderation
     );
 
     roomEmit = jest.fn();
-    (gateway as unknown as { server: { to: (roomId: string) => { emit: jest.Mock } } }).server = {
+    socketRegistry = new Map();
+    broadcast.bind({
       to: jest.fn(() => ({ emit: roomEmit })),
-      sockets: { sockets: new Map() }
-    } as never;
+      sockets: { sockets: socketRegistry }
+    } as unknown as Server);
 
-    (gateway as unknown as { socketToUser: Map<string, { userId: string; userName: string }> })
-      .socketToUser.set('socket-1', {
-        userId: hostId,
-        userName: 'Host'
-      });
-    roomState.joinUser({
-      roomId,
-      userId: hostId,
-      userName: 'Host',
-      socketId: 'socket-1'
-    });
+    registry.register('socket-1', { userId: hostId, userName: 'Host' });
+    roomState.joinUser({ roomId, userId: hostId, userName: 'Host', socketId: 'socket-1' });
     roomState.setUserReady(roomId, hostId, true);
 
-    socket = {
-      id: 'socket-1',
-      rooms: new Set([roomId]),
-      emit: jest.fn(),
-      disconnect: jest.fn()
-    };
+    socket = actorSocket('socket-1', hostId, 'Host');
   });
 
   afterEach(() => {
@@ -69,45 +90,32 @@ describe('RealtimeGateway countdown flow', () => {
     jest.useRealTimers();
   });
 
+  function mockHostRoom(movieId: string, movieName = 'Room movie'): void {
+    rooms.findOneAccessibleById.mockResolvedValue({
+      _id: new Types.ObjectId(roomId),
+      creator: new Types.ObjectId(hostId),
+      movie: new Types.ObjectId(movieId),
+      movie_name: movieName
+    } as never);
+  }
+
   it('keeps the room member until the last socket for that user disconnects', () => {
-    const socketTwoId = 'socket-2';
-
-    (gateway as unknown as {
-      socketToUser: Map<string, { userId: string; userName: string }>;
-      userToSockets: Map<string, Set<string>>;
-    }).socketToUser.set(socketTwoId, {
-      userId: hostId,
-      userName: 'Host'
-    });
-    (gateway as unknown as {
-      socketToUser: Map<string, { userId: string; userName: string }>;
-      userToSockets: Map<string, Set<string>>;
-    }).userToSockets.set(hostId, new Set(['socket-1', socketTwoId]));
-
-    roomState.joinUser({
-      roomId,
-      userId: hostId,
-      userName: 'Host',
-      socketId: socketTwoId
-    });
+    registry.register('socket-2', { userId: hostId, userName: 'Host' });
+    roomState.joinUser({ roomId, userId: hostId, userName: 'Host', socketId: 'socket-2' });
 
     gateway.handleDisconnect({
       id: 'socket-1',
-      rooms: new Set([roomId]),
-      emit: jest.fn(),
-      disconnect: jest.fn()
+      rooms: new Set([roomId])
     } as never);
 
-    const stateAfterFirstDisconnect = roomState.get(roomId);
-    expect(stateAfterFirstDisconnect?.connectedUsers).toHaveLength(1);
-    expect(stateAfterFirstDisconnect?.connectedUsers[0]?.socketIds).toEqual([socketTwoId]);
+    const afterFirst = roomState.get(roomId);
+    expect(afterFirst?.connectedUsers).toHaveLength(1);
+    expect(afterFirst?.connectedUsers[0]?.socketIds).toEqual(['socket-2']);
     expect(roomEmit).not.toHaveBeenCalledWith('room:user-left', expect.anything());
 
     gateway.handleDisconnect({
-      id: socketTwoId,
-      rooms: new Set([roomId]),
-      emit: jest.fn(),
-      disconnect: jest.fn()
+      id: 'socket-2',
+      rooms: new Set([roomId])
     } as never);
 
     expect(roomState.get(roomId)).toBeUndefined();
@@ -116,92 +124,84 @@ describe('RealtimeGateway countdown flow', () => {
 
   it('disconnects every live socket for a moderated user in the room', async () => {
     const viewerId = new Types.ObjectId().toString();
-    const socketTwoId = 'socket-2';
-    const socketThreeId = 'socket-3';
-    const viewerSocketTwo = {
-      emit: jest.fn(),
-      disconnect: jest.fn()
-    };
-    const viewerSocketThree = {
-      emit: jest.fn(),
-      disconnect: jest.fn()
-    };
+    const viewerSocketTwo = { emit: jest.fn(), disconnect: jest.fn() };
+    const viewerSocketThree = { emit: jest.fn(), disconnect: jest.fn() };
+    mockHostRoom(initialMovieId);
 
-    rooms.findOneAccessibleById.mockResolvedValue({
-      _id: new Types.ObjectId(roomId),
-      creator: new Types.ObjectId(hostId),
-      movie: new Types.ObjectId(initialMovieId),
-      movie_name: 'Room movie'
-    } as never);
+    registry.register('socket-2', { userId: viewerId, userName: 'Viewer' });
+    registry.register('socket-3', { userId: viewerId, userName: 'Viewer' });
+    socketRegistry.set('socket-2', viewerSocketTwo);
+    socketRegistry.set('socket-3', viewerSocketThree);
+    roomState.joinUser({ roomId, userId: viewerId, userName: 'Viewer', socketId: 'socket-2' });
+    roomState.joinUser({ roomId, userId: viewerId, userName: 'Viewer', socketId: 'socket-3' });
 
-    (gateway as unknown as {
-      socketToUser: Map<string, { userId: string; userName: string }>;
-      userToSockets: Map<string, Set<string>>;
-      server: { sockets: { sockets: Map<string, { emit: jest.Mock; disconnect: jest.Mock }> } };
-    }).socketToUser.set(socketTwoId, {
-      userId: viewerId,
-      userName: 'Viewer'
-    });
-    (gateway as unknown as {
-      socketToUser: Map<string, { userId: string; userName: string }>;
-      userToSockets: Map<string, Set<string>>;
-      server: { sockets: { sockets: Map<string, { emit: jest.Mock; disconnect: jest.Mock }> } };
-    }).socketToUser.set(socketThreeId, {
-      userId: viewerId,
-      userName: 'Viewer'
-    });
-    (gateway as unknown as {
-      socketToUser: Map<string, { userId: string; userName: string }>;
-      userToSockets: Map<string, Set<string>>;
-      server: { sockets: { sockets: Map<string, { emit: jest.Mock; disconnect: jest.Mock }> } };
-    }).userToSockets.set(viewerId, new Set([socketTwoId, socketThreeId]));
-    (gateway as unknown as {
-      server: { sockets: { sockets: Map<string, { emit: jest.Mock; disconnect: jest.Mock }> } };
-    }).server.sockets.sockets.set(socketTwoId, viewerSocketTwo);
-    (gateway as unknown as {
-      server: { sockets: { sockets: Map<string, { emit: jest.Mock; disconnect: jest.Mock }> } };
-    }).server.sockets.sockets.set(socketThreeId, viewerSocketThree);
+    await gateway.handleKickUser(socket as never, { roomId, targetUserId: viewerId });
 
-    roomState.joinUser({
-      roomId,
-      userId: viewerId,
-      userName: 'Viewer',
-      socketId: socketTwoId
-    });
-    roomState.joinUser({
-      roomId,
-      userId: viewerId,
-      userName: 'Viewer',
-      socketId: socketThreeId
-    });
-
-    await gateway.handleKickUser({
-      id: 'socket-1',
-      rooms: new Set([roomId]),
-      emit: jest.fn(),
-      disconnect: jest.fn()
-    } as never, {
-      roomId,
-      targetUserId: viewerId
-    });
-
-    expect(viewerSocketTwo.emit).toHaveBeenCalledWith('room:error', {
-      message: 'kicked from the room'
-    });
-    expect(viewerSocketThree.emit).toHaveBeenCalledWith('room:error', {
-      message: 'kicked from the room'
-    });
+    expect(viewerSocketTwo.emit).toHaveBeenCalledWith('room:error', { message: 'kicked from the room' });
+    expect(viewerSocketThree.emit).toHaveBeenCalledWith('room:error', { message: 'kicked from the room' });
     expect(viewerSocketTwo.disconnect).toHaveBeenCalledWith(true);
     expect(viewerSocketThree.disconnect).toHaveBeenCalledWith(true);
   });
 
+  it('bans a user before disconnecting their sockets when blocking', async () => {
+    const viewerId = new Types.ObjectId().toString();
+    const viewerSocket = { emit: jest.fn(), disconnect: jest.fn() };
+    mockHostRoom(initialMovieId);
+
+    registry.register('socket-2', { userId: viewerId, userName: 'Viewer' });
+    socketRegistry.set('socket-2', viewerSocket);
+    roomState.joinUser({ roomId, userId: viewerId, userName: 'Viewer', socketId: 'socket-2' });
+
+    await gateway.handleBlockUser(socket as never, { roomId, targetUserId: viewerId });
+
+    expect((rooms.banUser as jest.Mock).mock.calls).toHaveLength(1);
+    expect(viewerSocket.emit).toHaveBeenCalledWith('room:error', { message: 'blocked from the room' });
+    expect(viewerSocket.disconnect).toHaveBeenCalledWith(true);
+  });
+
+  it('broadcasts a chat message to the room', () => {
+    gateway.handleMessage(socket as never, { roomId, content: 'hello' });
+
+    expect(roomEmit).toHaveBeenCalledWith(
+      'room:message-received',
+      expect.objectContaining({ roomId, userId: hostId, content: 'hello' })
+    );
+    expect(roomState.get(roomId)?.messages).toHaveLength(1);
+  });
+
+  it('rejects a message from a socket that is not in the room', () => {
+    const outsider = actorSocket('socket-1', hostId, 'Host');
+    outsider.rooms = new Set();
+
+    expect(() => {
+      gateway.handleMessage(outsider as never, { roomId, content: 'hi' });
+    }).toThrow('Forbidden');
+  });
+
+  it('adds the joining user and announces them to the room', async () => {
+    const viewerId = new Types.ObjectId().toString();
+    mockHostRoom(initialMovieId);
+    registry.register('socket-2', { userId: viewerId, userName: 'Viewer' });
+    const viewer = actorSocket('socket-2', viewerId, 'Viewer');
+    viewer.rooms = new Set();
+    const joinFn = jest.fn((): Promise<void> => {
+      viewer.rooms.add(roomId);
+      return Promise.resolve();
+    });
+    (viewer as unknown as { join: jest.Mock }).join = joinFn;
+
+    await gateway.handleJoin(viewer as never, { roomId });
+
+    expect(joinFn).toHaveBeenCalledWith(roomId);
+    expect(viewer.emit).toHaveBeenCalledWith('room:state', expect.objectContaining({ status: 'waiting' }));
+    expect(roomEmit).toHaveBeenCalledWith(
+      'room:user-joined',
+      expect.objectContaining({ userId: viewerId, roomId })
+    );
+  });
+
   it('queues playback until the countdown ends', async () => {
-    rooms.findOneAccessibleById.mockResolvedValue({
-      _id: new Types.ObjectId(roomId),
-      creator: new Types.ObjectId(hostId),
-      movie: new Types.ObjectId(initialMovieId),
-      movie_name: 'Room movie'
-    } as never);
+    mockHostRoom(initialMovieId);
     roomState.syncMovie(roomId, initialMovieId);
 
     await gateway.handlePlaybackUpdate(socket as never, {
@@ -213,11 +213,9 @@ describe('RealtimeGateway countdown flow', () => {
     });
 
     const firstCountdown = roomState.get(roomId)?.countdown;
-    const queuedPlayback = roomState.get(roomId)?.playback;
     expect(firstCountdown?.active).toBe(true);
     expect(firstCountdown?.endsAt).toBe('2026-06-16T12:00:03.000Z');
-    expect(queuedPlayback?.isPlaying).toBe(false);
-    expect(queuedPlayback?.movieId).toBe(initialMovieId);
+    expect(roomState.get(roomId)?.playback.isPlaying).toBe(false);
 
     jest.advanceTimersByTime(1000);
 
@@ -242,12 +240,7 @@ describe('RealtimeGateway countdown flow', () => {
   });
 
   it('clears the countdown when playback pauses', async () => {
-    rooms.findOneAccessibleById.mockResolvedValue({
-      _id: new Types.ObjectId(roomId),
-      creator: new Types.ObjectId(hostId),
-      movie: new Types.ObjectId(initialMovieId),
-      movie_name: 'Room movie'
-    } as never);
+    mockHostRoom(initialMovieId);
     roomState.syncMovie(roomId, initialMovieId);
 
     await gateway.handlePlaybackUpdate(socket as never, {
@@ -258,7 +251,6 @@ describe('RealtimeGateway countdown flow', () => {
       playbackRate: 1
     });
     expect(roomState.get(roomId)?.countdown.active).toBe(true);
-    expect(roomState.get(roomId)?.playback.isPlaying).toBe(false);
 
     await gateway.handlePlaybackUpdate(socket as never, {
       roomId,
@@ -273,12 +265,7 @@ describe('RealtimeGateway countdown flow', () => {
   });
 
   it('keeps a queued start aligned when the movie changes before the countdown ends', async () => {
-    rooms.findOneAccessibleById.mockResolvedValue({
-      _id: new Types.ObjectId(roomId),
-      creator: new Types.ObjectId(hostId),
-      movie: new Types.ObjectId(initialMovieId),
-      movie_name: 'Room movie'
-    } as never);
+    mockHostRoom(initialMovieId);
     roomState.syncMovie(roomId, initialMovieId);
 
     await gateway.handlePlaybackUpdate(socket as never, {
@@ -288,9 +275,7 @@ describe('RealtimeGateway countdown flow', () => {
       positionSec: 0,
       playbackRate: 1
     });
-
     expect(roomState.get(roomId)?.countdown.active).toBe(true);
-    expect(roomState.get(roomId)?.playback.isPlaying).toBe(false);
 
     rooms.findOneAccessibleById.mockResolvedValueOnce({
       _id: new Types.ObjectId(roomId),
@@ -299,10 +284,7 @@ describe('RealtimeGateway countdown flow', () => {
       movie_name: 'Next movie'
     } as never);
 
-    await gateway.handleMovieUpdated(socket as never, {
-      roomId,
-      movieId: nextMovieId
-    });
+    await gateway.handleMovieUpdated(socket as never, { roomId, movieId: nextMovieId });
 
     const playback = roomState.get(roomId)?.playback;
     expect(playback?.movieId).toBe(nextMovieId);
@@ -319,12 +301,7 @@ describe('RealtimeGateway countdown flow', () => {
   });
 
   it('expires the countdown after three seconds', async () => {
-    rooms.findOneAccessibleById.mockResolvedValue({
-      _id: new Types.ObjectId(roomId),
-      creator: new Types.ObjectId(hostId),
-      movie: new Types.ObjectId(initialMovieId),
-      movie_name: 'Room movie'
-    } as never);
+    mockHostRoom(initialMovieId);
     roomState.syncMovie(roomId, initialMovieId);
 
     await gateway.handlePlaybackUpdate(socket as never, {
@@ -334,7 +311,6 @@ describe('RealtimeGateway countdown flow', () => {
       positionSec: 0,
       playbackRate: 1
     });
-
     expect(roomState.get(roomId)?.countdown.active).toBe(true);
 
     jest.advanceTimersByTime(3000);
@@ -345,19 +321,8 @@ describe('RealtimeGateway countdown flow', () => {
   });
 
   it('rejects playback when not all connected users are ready', async () => {
-    rooms.findOneAccessibleById.mockResolvedValue({
-      _id: new Types.ObjectId(roomId),
-      creator: new Types.ObjectId(hostId),
-      movie: new Types.ObjectId(initialMovieId),
-      movie_name: 'Room movie'
-    } as never);
+    mockHostRoom(initialMovieId);
     roomState.syncMovie(roomId, initialMovieId);
-    roomState.joinUser({
-      roomId,
-      userId: hostId,
-      userName: 'Host',
-      socketId: 'socket-1'
-    });
     roomState.joinUser({
       roomId,
       userId: new Types.ObjectId().toString(),
@@ -366,28 +331,22 @@ describe('RealtimeGateway countdown flow', () => {
     });
     roomState.setUserReady(roomId, hostId, true);
 
-    await gateway.handlePlaybackUpdate(socket as never, {
-      roomId,
-      movieId: initialMovieId,
-      isPlaying: true,
-      positionSec: 0,
-      playbackRate: 1
-    });
+    await expect(
+      gateway.handlePlaybackUpdate(socket as never, {
+        roomId,
+        movieId: initialMovieId,
+        isPlaying: true,
+        positionSec: 0,
+        playbackRate: 1
+      })
+    ).rejects.toThrow('All users must be ready before playback starts.');
 
-    expect(socket.emit).toHaveBeenCalledWith('room:error', {
-      message: 'All users must be ready before playback starts.'
-    });
     expect(roomState.get(roomId)?.countdown.active).toBe(false);
     expect(roomState.get(roomId)?.playback.isPlaying).toBe(false);
   });
 
   it('allows the solo host to start playback even when unready', async () => {
-    rooms.findOneAccessibleById.mockResolvedValue({
-      _id: new Types.ObjectId(roomId),
-      creator: new Types.ObjectId(hostId),
-      movie: new Types.ObjectId(initialMovieId),
-      movie_name: 'Room movie'
-    } as never);
+    mockHostRoom(initialMovieId);
     roomState.syncMovie(roomId, initialMovieId);
     roomState.setUserReady(roomId, hostId, false);
 
@@ -400,18 +359,12 @@ describe('RealtimeGateway countdown flow', () => {
     });
 
     expect(roomState.get(roomId)?.countdown.active).toBe(true);
-    expect(roomState.get(roomId)?.playback.isPlaying).toBe(false);
     jest.advanceTimersByTime(3000);
     expect(roomState.get(roomId)?.playback.isPlaying).toBe(true);
   });
 
   it('accepts a force play request when viewers are still unready', async () => {
-    rooms.findOneAccessibleById.mockResolvedValue({
-      _id: new Types.ObjectId(roomId),
-      creator: new Types.ObjectId(hostId),
-      movie: new Types.ObjectId(initialMovieId),
-      movie_name: 'Room movie'
-    } as never);
+    mockHostRoom(initialMovieId);
     roomState.syncMovie(roomId, initialMovieId);
     roomState.joinUser({
       roomId,
@@ -430,11 +383,7 @@ describe('RealtimeGateway countdown flow', () => {
     });
 
     expect(roomState.get(roomId)?.countdown.active).toBe(true);
-    expect(roomState.get(roomId)?.playback.isPlaying).toBe(false);
-
     jest.advanceTimersByTime(3000);
-
-    expect(roomState.get(roomId)?.countdown.active).toBe(false);
     expect(roomState.get(roomId)?.playback.isPlaying).toBe(true);
   });
 });

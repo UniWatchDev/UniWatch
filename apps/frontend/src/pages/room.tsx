@@ -1,17 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { API_BASE_URL } from '@repo/consts/api';
-import { getRoomContract, previewRoomContract, joinRoomContract, leaveRoomContract } from '@repo/contracts/rooms';
-import { getAuthMeContract } from '@repo/contracts/auth';
-import type { RoomPreview } from '@repo/schemas/rooms';
 import type { PlaybackState } from '@repo/schemas/realtime';
-import type { RoomResponse, RoomStatus } from '@repo/schemas/rooms';
-import { useRoomSocket } from '@/hooks/use-room-socket';
+import type { RoomPreview, RoomResponse, RoomStatus } from '@repo/schemas/rooms';
+import { useRoomSocket, type PlaybackChangeEvent } from '@/hooks/use-room-socket';
 import { attachMovieToRoom } from '@/movies/attach-room-movie';
 import { MovieUploadField } from '@/movies/movie-upload-field';
 import { MovieUploadProgress } from '@/movies/movie-upload-progress';
 import { RoomVideoPlayer } from '@/movies/room-video-player';
-import { PLAYBACK_RATES, type PlaybackRate } from '@/movies/room-playback';
+import { isPlaybackRate, type PlaybackRate } from '@/movies/room-playback';
 import { useRoomMovie } from '@/movies/use-room-movie';
 import { prepareMovieForRoom } from '@/movies/prepare-movie-for-room';
 import { validateMovieFile } from '@/movies/upload-movie-file';
@@ -20,22 +16,18 @@ import { ParticipantList } from '@/components/participant-list';
 import { CinemaChat } from '@/components/cinema-chat';
 import { CountdownOverlay } from '@/components/countdown-overlay';
 import { ForcePlayConfirmationModal } from '@/components/force-play-confirmation-modal';
-import { Users, MessageSquare, Volume2, VolumeX, UserPlus, Check, Link } from 'lucide-react';
+import { InviteFriends } from '@/components/invite-friends';
+import { RoomPasswordGate } from '@/components/room-password-gate';
+import { Users, MessageSquare, Volume2, VolumeX } from 'lucide-react';
 import { MOCK_FRIENDS } from '@/data/mock-profile-data';
 import type { Member } from '@/types/room';
-
-function initials(name: string): string {
-  return name.split(' ').map((w) => w[0] ?? '').join('').slice(0, 2).toUpperCase();
-}
-
-interface PlaybackChangeEvent {
-  actorUserId: string | null;
-  playback: PlaybackState;
-}
-
-function isPlaybackRate(rate: number): rate is PlaybackRate {
-  return PLAYBACK_RATES.some((candidate) => candidate === rate);
-}
+import {
+  fetchCurrentUserId,
+  fetchRoom,
+  fetchRoomPreview,
+  joinRoom,
+  leaveRoom
+} from '@/pages/room-api';
 
 function getHostPlaybackPosition(playback: PlaybackState, atMs = Date.now()): number {
   if (!playback.isPlaying) {
@@ -43,29 +35,6 @@ function getHostPlaybackPosition(playback: PlaybackState, atMs = Date.now()): nu
   }
   const elapsedSeconds = Math.max(0, atMs - new Date(playback.updatedAt).getTime()) / 1000;
   return playback.positionSec + elapsedSeconds * playback.playbackRate;
-}
-
-function computeRoomStatus(
-  hasMovie: boolean,
-  moviePlayable: boolean,
-  isPlaying: boolean,
-  members: Member[],
-  creatorId: string | null
-): RoomStatus {
-  if (!hasMovie || !moviePlayable) {
-    return 'waiting';
-  }
-  if (isPlaying) {
-    return 'watching';
-  }
-  if (members.length === 0) {
-    return 'waiting';
-  }
-  const membersToCheck = creatorId === null ? members : members.filter((member) => member.id !== creatorId);
-  if (membersToCheck.length === 0) {
-    return 'waiting';
-  }
-  return membersToCheck.every((member) => member.isReady) ? 'ready' : 'waiting';
 }
 
 function canCurrentUserAccessRoomMovie(
@@ -76,107 +45,6 @@ function canCurrentUserAccessRoomMovie(
     return false;
   }
   return currentUserId === room.creator || room.allowed_users.includes(currentUserId);
-}
-
-function InviteFriends({ members }: { members: Member[] }) {
-  const [copied, setCopied] = useState<string | null>(null);
-  const memberUsernames = new Set(members.map((m) => m.username));
-
-  const handleInvite = (friendId: string) => {
-    void navigator.clipboard.writeText(window.location.href).then(() => {
-      setCopied(friendId);
-      setTimeout(() => { setCopied(null); }, 2000);
-    });
-  };
-
-  return (
-    <div style={{ padding: '12px 12px 4px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
-        <UserPlus size={13} style={{ color: 'var(--accent)' }} />
-        <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)' }}>
-          Invite Friends
-        </span>
-      </div>
-      {MOCK_FRIENDS.length === 0 ? (
-        <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '0 0 12px' }}>No friends yet.</p>
-      ) : (
-        <div style={{ display: 'grid', gap: 6, marginBottom: 12 }}>
-          {MOCK_FRIENDS.map((friend) => {
-            const inRoom = memberUsernames.has(friend.username);
-            const wasCopied = copied === friend.id;
-            return (
-              <div
-                key={friend.id}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  padding: '8px 10px',
-                  borderRadius: 10,
-                  border: '1px solid var(--border-subtle)',
-                  background: 'var(--bg-elevated)',
-                }}
-              >
-                <span
-                  style={{
-                    width: 30,
-                    height: 30,
-                    borderRadius: '50%',
-                    background: friend.avatarColor,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: 11,
-                    fontWeight: 700,
-                    color: '#fff',
-                    flexShrink: 0,
-                  }}
-                >
-                  {initials(friend.name)}
-                </span>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {friend.name}
-                  </p>
-                  <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)' }}>@{friend.username}</p>
-                </div>
-                {inRoom ? (
-                  <span style={{ fontSize: 10, fontWeight: 700, color: '#4ade80', background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.25)', borderRadius: 99, padding: '2px 8px', flexShrink: 0 }}>
-                    In Room
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    title="Copy invite link"
-                    onClick={() => { handleInvite(friend.id); }}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 4,
-                      padding: '4px 10px',
-                      borderRadius: 99,
-                      border: '1px solid var(--border-medium)',
-                      background: wasCopied ? 'rgba(74,222,128,0.1)' : 'var(--accent-dim)',
-                      color: wasCopied ? '#4ade80' : 'var(--accent)',
-                      fontSize: 11,
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      flexShrink: 0,
-                      transition: 'all 150ms ease',
-                    }}
-                  >
-                    {wasCopied ? <Check size={11} /> : <Link size={11} />}
-                    {wasCopied ? 'Copied!' : 'Invite'}
-                  </button>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-      <div style={{ borderTop: '1px solid var(--border-subtle)', marginBottom: 10 }} />
-    </div>
-  );
 }
 
 function playBeep() {
@@ -204,68 +72,6 @@ function PencilIcon() {
   );
 }
 
-
-async function fetchRoom(id: string): Promise<RoomResponse> {
-  const path = getRoomContract.path.replace(':id', encodeURIComponent(id));
-  const res = await fetch(`${API_BASE_URL}${path}`, {
-    headers: { Accept: 'application/json' },
-    credentials: 'include'
-  });
-  if (!res.ok) throw new Error(`HTTP ${String(res.status)}`);
-  return getRoomContract.responseSchema.parse(await res.json());
-}
-
-async function fetchRoomPreview(id: string): Promise<RoomPreview> {
-  const path = previewRoomContract.path.replace(':id', encodeURIComponent(id));
-  const res = await fetch(`${API_BASE_URL}${path}`, {
-    headers: { Accept: 'application/json' },
-    credentials: 'include'
-  });
-  if (!res.ok) throw new Error(`HTTP ${String(res.status)}`);
-  return previewRoomContract.responseSchema.parse(await res.json());
-}
-
-async function joinRoom(id: string, password: string | undefined): Promise<void> {
-  const path = joinRoomContract.path.replace(':id', encodeURIComponent(id));
-  const body = joinRoomContract.bodySchema.parse(password !== undefined ? { password } : {});
-  const res = await fetch(`${API_BASE_URL}${path}`, {
-    method: joinRoomContract.method,
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    credentials: 'include',
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({})) as Record<string, unknown>;
-    throw new Error(typeof data['detail'] === 'string' ? data['detail'] : `HTTP ${String(res.status)}`);
-  }
-}
-
-async function leaveRoom(id: string): Promise<void> {
-  const path = leaveRoomContract.path.replace(':id', encodeURIComponent(id));
-  const res = await fetch(`${API_BASE_URL}${path}`, {
-    method: leaveRoomContract.method,
-    headers: { Accept: 'application/json' },
-    credentials: 'include',
-  });
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({})) as Record<string, unknown>;
-    throw new Error(typeof data['detail'] === 'string' ? data['detail'] : `HTTP ${String(res.status)}`);
-  }
-}
-
-async function fetchCurrentUserId(): Promise<string | null> {
-  try {
-    const res = await fetch(`${API_BASE_URL}${getAuthMeContract.path}`, {
-      headers: { Accept: 'application/json' },
-      credentials: 'include'
-    });
-    if (!res.ok) return null;
-    const me = getAuthMeContract.responseSchema.parse(await res.json());
-    return me.userId;
-  } catch {
-    return null;
-  }
-}
 
 export function RoomPage() {
   const { id } = useParams<{ id: string }>();
@@ -344,6 +150,7 @@ export function RoomPage() {
     messages,
     members,
     socketStatus,
+    roomError,
     roomState,
     sendMessage: socketSendMessage,
     sendReadyUpdate,
@@ -367,13 +174,11 @@ export function RoomPage() {
   }));
   const currentMember = displayMembers.find((member) => member.id === currentUserId) ?? null;
   const isSoloHost = isOwner && displayMembers.length === 1;
-  const liveRoomStatus = computeRoomStatus(
-    room?.movie != null,
-    moviePlayable,
-    roomState.playback.isPlaying,
-    displayMembers,
-    room?.creator ?? null
-  );
+  // The server is authoritative for room status (it already returns 'waiting'
+  // for an empty room). We only override to 'waiting' when the movie file is not
+  // yet streamable on this client — stream readiness is browser-side state the
+  // server cannot know about.
+  const liveRoomStatus: RoomStatus = moviePlayable ? roomState.status : 'waiting';
   const unreadyMembers = displayMembers.filter((member) => !member.isHost && !member.isReady);
   const needsForcePlayConfirmation = isOwner && !isSoloHost && unreadyMembers.length > 0;
   const showCountdown = roomState.countdown.active;
@@ -631,52 +436,22 @@ export function RoomPage() {
 
   if (passwordRequired && roomPreview !== null) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100dvh', background: 'var(--bg-primary)' }}>
-        <div className="card fade-up" style={{ width: '100%', maxWidth: 380, padding: '32px' }}>
-          <div style={{ textAlign: 'center', marginBottom: 24 }}>
-            <span style={{ fontSize: 36 }}>🔒</span>
-            <h2 className="display" style={{ fontSize: 20, fontWeight: 800, color: 'var(--text-primary)', margin: '12px 0 4px' }}>
-              {roomPreview.name}
-            </h2>
-            <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>
-              {roomPreview.has_password ? 'This room is password protected.' : 'This is a private room.'}
-            </p>
-          </div>
-          {passwordError !== null && (
-            <div style={{ marginBottom: 14, padding: '8px 12px', borderRadius: 8, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', fontSize: 13, color: '#f87171' }}>
-              {passwordError}
-            </div>
-          )}
-          {roomPreview.has_password && (
-            <input
-              className="input"
-              type="password"
-              placeholder="Enter room password"
-              value={passwordInput}
-              autoComplete="current-password"
-              autoFocus
-              onChange={(e) => { setPasswordInput(e.target.value); setPasswordError(null); }}
-              onKeyDown={(e) => { if (e.key === 'Enter') void handleJoin(); }}
-              style={{ marginBottom: 12 }}
-            />
-          )}
-          <button
-            className="btn-primary"
-            style={{ width: '100%', padding: '10px', fontSize: 14, opacity: joiningRoom ? 0.7 : 1 }}
-            disabled={joiningRoom || (roomPreview.has_password && passwordInput.length === 0)}
-            onClick={() => { void handleJoin(); }}
-          >
-            {joiningRoom ? 'Joining…' : 'Join Room'}
-          </button>
-          <button
-            className="btn-ghost"
-            style={{ width: '100%', marginTop: 8, padding: '8px', fontSize: 13 }}
-            onClick={() => { void navigate('/rooms'); }}
-          >
-            Back to Lobby
-          </button>
-        </div>
-      </div>
+      <RoomPasswordGate
+        preview={roomPreview}
+        passwordInput={passwordInput}
+        passwordError={passwordError}
+        joining={joiningRoom}
+        onPasswordChange={(value) => {
+          setPasswordInput(value);
+          setPasswordError(null);
+        }}
+        onJoin={() => {
+          void handleJoin();
+        }}
+        onBack={() => {
+          void navigate('/rooms');
+        }}
+      />
     );
   }
 
@@ -1059,7 +834,7 @@ export function RoomPage() {
           }}
         >
           {/* Sidebar info bar — movie title + connection status only (room name is in the top header) */}
-          {(room.movie_name !== null && room.movie_name !== undefined) || socketStatus !== 'connected' ? (
+          {(room.movie_name !== null && room.movie_name !== undefined) || socketStatus !== 'connected' || roomError !== null ? (
             <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0 }}>
               {room.movie_name !== null && room.movie_name !== undefined && (
                 <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
@@ -1069,6 +844,11 @@ export function RoomPage() {
               {socketStatus !== 'connected' && (
                 <p style={{ margin: room.movie_name !== null && room.movie_name !== undefined ? '4px 0 0' : 0, fontSize: 11, color: socketStatus === 'error' ? '#f87171' : 'var(--text-muted)', fontStyle: 'italic' }}>
                   {socketStatus === 'error' ? 'Connection error' : socketStatus === 'connecting' ? 'Connecting…' : 'Disconnected'}
+                </p>
+              )}
+              {roomError !== null && (
+                <p style={{ margin: '4px 0 0', fontSize: 11, color: '#f87171' }}>
+                  {roomError}
                 </p>
               )}
             </div>

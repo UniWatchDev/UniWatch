@@ -4,6 +4,7 @@ import type { Member } from '@/types/room';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { AtSign, Ban, Crown, MoreVertical, UserPlus, UserX } from 'lucide-react';
+import { initials } from '@/utils/initials';
 
 interface ParticipantListProps {
   members: Member[];
@@ -13,15 +14,6 @@ interface ParticipantListProps {
   onTagUser: (member: Member) => void;
   onKickUser: (member: Member) => void;
   onBlockUser: (member: Member) => void;
-}
-
-function initials(name: string): string {
-  return name
-    .split(' ')
-    .map((w) => w[0] ?? '')
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
 }
 
 function presenceRingClass(status: Member['status']): string {

@@ -47,8 +47,18 @@ src/
     auth.consts.ts       — cookie names for access / refresh tokens
     auth.types.ts        — JwtAccessPayload + global `Express.Request` merge (`authPayload`)
   realtime/
-    realtime.module.ts    — RealtimeModule
-    realtime.gateway.ts   — authenticated Socket.IO room lifecycle, chat, movie updates, playback sync, and per-user multi-socket tracking. The gateway owns the user → live socket registry; `RoomStateService` keeps room membership per user and tracks all active socket ids for that member.
+    realtime.module.ts    — RealtimeModule (provides REALTIME_BROADCAST_PORT via RealtimeBroadcastService)
+    realtime.gateway.ts   — thin Socket.IO transport: WsAuthGuard + ZodWsValidationPipe + WsExceptionFilter, delegates to the services below. Event names from `@repo/consts/realtime`.
+    realtime.broadcast-port.ts — RealtimeBroadcastPort interface + REALTIME_BROADCAST_PORT token (RoomsService depends on this, not the gateway)
+    ws-auth.guard.ts      — resolves SocketUserInfo onto socket.data.user; getAuthenticatedUser(socket) helper
+    zod-ws-validation.pipe.ts — validates @MessageBody() against a Zod schema, throws WsException on failure
+    ws-exception.filter.ts — maps WsException → `room:error` emit
+    services/connection-registry.service.ts — socketId↔user + userId→Set<socketId> index (multi-socket)
+    services/room-state.service.ts          — in-memory per-room state (members keyed by userId with socketIds[], chat, playback, countdown, status)
+    services/playback-countdown.service.ts  — countdown timers + queued start, side effects via onComplete callback
+    services/room-moderation.service.ts     — kick/block: creator check, optional ban, disconnect all target sockets
+    services/realtime-broadcast.service.ts  — single owner of outbound socket writes; implements RealtimeBroadcastPort
+    services/socket-auth.service.ts         — resolves the user from the access-token cookie on connect
 test/
   app.e2e-spec.ts        — supertest e2e suite: verifies /api prefix, x-request-id echo + UUID fallback + unsafe-id rejection, ProblemDetails shape + traceId propagation, Swagger served at /docs, auth register/login/refresh/me/logout
   jest-e2e.setup.ts      — sets JWT_* env defaults so e2e can boot without a real `.env`

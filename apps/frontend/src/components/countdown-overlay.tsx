@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Member } from '@/types/room';
 import { Avatar, AvatarFallback, AvatarGroup, AvatarGroupCount } from '@/components/ui/avatar';
+import { initials } from '@/utils/initials';
 
 interface CountdownOverlayProps {
   members: Member[];
@@ -11,15 +12,6 @@ interface CountdownOverlayProps {
 const STEPS = ['3', '2', '1', '🎬'] as const;
 type Step = (typeof STEPS)[number];
 const TICK_MS = 250;
-
-function initials(name: string): string {
-  return name
-    .split(' ')
-    .map((w) => w[0] ?? '')
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
-}
 
 function getStepIndex(endsAt: string | null, nowMs: number): number {
   if (endsAt === null) return 0;

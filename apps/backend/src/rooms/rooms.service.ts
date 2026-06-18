@@ -4,13 +4,15 @@ import {
   Injectable,
   NotFoundException
 } from '@nestjs/common';
-import { forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Types } from 'mongoose';
 import type { CreateRoomInput, RoomPreview, RoomResponse, UpdateRoomInput } from '@repo/schemas/rooms';
 import { RoomType, RoomStatus, type RoomDocument } from '@/rooms/room.schema';
 import { MoviesService } from '@/movies/movies.service';
-import { RealtimeGateway } from '@/realtime/realtime.gateway';
+import {
+  REALTIME_BROADCAST_PORT,
+  type RealtimeBroadcastPort
+} from '@/realtime/realtime.broadcast-port';
 import { RoomStateService } from '@/realtime/services/room-state.service';
 import { RoomRepository } from '@/rooms/room.repository';
 import type { Env } from '@/utils/env.validation';
@@ -70,8 +72,8 @@ export class RoomsService {
     private readonly movies: MoviesService,
     private readonly config: ConfigService<Env, true>,
     private readonly roomState: RoomStateService,
-    @Inject(forwardRef(() => RealtimeGateway))
-    private readonly realtimeGateway: RealtimeGateway
+    @Inject(REALTIME_BROADCAST_PORT)
+    private readonly realtime: RealtimeBroadcastPort
   ) {}
 
   async list(): Promise<RoomResponse[]> {
@@ -175,7 +177,7 @@ export class RoomsService {
           if (movieChanged) {
             this.roomState.syncMovie(roomId, updatedMovieId);
             this.roomState.setAllUsersReady(roomId, false);
-            this.realtimeGateway.clearCountdown(roomId);
+            this.realtime.clearCountdown(roomId);
             if (previousPlayback?.isPlaying) {
               this.roomState.updatePlayback(roomId, {
                 movieId: updatedMovieId,
@@ -189,9 +191,9 @@ export class RoomsService {
           const creatorId = doc.creator.toString();
           const status = this.roomState.syncStatus(roomId, creatorId);
           await this.rooms.setStatus(roomId, status);
-          this.realtimeGateway.emitRoomMovieUpdated(roomId, updatedMovieId);
-          this.realtimeGateway.emitRoomPlaybackChanged(roomId, null);
-          this.realtimeGateway.emitRoomState(roomId);
+          this.realtime.emitRoomMovieUpdated(roomId, updatedMovieId);
+          this.realtime.emitRoomPlaybackChanged(roomId, null);
+          this.realtime.emitRoomState(roomId);
         }
       }
 
@@ -273,7 +275,7 @@ export class RoomsService {
       throw new ForbiddenException('The room creator cannot leave their own room');
     }
 
-    this.realtimeGateway.removeRoomMember(id, userId);
+    this.realtime.removeRoomMember(id, userId);
     await this.rooms.removeUser(id, new Types.ObjectId(userId));
     const updated = await this.rooms.findRawById(id);
     if (updated && safeIds(updated.allowed_users).length === 0) {

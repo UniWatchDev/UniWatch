@@ -3,6 +3,7 @@ import { useState } from 'react';
 import {
   formatPlaybackTime,
   formatRateLabel,
+  isPlaybackRate,
   PLAYBACK_RATES,
   SEEK_STEPS_SECONDS,
   type PlaybackRate
@@ -42,10 +43,6 @@ function FullscreenIcon({ exit }: { exit: boolean }) {
       <path d="M16 21h3a2 2 0 002-2v-3" />
     </svg>
   );
-}
-
-function isPlaybackRate(rate: number): rate is PlaybackRate {
-  return PLAYBACK_RATES.some((candidate) => candidate === rate);
 }
 
 export function RoomVideoPlayerControls({

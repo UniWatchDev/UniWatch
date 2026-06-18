@@ -4,6 +4,10 @@ export const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
 
 export type PlaybackRate = (typeof PLAYBACK_RATES)[number];
 
+export function isPlaybackRate(rate: number): rate is PlaybackRate {
+  return PLAYBACK_RATES.some((candidate) => candidate === rate);
+}
+
 export function formatSeekLabel(seconds: number): string {
   if (seconds >= 3600 && seconds % 3600 === 0) {
     return `${String(seconds / 3600)}h`;

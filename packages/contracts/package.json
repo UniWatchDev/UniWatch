@@ -9,7 +9,8 @@
     "./shared": "./dist/shared/endpoint.js",
     "./profile": "./dist/profile/profile.contracts.js",
     "./rooms": "./dist/rooms/rooms.contracts.js",
-    "./movies": "./dist/movies/movies.contracts.js"
+    "./movies": "./dist/movies/movies.contracts.js",
+    "./realtime": "./dist/realtime/realtime.contracts.js"
   },
   "scripts": {
     "dev": "tsc --watch --preserveWatchOutput",

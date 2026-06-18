@@ -5,7 +5,10 @@ import { Types } from 'mongoose';
 import type { TestingModule } from '@nestjs/testing';
 
 import { MoviesService } from '@/movies/movies.service';
-import { RealtimeGateway } from '@/realtime/realtime.gateway';
+import {
+  REALTIME_BROADCAST_PORT,
+  type RealtimeBroadcastPort
+} from '@/realtime/realtime.broadcast-port';
 import { RoomStateService } from '@/realtime/services/room-state.service';
 import { RoomRepository } from '@/rooms/room.repository';
 import { RoomsService } from '@/rooms/rooms.service';
@@ -40,13 +43,13 @@ describe('RoomsService', () => {
     syncStatus: jest.fn()
   } as unknown as jest.Mocked<RoomStateService>;
 
-  const realtimeGateway = {
+  const realtimeBroadcast = {
     emitRoomMovieUpdated: jest.fn(),
     emitRoomPlaybackChanged: jest.fn(),
     emitRoomState: jest.fn(),
     clearCountdown: jest.fn(),
     removeRoomMember: jest.fn()
-  } as unknown as jest.Mocked<RealtimeGateway>;
+  } as unknown as jest.Mocked<RealtimeBroadcastPort>;
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -57,7 +60,7 @@ describe('RoomsService', () => {
         { provide: MoviesService, useValue: moviesService },
         { provide: ConfigService, useValue: configService },
         { provide: RoomStateService, useValue: roomStateService },
-        { provide: RealtimeGateway, useValue: realtimeGateway }
+        { provide: REALTIME_BROADCAST_PORT, useValue: realtimeBroadcast }
       ]
     }).compile();
 
@@ -142,7 +145,7 @@ describe('RoomsService', () => {
     roomStateService.syncStatus.mockReturnValue('waiting');
 
     await expect(service.leave(roomId, userId)).resolves.toEqual({ success: true });
-    expect((realtimeGateway.removeRoomMember as jest.Mock).mock.calls).toEqual([[roomId, userId]]);
+    expect((realtimeBroadcast.removeRoomMember as jest.Mock).mock.calls).toEqual([[roomId, userId]]);
     expect((roomStateService.syncStatus as jest.Mock).mock.calls).toEqual([[roomId, creatorId]]);
     expect((roomsRepo.setStatus as jest.Mock).mock.calls).toEqual([[roomId, 'waiting']]);
   });

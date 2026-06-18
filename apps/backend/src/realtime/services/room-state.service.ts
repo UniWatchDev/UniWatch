@@ -78,7 +78,6 @@ export class RoomStateService {
       if (!existing.socketIds.includes(socketId)) {
         existing.socketIds = [...existing.socketIds, socketId];
       }
-      existing.socketId = socketId;
       existing.userName = userName;
       return existing;
     }
@@ -88,7 +87,6 @@ export class RoomStateService {
       userId,
       userName,
       color: pickColor(usedColors),
-      socketId,
       socketIds: [socketId],
       joinedAt: new Date().toISOString(),
       isReady: false
@@ -116,12 +114,7 @@ export class RoomStateService {
     };
 
     user.socketIds = user.socketIds.filter((id) => id !== socketId);
-    if (user.socketIds.length > 0) {
-      const nextSocketId = user.socketIds[0];
-      if (nextSocketId !== undefined) {
-        user.socketId = nextSocketId;
-      }
-    } else {
+    if (user.socketIds.length === 0) {
       state.connectedUsers = state.connectedUsers.filter((entry) => entry !== user);
     }
 
