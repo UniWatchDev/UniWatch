@@ -477,6 +477,7 @@ describe('Backend bootstrap (e2e)', () => {
       .expect(201);
     const room = roomResponseSchema.parse(roomRes.body as unknown);
     expect(room.creator).toBe(me.userId);
+    expect(room.status).toBe('waiting');
 
     const stranger = request.agent(app.getHttpServer());
     const other = uniqueRegisterBody('dom2');
@@ -545,6 +546,7 @@ describe('Backend bootstrap (e2e)', () => {
     const updated = roomResponseSchema.parse(patchRes.body as unknown);
     expect(updated.movie).toBe(movie.id);
     expect(updated.movie_name).toBe(movie.name);
+    expect(updated.status).toBe('waiting');
   });
 
   it('domain: movie resolve is idempotent; explicit create rejects duplicate names', async () => {

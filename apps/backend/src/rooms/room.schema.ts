@@ -8,9 +8,9 @@ export enum RoomType {
 }
 
 export enum RoomStatus {
-  WATCHING = 'watching',
-  PREPARING = 'preparing',
-  READY = 'ready'
+  WAITING = 'waiting',
+  READY = 'ready',
+  WATCHING = 'watching'
 }
 
 @Schema({
@@ -33,7 +33,7 @@ export class RoomRecord {
   @Prop({ required: true, enum: RoomType })
   room_type!: RoomType;
 
-  @Prop({ required: true, enum: RoomStatus, default: RoomStatus.PREPARING })
+  @Prop({ required: true, enum: RoomStatus, default: RoomStatus.WAITING })
   status!: RoomStatus;
 
   @Prop({ type: String, default: null })

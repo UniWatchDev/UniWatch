@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "cross-env PORT=5172 next dev",
+    "dev": "cross-env PORT=5172 next dev --webpack",
     "build": "next build",
     "check-types": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",

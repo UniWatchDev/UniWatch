@@ -8,7 +8,7 @@ Next.js 16 App Router server-rendered starter surface. Use for generic starter e
 
 ## Structure
 
-- `src/app/layout.tsx` — Server Component: root layout. Loads Fraunces (display serif, italic, SOFT+WONK+opsz axes), Geist Sans (body), Geist Mono, IBM Plex Mono (mono/numerals) via `next/font`.
+- `src/app/layout.tsx` — Server Component: root layout. Uses offline-safe serif/sans/mono fallbacks mapped through CSS variables in `globals.css`.
 - `src/app/page.tsx` — Server Component: Magazine-editorial layout (masthead → hero + by-the-numbers stats → endpoint explorer + session → health + pitch footer). Masthead links to `/app`.
 - `src/app/app/page.tsx` — Client Component: cookie session gate via `GET /api/auth/me` (`credentials: 'include'`); redirects to `/` on `401`. Editorial shell consistent with the home page.
 - `src/middleware.ts` — Edge middleware on **`/app`** (and nested paths): redirects to `/?login=1` when **neither** `access_token` nor `refresh_token` cookie is present. Cookie presence is not proof of a valid session; this only avoids rendering the shell before the client runs.
@@ -17,15 +17,16 @@ Next.js 16 App Router server-rendered starter surface. Use for generic starter e
 - `src/app/notes-panel.tsx` — Client Component: full CRUD styled as a "Letters to the Editor" column (not mounted on the home page; kept for reuse).
 - `src/app/package-verification.tsx` — Client Component: runtime checks via static imports of each `@repo/*` package + live backend health.
 - `src/app/endpoint-explorer.tsx` — Client Component: lists contracts with "Try →".
-- `src/app/globals.css` — Tailwind v4 via `@import 'tailwindcss'` + `@theme inline`. Editorial palette (`--color-paper`, `--color-ink`, `--color-rule`, `--color-accent`) + keyframes (`fade-up`, `rule-draw`, `check-in`, `dot-pulse`).
+- `src/app/globals.css` — Tailwind v4 via `@import 'tailwindcss'`. Editorial CSS variables (`--color-paper`, `--color-ink`, `--color-rule`, `--color-accent`, font stacks) + keyframes (`fade-up`, `rule-draw`, `check-in`, `dot-pulse`).
 
 ## Conventions
 
 - Use the `@/` alias for local imports from `src/*`.
 - Server Components by default — push `"use client"` boundaries down.
 - React Compiler enabled — no manual memoization.
-- Tailwind v4 via PostCSS (`@tailwindcss/postcss`) — no `tailwind.config.js`. Tokens live in `globals.css` under `@theme inline`.
+- Tailwind v4 via PostCSS (`@tailwindcss/postcss`) — no `tailwind.config.js`. Tokens live in `globals.css` as CSS variables.
 - `@repo/*` packages are transpiled via `transpilePackages` in `next.config.ts`.
+- `pnpm --filter web dev` uses `next dev --webpack` to avoid Turbopack persistence issues on this machine.
 - Visible copy lives in `@repo/consts/starter` (`STARTER_HEADLINE`, `STARTER_DECK`, `STARTER_LEDE`, `STARTER_STATS`, `STARTER_PITCH`). Update there, not inline.
 - Layout targets viewport-fit (100dvh × 100vw, no page scroll, desktop-only). Internal scroll allowed inside cards.
 - Aesthetic is editorial magazine — serif italic headlines, mono figures, hairline rules. Do not introduce rounded card chrome or gradients.

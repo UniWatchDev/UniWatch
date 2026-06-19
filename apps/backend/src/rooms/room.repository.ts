@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import type { Model } from 'mongoose';
 import { Types } from 'mongoose';
-import { RoomRecord, type RoomDocument } from '@/rooms/room.schema';
+import { RoomRecord, type RoomDocument, type RoomStatus } from '@/rooms/room.schema';
 
 @Injectable()
 export class RoomRepository {
@@ -46,7 +46,7 @@ export class RoomRepository {
     name: string;
     creator: Types.ObjectId;
     room_type: string;
-    status?: string;
+    status?: RoomStatus;
     deactivate_at: Date;
     movie?: Types.ObjectId;
     password?: string;
@@ -61,6 +61,14 @@ export class RoomRepository {
     return this.model.findByIdAndUpdate(
       roomId,
       { $addToSet: { allowed_users: userId } },
+      { new: true }
+    );
+  }
+
+  setStatus(roomId: string, status: string): Promise<RoomDocument | null> {
+    return this.model.findByIdAndUpdate(
+      roomId,
+      { $set: { status } },
       { new: true }
     );
   }

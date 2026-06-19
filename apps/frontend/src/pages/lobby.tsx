@@ -9,21 +9,21 @@ import { CinemaRoomCard } from '@/components/cinema-room-card';
 import type { RoomResponse, RoomStatus } from '@/types/room';
 import { Search } from 'lucide-react';
 
-const REFRESH_INTERVAL_MS = 5_000;
+const REFRESH_INTERVAL_MS = 2_000;
 
 type FilterStatus = RoomStatus | 'all';
 
 const STATUS_SECTIONS: { status: RoomStatus; label: string; emoji: string }[] = [
   { status: 'watching', label: 'Watching Now', emoji: '🔴' },
-  { status: 'ready', label: 'Ready to Start', emoji: '✅' },
-  { status: 'preparing', label: 'Preparing', emoji: '⏳' },
+  { status: 'ready', label: 'Ready to Watch', emoji: '🎬' },
+  { status: 'waiting', label: 'Waiting', emoji: '⏳' },
 ];
 
 const FILTER_BUTTONS: { label: string; value: FilterStatus }[] = [
   { label: 'All', value: 'all' },
   { label: 'Watching', value: 'watching' },
   { label: 'Ready', value: 'ready' },
-  { label: 'Preparing', value: 'preparing' },
+  { label: 'Waiting', value: 'waiting' },
 ];
 
 export function Lobby() {

@@ -1,18 +1,19 @@
-import { useState, useRef, useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import type { ChatMessage } from '@/types/room';
 import { Send } from 'lucide-react';
 
 interface CinemaChatProps {
   messages: ChatMessage[];
   onSend: (text: string) => void;
+  draftMessage: string;
+  onDraftMessageChange: (value: string) => void;
 }
 
 function formatTime(date: Date): string {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-export function CinemaChat({ messages, onSend }: CinemaChatProps) {
-  const [input, setInput] = useState('');
+export function CinemaChat({ messages, onSend, draftMessage, onDraftMessageChange }: CinemaChatProps) {
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -20,10 +21,10 @@ export function CinemaChat({ messages, onSend }: CinemaChatProps) {
   }, [messages]);
 
   const handleSend = () => {
-    const text = input.trim();
+    const text = draftMessage.trim();
     if (!text) return;
     onSend(text);
-    setInput('');
+    onDraftMessageChange('');
   };
 
   return (
@@ -76,8 +77,8 @@ export function CinemaChat({ messages, onSend }: CinemaChatProps) {
           style={{ padding: '7px 12px' }}
           type="text"
           placeholder="Say something…"
-          value={input}
-          onChange={(e) => { setInput(e.target.value); }}
+          value={draftMessage}
+          onChange={(e) => { onDraftMessageChange(e.target.value); }}
           onKeyDown={(e) => { if (e.key === 'Enter') handleSend(); }}
         />
         <button

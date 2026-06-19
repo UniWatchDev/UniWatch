@@ -10,7 +10,8 @@
     "./movies": "./dist/movies/movie.schemas.js",
     "./rooms": "./dist/rooms/room.schemas.js",
     "./profile": "./dist/profile/profile.schemas.js",
-    "./realtime": "./dist/realtime/realtime.schemas.js"
+    "./realtime": "./dist/realtime/realtime.schemas.js",
+    "./realtime/playback-sync": "./dist/realtime/playback-sync.js"
   },
   "scripts": {
     "dev": "tsc --watch --preserveWatchOutput",

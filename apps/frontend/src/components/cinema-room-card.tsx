@@ -1,25 +1,8 @@
 import { useNavigate } from 'react-router-dom';
-import type { RoomResponse, RoomStatus } from '@repo/schemas/rooms';
+import type { RoomResponse } from '@repo/schemas/rooms';
 import { Badge } from '@/components/ui/badge';
 import { Lock, Users } from 'lucide-react';
-
-const STATUS_CONFIG: Record<RoomStatus, { label: string; className: string }> = {
-  watching: {
-    label: '● LIVE',
-    className:
-      'border-red-500/40 bg-red-500/20 font-mono text-[10px] tracking-widest text-red-400',
-  },
-  preparing: {
-    label: 'PREPARING',
-    className:
-      'border-amber-500/40 bg-amber-500/20 font-mono text-[10px] tracking-widest text-amber-400',
-  },
-  ready: {
-    label: 'READY',
-    className:
-      'border-emerald-500/40 bg-emerald-500/20 font-mono text-[10px] tracking-widest text-emerald-400',
-  },
-};
+import { ROOM_STATUS_DISPLAY } from '@/rooms/room-status-display';
 
 interface CinemaRoomCardProps {
   room: RoomResponse;
@@ -27,7 +10,8 @@ interface CinemaRoomCardProps {
 
 export function CinemaRoomCard({ room }: CinemaRoomCardProps) {
   const navigate = useNavigate();
-  const statusCfg = room.status !== undefined ? STATUS_CONFIG[room.status] : null;
+  const statusCfg = room.status !== undefined ? ROOM_STATUS_DISPLAY[room.status] : null;
+  const viewerCount = room.member_count ?? 0;
 
   const handleClick = () => { void navigate(`/room/${room.id}`); };
   const handleKey = (e: React.KeyboardEvent) => {
@@ -109,7 +93,7 @@ export function CinemaRoomCard({ room }: CinemaRoomCardProps) {
           ) : (
             <span className="flex items-center gap-1.5 text-[11px] text-white/35">
               <Users size={11} />
-              {room.member_count}
+              {viewerCount}
             </span>
           )}
         </div>

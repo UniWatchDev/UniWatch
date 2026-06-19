@@ -1,5 +1,6 @@
 import {
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException
 } from '@nestjs/common';
@@ -8,6 +9,12 @@ import { Types } from 'mongoose';
 import type { CreateRoomInput, RoomPreview, RoomResponse, UpdateRoomInput } from '@repo/schemas/rooms';
 import { RoomType, RoomStatus, type RoomDocument } from '@/rooms/room.schema';
 import { MoviesService } from '@/movies/movies.service';
+import {
+  REALTIME_BROADCAST_PORT,
+  type RealtimeBroadcastPort
+} from '@/realtime/realtime.broadcast-port';
+import { RoomStateService } from '@/realtime/services/room-state.service';
+import { RoomMovieChangeService } from '@/realtime/services/room-movie-change.service';
 import { RoomRepository } from '@/rooms/room.repository';
 import type { Env } from '@/utils/env.validation';
 
@@ -33,6 +40,7 @@ function toResponse(doc: RoomDocument): RoomResponse {
   const creatorDoc = doc.creator as unknown as PopulatedUser | null | undefined;
   const creatorId = creatorDoc != null ? String(creatorDoc._id) : '';
   const creatorName = creatorDoc?.userName ?? creatorDoc?.firstName ?? undefined;
+  const memberCount = allowedUsers.filter((userId) => userId !== creatorId).length;
   return {
     id: doc._id.toString(),
     name: doc.name,
@@ -50,8 +58,12 @@ function toResponse(doc: RoomDocument): RoomResponse {
     movie_name: doc.movie_name ?? null,
     movie_description: doc.movie_description ?? null,
     creator_name: creatorName,
-    member_count: allowedUsers.length
+    member_count: memberCount
   };
+}
+
+function getLiveMemberCount(roomState: RoomStateService, roomId: string): number {
+  return roomState.get(roomId)?.connectedUsers.length ?? 0;
 }
 
 @Injectable()
@@ -59,12 +71,19 @@ export class RoomsService {
   constructor(
     private readonly rooms: RoomRepository,
     private readonly movies: MoviesService,
-    private readonly config: ConfigService<Env, true>
+    private readonly config: ConfigService<Env, true>,
+    private readonly roomState: RoomStateService,
+    @Inject(REALTIME_BROADCAST_PORT)
+    private readonly realtime: RealtimeBroadcastPort,
+    private readonly movieChange: RoomMovieChangeService
   ) {}
 
   async list(): Promise<RoomResponse[]> {
     const docs = await this.rooms.findAllActive();
-    return docs.map(toResponse);
+    return docs.map((doc) => ({
+      ...toResponse(doc),
+      member_count: getLiveMemberCount(this.roomState, doc._id.toString())
+    }));
   }
 
   async get(id: string, userId: string): Promise<RoomResponse> {
@@ -80,7 +99,7 @@ export class RoomsService {
   async create(userId: string, data: CreateRoomInput): Promise<RoomResponse> {
     let movieName = data.movie_name;
     let movieDescription = data.movie_description;
-    let roomStatus: RoomStatus = RoomStatus.PREPARING;
+    const roomStatus: RoomStatus = RoomStatus.WAITING;
     if (data.movie !== undefined) {
       const movie = await this.movies.get(data.movie, userId);
       if (movieName === undefined) {
@@ -88,9 +107,6 @@ export class RoomsService {
       }
       if (movieDescription === undefined && movie.description != null) {
         movieDescription = movie.description;
-      }
-      if (movie.has_file && movie.upload_status === 'ready') {
-        roomStatus = RoomStatus.READY;
       }
     }
     const deactivateAt = data.deactivate_at !== undefined
@@ -132,6 +148,7 @@ export class RoomsService {
     if (data.movie !== undefined) {
       const movie = await this.movies.get(data.movie, userId);
       patch['movie'] = new Types.ObjectId(data.movie);
+      patch['status'] = RoomStatus.WAITING;
       if (data.movie_name === undefined) {
         patch['movie_name'] = movie.name;
       }
@@ -141,7 +158,41 @@ export class RoomsService {
     }
 
     const doc = await this.rooms.updateIfCreator(id, userId, patch);
-    if (doc) return toResponse(doc);
+    if (doc) {
+      const updatedMovieId = doc.movie != null ? refToId(doc.movie as RefLike) : null;
+      const shouldBroadcastMovieRefresh =
+        data.movie !== undefined ||
+        data.movie_name !== undefined ||
+        data.movie_description !== undefined;
+      if (shouldBroadcastMovieRefresh) {
+        const roomId = doc._id.toString();
+        if (updatedMovieId != null) {
+          if (data.movie !== undefined) {
+            const creatorId = doc.creator.toString();
+            const creatorDoc = doc.creator as unknown as PopulatedUser | null | undefined;
+            await this.movieChange.applyMovieChange(roomId, updatedMovieId, {
+              actorUserId: userId,
+              actorUserName: creatorDoc?.userName ?? creatorDoc?.firstName ?? 'Host',
+              creatorId,
+              movieName: doc.movie_name ?? null
+            });
+          } else {
+            const creatorId = doc.creator.toString();
+            const status = this.roomState.syncStatus(roomId, creatorId);
+            await this.rooms.setStatus(roomId, status);
+            this.realtime.emitRoomMovieUpdated(
+              roomId,
+              updatedMovieId,
+              doc.movie_name ?? undefined
+            );
+            this.realtime.emitRoomPlaybackChanged(roomId, null);
+            this.realtime.emitRoomState(roomId);
+          }
+        }
+      }
+
+      return toResponse(doc);
+    }
     const raw = await this.rooms.findRawById(id);
     if (!raw || raw.deleted_at) {
       throw new NotFoundException(`Room "${id}" not found`);
@@ -162,7 +213,7 @@ export class RoomsService {
       has_password: raw.password != null && raw.password.length > 0,
       status: raw.status,
       creator_name: previewCreator?.userName ?? previewCreator?.firstName ?? undefined,
-      member_count: safeIds(raw.allowed_users).length
+      member_count: getLiveMemberCount(this.roomState, raw._id.toString())
     };
   }
 
@@ -217,6 +268,8 @@ export class RoomsService {
     if (refToId(raw.creator as RefLike | null | undefined) === userId) {
       throw new ForbiddenException('The room creator cannot leave their own room');
     }
+
+    await this.realtime.removeRoomMember(id, userId);
     await this.rooms.removeUser(id, new Types.ObjectId(userId));
     const updated = await this.rooms.findRawById(id);
     if (updated && safeIds(updated.allowed_users).length === 0) {
@@ -224,6 +277,9 @@ export class RoomsService {
       const movieId = updated.movie != null ? refToId(updated.movie as RefLike) : null;
       await this.scheduleLinkedMoviePurge(movieId);
     }
+    const creatorId = refToId(raw.creator as RefLike | null | undefined);
+    const status = this.roomState.syncStatus(id, creatorId);
+    await this.rooms.setStatus(id, status);
     return { success: true };
   }
 

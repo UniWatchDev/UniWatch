@@ -7,14 +7,14 @@
 
 ```
 src/app/
-  layout.tsx               — Server Component: root layout, loads Fraunces + Geist + Geist_Mono + IBM_Plex_Mono via next/font
+  layout.tsx               — Server Component: root layout, uses offline-safe serif/sans/mono fallbacks via CSS variables
   page.tsx                 — Server Component: magazine-editorial layout
   health-check.tsx         — Client: auto-pings /api/health, dot + latency
   auth-panel.tsx           — Client: register + email verify/resend + login (blocked until verified) + session, consts/schemas + cookies
   notes-panel.tsx          — Client: full CRUD, styled as "Letters" column (optional; not on home page)
   package-verification.tsx — Client: static probes of every @repo/* export + live backend
   endpoint-explorer.tsx    — Client: every EndpointContract with Try button + JSON drawer
-  globals.css              — Tailwind v4 + @theme inline (editorial tokens + keyframes)
+  globals.css              — Tailwind v4 (editorial CSS variables + keyframes)
   favicon.ico
 ```
 
@@ -35,14 +35,11 @@ src/app/
 
 ## Fonts
 
-Four Google fonts loaded via `next/font/google` in `layout.tsx`:
+System font stacks are defined in `globals.css` as CSS variables:
 
-- `Fraunces` (serif display + body, italic, SOFT + WONK + opsz axes) → `--font-serif`
-- `Geist` (sans body) → `--font-sans`
-- `Geist_Mono` → `--font-geist-mono`
-- `IBM_Plex_Mono` (mono figures, labels, status glyphs) → `--font-mono`
-
-All mapped to Tailwind via `@theme inline` in `globals.css`.
+- `--font-serif` → Georgia / Times stack
+- `--font-sans` → system UI stack
+- `--font-mono` and `--font-geist-mono` → monospace stack
 
 ## Tailwind v4
 
@@ -62,7 +59,7 @@ All mapped to Tailwind via `@theme inline` in `globals.css`.
 
 - `NEXT_PUBLIC_API_BASE_URL` — defined in `.env` examples but not yet wired into call sites; today every `fetch` uses the hardcoded `API_BASE_URL` from `@repo/consts/api`.
 - `NEXT_PUBLIC_FRONTEND_URL` — defined in `.env` examples, not used in code.
-- Port is pinned to `5172` via `cross-env PORT=5172` in `dev`, `start`, `preview`, and `start:prod` in `package.json` (override with `PORT` in the host env if your platform requires it).
+- Port is pinned to `5172` via `cross-env PORT=5172` in `dev`, `start`, `preview`, and `start:prod` in `package.json` (override with `PORT` in the host env if your platform requires it). `dev` uses `next dev --webpack` to avoid Turbopack persistence failures locally.
 
 ## Commands
 

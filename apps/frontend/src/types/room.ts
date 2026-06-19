@@ -8,6 +8,8 @@ export interface Member {
   username: string;
   avatarColor: string;
   isHost: boolean;
+  isReady: boolean;
+  isFriend: boolean;
   status: MemberStatus;
 }
 

@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 
 import { MOVIE_FILE_ACCEPT, validateMovieFile } from '@/movies/upload-movie-file';
 import { MOVIE_ALLOWED_FORMATS_LABEL } from '@repo/consts/movies';
@@ -19,6 +19,7 @@ export function MovieUploadField({
   disabled?: boolean;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   const handleChange = (next: File | null) => {
     if (next === null) {
@@ -45,56 +46,149 @@ export function MovieUploadField({
             fileInputRef.current?.click();
           }
         }}
+        onDragEnter={(e) => {
+          if (disabled) return;
+          e.preventDefault();
+          setIsDragging(true);
+        }}
+        onDragOver={(e) => {
+          if (disabled) return;
+          e.preventDefault();
+          setIsDragging(true);
+        }}
+        onDragLeave={(e) => {
+          if (disabled) return;
+          e.preventDefault();
+          setIsDragging(false);
+        }}
+        onDrop={(e) => {
+          if (disabled) return;
+          e.preventDefault();
+          setIsDragging(false);
+          handleChange(e.dataTransfer.files[0] ?? null);
+        }}
         style={{
           marginTop: 6,
-          padding: '20px',
-          border: '2px dashed var(--border-medium)',
-          borderRadius: 10,
+          padding: '18px',
+          border: `1px solid ${file ? 'var(--accent)' : isDragging ? 'var(--accent)' : error ? '#f87171' : 'var(--border-medium)'}`,
+          borderRadius: 14,
           textAlign: 'center',
-          transition: 'border-color 200ms ease, background 200ms ease',
-          background: file ? 'var(--accent-dim)' : 'transparent',
-          borderColor: file ? 'var(--accent)' : error ? '#f87171' : 'var(--border-medium)',
+          transition: 'border-color 200ms ease, background 200ms ease, transform 200ms ease',
+          background: file ? 'var(--accent-dim)' : isDragging ? 'rgba(124,58,237,0.08)' : 'transparent',
           cursor: disabled ? 'not-allowed' : 'pointer',
           opacity: disabled ? 0.7 : 1,
+          minHeight: 158,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
         }}
       >
         {file ? (
-          <div>
-            <p style={{ fontSize: 24, margin: '0 0 6px' }}>🎬</p>
-            <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 2px' }}>
-              {file.name}
-            </p>
-            <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>
-              {(file.size / 1024 / 1024).toFixed(1)} MB
-            </p>
-            {onRemove && (
+          <div style={{ display: 'grid', gap: 12, width: '100%', maxWidth: 360 }}>
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <div
+                style={{
+                  width: 56,
+                  height: 56,
+                  borderRadius: 18,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: 'rgba(124,58,237,0.14)',
+                  color: 'var(--accent-hover)',
+                  fontSize: 24,
+                }}
+              >
+                🎬
+              </div>
+            </div>
+            <div style={{ display: 'grid', gap: 4 }}>
+              <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
+                {file.name}
+              </p>
+              <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>
+                {(file.size / 1024 / 1024).toFixed(1)} MB · Selected for upload
+              </p>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 8, flexWrap: 'wrap' }}>
               <button
                 type="button"
-                className="btn-danger"
+                className="btn-ghost"
                 disabled={disabled}
-                style={{ marginTop: 12, padding: '8px 14px', fontSize: 13 }}
+                style={{ padding: '8px 14px', fontSize: 13 }}
                 onClick={(e) => {
                   e.stopPropagation();
                   if (disabled) return;
-                  onRemove();
-                  if (fileInputRef.current !== null) {
-                    fileInputRef.current.value = '';
-                  }
+                  fileInputRef.current?.click();
                 }}
               >
-                Remove
+                Replace file
               </button>
-            )}
+              {onRemove && (
+                <button
+                  type="button"
+                  className="btn-danger"
+                  disabled={disabled}
+                  style={{ padding: '8px 14px', fontSize: 13 }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (disabled) return;
+                    onRemove();
+                    if (fileInputRef.current !== null) {
+                      fileInputRef.current.value = '';
+                    }
+                  }}
+                >
+                  Remove
+                </button>
+              )}
+            </div>
           </div>
         ) : (
-          <div>
-            <p style={{ fontSize: 24, margin: '0 0 6px' }}>📁</p>
-            <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '0 0 2px' }}>
-              Click to upload a video file
-            </p>
-            <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>
-              {MOVIE_ALLOWED_FORMATS_LABEL}, up to 1 GB
-            </p>
+          <div style={{ display: 'grid', gap: 12, width: '100%', maxWidth: 420 }}>
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <div
+                style={{
+                  width: 56,
+                  height: 56,
+                  borderRadius: 18,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: 'var(--bg-input)',
+                  color: 'var(--text-secondary)',
+                  fontSize: 24,
+                }}
+              >
+                📁
+              </div>
+            </div>
+            <div style={{ display: 'grid', gap: 4 }}>
+              <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
+                Drop a video file here or browse
+              </p>
+              <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>
+                {MOVIE_ALLOWED_FORMATS_LABEL}, up to 1 GB
+              </p>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '6px 10px',
+                  borderRadius: 999,
+                  border: '1px solid var(--border-subtle)',
+                  background: 'var(--bg-elevated)',
+                  fontSize: 12,
+                  color: 'var(--text-secondary)',
+                }}
+              >
+                <span>Click to choose</span>
+                <span style={{ color: 'var(--text-muted)' }}>or drag and drop</span>
+              </span>
+            </div>
           </div>
         )}
       </div>

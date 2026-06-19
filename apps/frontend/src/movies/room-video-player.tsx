@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
+import { MovieAwaitingHostOverlay } from '@/components/movie-awaiting-host-overlay';
 import { MovieUploadProgress } from '@/movies/movie-upload-progress';
 import type { PlaybackRate } from '@/movies/room-playback';
 import { RoomVideoPlayerControls } from '@/movies/room-video-player-controls';
@@ -23,16 +24,23 @@ export function RoomVideoPlayer({
   isUploading,
   isFailed,
   mediaSrc,
+  videoKey,
   videoRef,
   videoReady,
   videoError,
   canControl,
+  showHostControls,
   currentTime,
   duration,
   isPlaying,
   playbackRate,
   muted,
   volume,
+  showAwaitingHostOverlay = false,
+  awaitingHostMovieName,
+  awaitingHostLoading = false,
+  isHostViewer = false,
+  onLoadedData,
   onTogglePlay,
   onTimeUpdate,
   onLoadedMetadata,
@@ -58,16 +66,23 @@ export function RoomVideoPlayer({
   isUploading: boolean;
   isFailed: boolean;
   mediaSrc: string | null;
+  videoKey: string | null;
   videoRef: React.RefObject<HTMLVideoElement | null>;
   videoReady: boolean;
   videoError: string | null;
   canControl: boolean;
+  showHostControls: boolean;
   currentTime: number;
   duration: number;
   isPlaying: boolean;
   playbackRate: number;
   muted: boolean;
   volume: number;
+  showAwaitingHostOverlay?: boolean;
+  awaitingHostMovieName?: string | null;
+  awaitingHostLoading?: boolean;
+  isHostViewer?: boolean;
+  onLoadedData?: () => void;
   onTogglePlay: () => void;
   onTimeUpdate: () => void;
   onLoadedMetadata: () => void;
@@ -88,7 +103,13 @@ export function RoomVideoPlayer({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const { overlayVisible, revealControls } = useFullscreenOverlayControls(isFullscreen, isPlaying);
   const showPlaceholder = mediaSrc === null;
-  const showCenterPlay = canControl && !isPlaying && videoReady && mediaSrc !== null && !videoError;
+  const showCenterPlay =
+    canControl &&
+    !isPlaying &&
+    videoReady &&
+    mediaSrc !== null &&
+    !videoError &&
+    !showAwaitingHostOverlay;
 
   useEffect(() => {
     const onNativeFullscreenChange = () => {
@@ -116,9 +137,9 @@ export function RoomVideoPlayer({
   const controls = (
     <RoomVideoPlayerControls
       canControl={canControl}
+      showHostControls={showHostControls}
       currentTime={currentTime}
       duration={duration}
-      isPlaying={isPlaying}
       playbackRate={playbackRate}
       muted={muted}
       volume={volume}
@@ -127,7 +148,6 @@ export function RoomVideoPlayer({
       statusText={statusText}
       isLive={isLive}
       onScrub={onScrub}
-      onTogglePlay={onTogglePlay}
       onSeekBy={onSeekBy}
       onPlaybackRateChange={onPlaybackRateChange}
       onToggleMute={onToggleMute}
@@ -147,20 +167,21 @@ export function RoomVideoPlayer({
         <div className="room-video-player__stage">
           {mediaSrc !== null && (
             <video
+              key={videoKey ?? mediaSrc}
               ref={videoRef}
               className="room-video-player__video"
               src={mediaSrc}
-              crossOrigin="use-credentials"
               onClick={handleStageClick}
               onTimeUpdate={onTimeUpdate}
               onLoadedMetadata={onLoadedMetadata}
+              onLoadedData={onLoadedData}
               onPlay={onPlay}
               onPause={onPause}
               onEnded={onEnded}
               onCanPlay={onCanPlay}
               onError={onVideoError}
               playsInline
-              preload="metadata"
+              preload="auto"
             />
           )}
 
@@ -210,7 +231,19 @@ export function RoomVideoPlayer({
             </div>
           )}
 
-          {mediaSrc !== null && !videoReady && !videoError && (
+          {showAwaitingHostOverlay && (
+            <MovieAwaitingHostOverlay
+              movieName={awaitingHostMovieName}
+              loading={awaitingHostLoading}
+              isHost={isHostViewer}
+            />
+          )}
+
+          {mediaSrc !== null &&
+            !videoReady &&
+            !videoError &&
+            currentTime === 0 &&
+            !showAwaitingHostOverlay && (
             <div className="room-video-player__overlay room-video-player__overlay--loading">Loading video…</div>
           )}
 

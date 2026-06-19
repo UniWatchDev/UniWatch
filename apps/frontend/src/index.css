@@ -34,9 +34,9 @@
   --status-watching-text: #1b263b;
   --status-watching-border: rgba(65, 90, 119, 0.35);
 
-  --status-preparing-bg: rgba(119, 141, 169, 0.16);
-  --status-preparing-text: #415a77;
-  --status-preparing-border: rgba(119, 141, 169, 0.40);
+  --status-waiting-bg: rgba(245, 158, 11, 0.14);
+  --status-waiting-text: #f59e0b;
+  --status-waiting-border: rgba(245, 158, 11, 0.38);
 
   --status-ready-bg: rgba(34, 197, 94, 0.12);
   --status-ready-text: #15803d;
@@ -341,10 +341,10 @@ textarea.input {
   color: var(--status-watching-text);
   border: 1px solid var(--status-watching-border);
 }
-.badge-preparing {
-  background: var(--status-preparing-bg);
-  color: var(--status-preparing-text);
-  border: 1px solid var(--status-preparing-border);
+.badge-waiting {
+  background: var(--status-waiting-bg);
+  color: var(--status-waiting-text);
+  border: 1px solid var(--status-waiting-border);
 }
 .badge-ready {
   background: var(--status-ready-bg);
@@ -409,7 +409,7 @@ textarea.input {
   100% { transform: scale(0.85); opacity: 0; }
 }
 .countdown-digit {
-  animation: countdown-pop 1s ease forwards;
+  animation: countdown-pop 0.4s ease forwards;
 }
 
 /* ── Animations ─────────────────────────────────────────────── */
@@ -1242,7 +1242,7 @@ textarea.input {
 
 /* ── Room card top accent line ──────────────────────────────── */
 .room-card-watching { border-top: 2px solid var(--status-watching-text); }
-.room-card-preparing { border-top: 2px solid var(--status-preparing-text); }
+.room-card-waiting { border-top: 2px solid var(--status-waiting-text); }
 .room-card-ready { border-top: 2px solid var(--status-ready-text); }
 
 /* ── Video controls ─────────────────────────────────────────── */
@@ -1450,9 +1450,9 @@ input[type='range']::-moz-range-thumb {
   --status-watching-text: #fb923c;
   --status-watching-border: rgba(249, 115, 22, 0.4);
 
-  --status-preparing-bg: rgba(245, 158, 11, 0.15);
-  --status-preparing-text: #fbbf24;
-  --status-preparing-border: rgba(245, 158, 11, 0.4);
+  --status-waiting-bg: rgba(245, 158, 11, 0.15);
+  --status-waiting-text: #fbbf24;
+  --status-waiting-border: rgba(245, 158, 11, 0.4);
 
   --status-ready-bg: rgba(34, 197, 94, 0.15);
   --status-ready-text: #4ade80;
@@ -1511,6 +1511,48 @@ input[type='range']::-moz-range-thumb {
   overflow: hidden;
 }
 
+@media (max-width: 1100px) {
+  .room-main {
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .room-player-column {
+    flex: none;
+    border-right: none;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .room-video-area {
+    flex: none;
+    aspect-ratio: auto;
+  }
+
+  .room-video-area .room-video-player {
+    flex: none;
+    width: 100%;
+  }
+
+  .room-video-area .room-video-player__body {
+    flex: none;
+  }
+
+  .room-video-area .room-video-player__stage {
+    aspect-ratio: 16 / 9;
+    flex: none;
+    height: auto;
+    width: 100%;
+  }
+
+  .room-sidebar {
+    width: 100%;
+    flex: none;
+    min-height: 260px;
+    border-left: none;
+    border-top: 1px solid var(--border-subtle);
+  }
+}
+
 /* ── Responsive breakpoints ──────────────────────────────────── */
 
 /* Mobile — up to 767px */
@@ -1548,46 +1590,6 @@ input[type='range']::-moz-range-thumb {
   .nav-sign-out svg {
     width: 22px;
     height: 22px;
-  }
-
-  /* Room: stack video + sidebar vertically */
-  .room-main {
-    flex-direction: column;
-    overflow-y: auto;
-  }
-  .room-player-column {
-    flex: none;
-    border-right: none;
-    border-bottom: 1px solid var(--border-subtle);
-  }
-  /* Let the area grow naturally — aspect-ratio moves to the stage */
-  .room-video-area {
-    flex: none;
-    aspect-ratio: auto;
-  }
-  /* The player chain becomes natural height on mobile */
-  .room-video-area .room-video-player {
-    flex: none;
-    width: 100%;
-  }
-  .room-video-area .room-video-player__body {
-    flex: none;
-  }
-  /* Stage gets the 16:9 ratio so controls sit below it, not inside it */
-  .room-video-area .room-video-player__stage {
-    aspect-ratio: 16 / 9;
-    flex: none;
-    height: auto;
-    width: 100%;
-  }
-  /* Sidebar fills the remaining viewport height */
-  .room-sidebar {
-    width: 100%;
-    flex: 1;
-    min-height: 200px;
-    height: auto;
-    border-left: none;
-    border-top: 1px solid var(--border-subtle);
   }
 
   /* Room top bar */
