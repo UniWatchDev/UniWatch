@@ -39,7 +39,7 @@ describe('RoomModerationService', () => {
   beforeEach(() => {
     roomState = new RoomStateService();
     countdown = new PlaybackCountdownService(roomState);
-    broadcast = new RealtimeBroadcastService(roomState, countdown);
+    broadcast = new RealtimeBroadcastService(roomState, countdown, rooms as unknown as RoomRepository);
     rooms = {
       findOneAccessibleById: jest.fn(),
       setStatus: jest.fn(),

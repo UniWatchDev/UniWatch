@@ -14,6 +14,7 @@ import {
   type RealtimeBroadcastPort
 } from '@/realtime/realtime.broadcast-port';
 import { RoomStateService } from '@/realtime/services/room-state.service';
+import { RoomMovieChangeService } from '@/realtime/services/room-movie-change.service';
 import { RoomRepository } from '@/rooms/room.repository';
 import type { Env } from '@/utils/env.validation';
 
@@ -73,7 +74,8 @@ export class RoomsService {
     private readonly config: ConfigService<Env, true>,
     private readonly roomState: RoomStateService,
     @Inject(REALTIME_BROADCAST_PORT)
-    private readonly realtime: RealtimeBroadcastPort
+    private readonly realtime: RealtimeBroadcastPort,
+    private readonly movieChange: RoomMovieChangeService
   ) {}
 
   async list(): Promise<RoomResponse[]> {
@@ -143,12 +145,6 @@ export class RoomsService {
     if (data.movie_name !== undefined) patch['movie_name'] = data.movie_name;
     if (data.movie_description !== undefined) patch['movie_description'] = data.movie_description;
     if (data.deactivate_at !== undefined) patch['deactivate_at'] = new Date(data.deactivate_at);
-    const roomBeforeUpdate =
-      data.movie !== undefined || data.movie_name !== undefined || data.movie_description !== undefined
-        ? await this.rooms.findRawById(id)
-        : null;
-    const previousMovieId =
-      roomBeforeUpdate?.movie != null ? refToId(roomBeforeUpdate.movie as RefLike) : null;
     if (data.movie !== undefined) {
       const movie = await this.movies.get(data.movie, userId);
       patch['movie'] = new Types.ObjectId(data.movie);
@@ -168,32 +164,30 @@ export class RoomsService {
         data.movie !== undefined ||
         data.movie_name !== undefined ||
         data.movie_description !== undefined;
-      const movieChanged = data.movie !== undefined && previousMovieId !== updatedMovieId;
-
       if (shouldBroadcastMovieRefresh) {
         const roomId = doc._id.toString();
         if (updatedMovieId != null) {
-          const previousPlayback = this.roomState.get(roomId)?.playback ?? null;
-          if (movieChanged) {
-            this.roomState.syncMovie(roomId, updatedMovieId);
-            this.roomState.setAllUsersReady(roomId, false);
-            this.realtime.clearCountdown(roomId);
-            if (previousPlayback?.isPlaying) {
-              this.roomState.updatePlayback(roomId, {
-                movieId: updatedMovieId,
-                isPlaying: true,
-                positionSec: 0,
-                playbackRate: previousPlayback.playbackRate
-              });
-            }
+          if (data.movie !== undefined) {
+            const creatorId = doc.creator.toString();
+            const creatorDoc = doc.creator as unknown as PopulatedUser | null | undefined;
+            await this.movieChange.applyMovieChange(roomId, updatedMovieId, {
+              actorUserId: userId,
+              actorUserName: creatorDoc?.userName ?? creatorDoc?.firstName ?? 'Host',
+              creatorId,
+              movieName: doc.movie_name ?? null
+            });
+          } else {
+            const creatorId = doc.creator.toString();
+            const status = this.roomState.syncStatus(roomId, creatorId);
+            await this.rooms.setStatus(roomId, status);
+            this.realtime.emitRoomMovieUpdated(
+              roomId,
+              updatedMovieId,
+              doc.movie_name ?? undefined
+            );
+            this.realtime.emitRoomPlaybackChanged(roomId, null);
+            this.realtime.emitRoomState(roomId);
           }
-
-          const creatorId = doc.creator.toString();
-          const status = this.roomState.syncStatus(roomId, creatorId);
-          await this.rooms.setStatus(roomId, status);
-          this.realtime.emitRoomMovieUpdated(roomId, updatedMovieId);
-          this.realtime.emitRoomPlaybackChanged(roomId, null);
-          this.realtime.emitRoomState(roomId);
         }
       }
 
@@ -275,7 +269,7 @@ export class RoomsService {
       throw new ForbiddenException('The room creator cannot leave their own room');
     }
 
-    this.realtime.removeRoomMember(id, userId);
+    await this.realtime.removeRoomMember(id, userId);
     await this.rooms.removeUser(id, new Types.ObjectId(userId));
     const updated = await this.rooms.findRawById(id);
     if (updated && safeIds(updated.allowed_users).length === 0) {

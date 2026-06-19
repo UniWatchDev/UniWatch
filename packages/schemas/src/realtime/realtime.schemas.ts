@@ -102,7 +102,9 @@ export const roomPlaybackUpdatePayloadSchema = z.strictObject({
   isPlaying: z.boolean(),
   positionSec: z.number().nonnegative(),
   playbackRate: z.number().positive(),
-  force: z.boolean().optional()
+  force: z.boolean().optional(),
+  /** When true with isPlaying:false, resets the watch session (position 0, all unready). */
+  ended: z.boolean().optional()
 });
 
 export type RoomPlaybackUpdatePayload = z.infer<typeof roomPlaybackUpdatePayloadSchema>;
@@ -145,9 +147,20 @@ export const roomStateEventSchema = z.object({
 
 export type RoomStateEvent = z.infer<typeof roomStateEventSchema>;
 
+/** Slim presence update — no playback or chat history (avoids join/leave stutter). */
+export const roomPresenceChangedEventSchema = z.object({
+  roomId: z.string(),
+  status: roomStatusSchema,
+  connectedUsers: z.array(connectedUserSchema),
+  countdown: countdownStateSchema
+});
+
+export type RoomPresenceChangedEvent = z.infer<typeof roomPresenceChangedEventSchema>;
+
 export const roomMovieUpdatedEventSchema = z.strictObject({
   roomId: z.string(),
-  movieId: z.string()
+  movieId: z.string(),
+  movieName: z.string().optional()
 });
 
 export type RoomMovieUpdatedEvent = z.infer<typeof roomMovieUpdatedEventSchema>;

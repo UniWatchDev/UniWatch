@@ -9,6 +9,7 @@ import { RealtimeGateway } from './realtime.gateway';
 import { ConnectionRegistryService } from './services/connection-registry.service';
 import { PlaybackCountdownService } from './services/playback-countdown.service';
 import { RealtimeBroadcastService } from './services/realtime-broadcast.service';
+import { RoomMovieChangeService } from './services/room-movie-change.service';
 import { RoomModerationService } from './services/room-moderation.service';
 import { RoomStateService } from './services/room-state.service';
 import { SocketAuthService } from './services/socket-auth.service';
@@ -23,10 +24,11 @@ import { WsAuthGuard } from './ws-auth.guard';
     ConnectionRegistryService,
     PlaybackCountdownService,
     RealtimeBroadcastService,
+    RoomMovieChangeService,
     RoomModerationService,
     WsAuthGuard,
     { provide: REALTIME_BROADCAST_PORT, useExisting: RealtimeBroadcastService }
   ],
-  exports: [RoomStateService, REALTIME_BROADCAST_PORT]
+  exports: [RoomStateService, REALTIME_BROADCAST_PORT, RoomMovieChangeService]
 })
 export class RealtimeModule {}

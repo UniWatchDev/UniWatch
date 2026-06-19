@@ -14,6 +14,7 @@ import {
   roomMovieUpdatedPayloadSchema,
   roomPlaybackChangedEventSchema,
   roomPlaybackUpdatePayloadSchema,
+  roomPresenceChangedEventSchema,
   roomReadyUpdatePayloadSchema,
   roomStateEventSchema,
   sendMessagePayloadSchema,
@@ -21,6 +22,7 @@ import {
   userLeftEventSchema
 } from '@repo/schemas/realtime';
 import type { RoomStatus } from '@repo/schemas/rooms';
+import { shouldUnfreezePlaybackFromRoomState } from '@repo/schemas/realtime/playback-sync';
 import type { ChatMessage, Member } from '@/types/room';
 
 export type SocketStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
@@ -36,7 +38,7 @@ interface UseRoomSocketOptions {
   creatorId: string;
   creatorName: string | undefined;
   initialMemberIds: string[];
-  onMovieUpdated?: (movieId: string) => void;
+  onMovieUpdated?: (movieId: string, movieName?: string) => void;
   onPlaybackChanged?: (event: PlaybackChangeEvent) => void;
 }
 
@@ -57,6 +59,8 @@ interface UseRoomSocketReturn {
   sendPlaybackUpdate: (playback: PlaybackUpdateInput) => void;
   sendKickUser: (targetUserId: string) => void;
   sendBlockUser: (targetUserId: string) => void;
+  playbackEpoch: number;
+  connectionGeneration: number;
 }
 
 interface PlaybackUpdateInput {
@@ -65,6 +69,7 @@ interface PlaybackUpdateInput {
   positionSec: number;
   playbackRate: number;
   force?: boolean;
+  ended?: boolean;
 }
 
 const FALLBACK_AVATAR_PALETTE = ['#f97316', '#38bdf8', '#a78bfa', '#4ade80', '#fb923c', '#f472b6'];
@@ -114,6 +119,8 @@ export function useRoomSocket({
   );
   const [socketStatus, setSocketStatus] = useState<SocketStatus>('connecting');
   const [roomError, setRoomError] = useState<string | null>(null);
+  const [playbackEpoch, setPlaybackEpoch] = useState(0);
+  const [connectionGeneration, setConnectionGeneration] = useState(0);
   const [roomState, setRoomState] = useState<UseRoomSocketReturn['roomState']>(() => ({
     status: 'waiting',
     countdown: { active: false, endsAt: null },
@@ -183,8 +190,39 @@ export function useRoomSocket({
     [onPlaybackChanged]
   );
 
+  const bumpPlaybackEpoch = useCallback(() => {
+    setPlaybackEpoch((epoch) => epoch + 1);
+  }, []);
+
   useEffect(() => {
     if (disabled || !roomId) return;
+
+    // Only seed playback from the first room:state per connection; later room:state
+    // events carry presence/countdown updates without touching playback unless the
+    // server signals a meaningful playback change (countdown end, isPlaying flip, drift).
+    let hasInitialSnapshot = false;
+
+    const mapConnectedUsers = (
+      users: Array<{ userId: string; userName: string; color: string; isReady: boolean }>
+    ): Member[] =>
+      users.map((u) => ({
+        ...memberFromId(u.userId, u.userId === creatorId, u.userName, u.color),
+        isReady: u.isReady
+      }));
+
+    const applyPresence = (payload: {
+      status: RoomStatus;
+      connectedUsers: Array<{ userId: string; userName: string; color: string; isReady: boolean }>;
+      countdown: CountdownState;
+    }): void => {
+      setRoomState((prev) => ({
+        ...prev,
+        status: payload.status,
+        countdown: payload.countdown,
+        connectedUsers: mapConnectedUsers(payload.connectedUsers)
+      }));
+      setMembers(mapConnectedUsers(payload.connectedUsers));
+    };
 
     const socket = io(API_BASE_URL, {
       withCredentials: true,
@@ -209,6 +247,7 @@ export function useRoomSocket({
     // gateway re-runs handleConnection per connection. Re-emitting room:join here
     // is what restores room membership after a dropped socket reconnects.
     socket.on(REALTIME_SERVER_EVENTS.connectionAck, () => {
+      setConnectionGeneration((gen) => gen + 1);
       socket.emit(REALTIME_CLIENT_EVENTS.join, joinRoomPayloadSchema.parse({ roomId }));
     });
 
@@ -225,23 +264,33 @@ export function useRoomSocket({
       }
 
       setRoomError(null);
-      setRoomState({
-        status: parsed.data.status,
-        countdown: parsed.data.countdown,
-        playback: parsed.data.playback,
-        connectedUsers: parsed.data.connectedUsers.map((u) => ({
-          ...memberFromId(u.userId, u.userId === creatorId, u.userName, u.color),
-          isReady: u.isReady
-        }))
+      const bumpAfterStateRef = { current: false };
+      setRoomState((prev) => {
+        const nextPlayback = hasInitialSnapshot
+          ? shouldUnfreezePlaybackFromRoomState(
+              prev.playback,
+              parsed.data.playback,
+              prev.countdown.active,
+              parsed.data.countdown.active
+            )
+            ? parsed.data.playback
+            : prev.playback
+          : parsed.data.playback;
+        if (hasInitialSnapshot && nextPlayback !== prev.playback) {
+          bumpAfterStateRef.current = true;
+        }
+        return {
+          status: parsed.data.status,
+          countdown: parsed.data.countdown,
+          playback: nextPlayback,
+          connectedUsers: mapConnectedUsers(parsed.data.connectedUsers)
+        };
       });
-      setMembers(
-        parsed.data.connectedUsers.map((u) =>
-          ({
-            ...memberFromId(u.userId, u.userId === creatorId, u.userName, u.color),
-            isReady: u.isReady
-          })
-        )
-      );
+      if (bumpAfterStateRef.current) {
+        bumpPlaybackEpoch();
+      }
+      hasInitialSnapshot = true;
+      setMembers(mapConnectedUsers(parsed.data.connectedUsers));
       setMessages(
         parsed.data.messages.map((m) => ({
           id: m.id,
@@ -253,6 +302,16 @@ export function useRoomSocket({
         }))
       );
       setSocketStatus('connected');
+    });
+
+    socket.on(REALTIME_SERVER_EVENTS.presenceChanged, (data: unknown) => {
+      const parsed = roomPresenceChangedEventSchema.safeParse(data);
+      if (!parsed.success) {
+        console.error('[room:socket]', 'Invalid room:presence-changed payload');
+        return;
+      }
+
+      applyPresence(parsed.data);
     });
 
     socket.on(REALTIME_SERVER_EVENTS.messageReceived, (data: unknown) => {
@@ -328,7 +387,7 @@ export function useRoomSocket({
         return;
       }
 
-      onMovieUpdated?.(parsed.data.movieId);
+      onMovieUpdated?.(parsed.data.movieId, parsed.data.movieName);
     });
 
     socket.on(REALTIME_SERVER_EVENTS.playbackChanged, (data: unknown) => {
@@ -338,10 +397,14 @@ export function useRoomSocket({
         return;
       }
 
+      const countdownComplete =
+        parsed.data.actorUserId === null && parsed.data.playback.isPlaying;
       setRoomState((prev) => ({
         ...prev,
-        playback: parsed.data.playback
+        playback: parsed.data.playback,
+        countdown: countdownComplete ? { active: false, endsAt: null } : prev.countdown
       }));
+      bumpPlaybackEpoch();
       pushPlaybackChange({ actorUserId: parsed.data.actorUserId, playback: parsed.data.playback });
     });
 
@@ -350,7 +413,7 @@ export function useRoomSocket({
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [roomId, disabled, creatorId, onMovieUpdated, pushPlaybackChange]);
+  }, [roomId, disabled, creatorId, onMovieUpdated, pushPlaybackChange, bumpPlaybackEpoch]);
 
   return {
     messages,
@@ -363,7 +426,9 @@ export function useRoomSocket({
     sendMovieUpdated,
     sendPlaybackUpdate,
     sendKickUser,
-    sendBlockUser
+    sendBlockUser,
+    playbackEpoch,
+    connectionGeneration
   };
 }
 

@@ -15,6 +15,7 @@ export const REALTIME_CLIENT_EVENTS = {
 export const REALTIME_SERVER_EVENTS = {
   connectionAck: 'connection:ack',
   roomState: 'room:state',
+  presenceChanged: 'room:presence-changed',
   userJoined: 'room:user-joined',
   userLeft: 'room:user-left',
   messageReceived: 'room:message-received',

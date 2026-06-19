@@ -409,7 +409,7 @@ textarea.input {
   100% { transform: scale(0.85); opacity: 0; }
 }
 .countdown-digit {
-  animation: countdown-pop 1s ease forwards;
+  animation: countdown-pop 0.4s ease forwards;
 }
 
 /* ── Animations ─────────────────────────────────────────────── */

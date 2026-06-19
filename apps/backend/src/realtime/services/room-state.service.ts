@@ -95,6 +95,39 @@ export class RoomStateService {
     return user;
   }
 
+  /** Pause playback and clear countdown before the last member leaves an active watch. */
+  prepareEmptyRoom(roomId: string): void {
+    const state = this.roomStates.get(roomId);
+    if (!state) {
+      return;
+    }
+    if (state.playback.isPlaying) {
+      this.resetPlaybackSession(roomId);
+      return;
+    }
+    this.clearCountdown(roomId);
+  }
+
+  isLastSocketLeave(roomId: string, socketId: string): boolean {
+    const state = this.roomStates.get(roomId);
+    if (!state) {
+      return false;
+    }
+    const user = state.connectedUsers.find((entry) => entry.socketIds.includes(socketId));
+    if (user === undefined || user.socketIds.length !== 1) {
+      return false;
+    }
+    return state.connectedUsers.length === 1;
+  }
+
+  isLastUserLeave(roomId: string, userId: string): boolean {
+    const state = this.roomStates.get(roomId);
+    if (!state || state.connectedUsers.length !== 1) {
+      return false;
+    }
+    return state.connectedUsers[0]?.userId === userId;
+  }
+
   /**
    * Remove a socket from a room, deleting the room when it becomes empty.
    * Returns `null` when the room has no runtime state.
@@ -217,6 +250,23 @@ export class RoomStateService {
       updatedAt: new Date().toISOString()
     };
     return state.playback;
+  }
+
+  /** End-of-watch reset: paused at t=0 and everyone marked not ready. */
+  resetPlaybackSession(roomId: string): PlaybackState | null {
+    const state = this.roomStates.get(roomId);
+    if (!state || state.playback.movieId === null) {
+      return null;
+    }
+
+    this.clearCountdown(roomId);
+    this.setAllUsersReady(roomId, false);
+    return this.updatePlayback(roomId, {
+      movieId: state.playback.movieId,
+      isPlaying: false,
+      positionSec: 0,
+      playbackRate: 1
+    });
   }
 
   getMaterializedPlayback(roomId: string, at = new Date()): PlaybackState {

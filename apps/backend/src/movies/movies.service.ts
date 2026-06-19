@@ -192,15 +192,10 @@ export class MoviesService {
 
     const storageKey = `movies/${ownerId}/${id}/${randomUUID()}${extensionForMovieMime(resolvedMime)}`;
     const thumbnailKey = `movies/${ownerId}/${id}/${randomUUID()}.svg`;
+    const previousStorageKey = doc.storage_key;
+    const previousThumbnailKey = doc.thumbnail_key;
 
     try {
-      if (doc.storage_key != null) {
-        await this.storage.deleteObject(doc.storage_key).catch(() => undefined);
-      }
-      if (doc.thumbnail_key != null) {
-        await this.storage.deleteObject(doc.thumbnail_key).catch(() => undefined);
-      }
-
       const stream = createReadStream(file.path);
       await this.storage.putObject({
         key: storageKey,
@@ -228,8 +223,18 @@ export class MoviesService {
         file_purge_at: null
       });
       if (!updated) {
+        await this.storage.deleteObject(storageKey).catch(() => undefined);
+        await this.storage.deleteObject(thumbnailKey).catch(() => undefined);
         throw new NotFoundException(`Movie "${id}" not found`);
       }
+
+      if (previousStorageKey != null && previousStorageKey !== storageKey) {
+        await this.storage.deleteObject(previousStorageKey).catch(() => undefined);
+      }
+      if (previousThumbnailKey != null && previousThumbnailKey !== thumbnailKey) {
+        await this.storage.deleteObject(previousThumbnailKey).catch(() => undefined);
+      }
+
       return toResponse(updated);
     } catch (error) {
       await this.movies.update(id, ownerId, { upload_status: MovieUploadStatus.FAILED });
@@ -356,12 +361,31 @@ export class MoviesService {
 
   private async userHasRoomAccessToMovie(movieId: string, userId: string): Promise<boolean> {
     const uid = new Types.ObjectId(userId);
-    const room = await this.roomModel.findOne({
-      movie: new Types.ObjectId(movieId),
+    const movieOid = new Types.ObjectId(movieId);
+
+    const roomWithMovie = await this.roomModel.findOne({
+      movie: movieOid,
       deleted_at: null,
       $or: [{ creator: uid }, { allowed_users: uid }]
     });
-    return room != null;
+    if (roomWithMovie != null) {
+      return true;
+    }
+
+    // During a mid-session swap, socket playback can reference the new movie id
+    // before every reader sees the updated room.movie field. Room members may
+    // stream any movie owned by their room host while in that session.
+    const movie = await this.movies.findById(movieId);
+    if (!movie || movie.deleted_at) {
+      return false;
+    }
+
+    const hostRoom = await this.roomModel.findOne({
+      creator: movie.ownerId,
+      deleted_at: null,
+      $or: [{ creator: uid }, { allowed_users: uid }]
+    });
+    return hostRoom != null;
   }
 
   private async assertExistsAndOwnedOrThrow(id: string): Promise<never> {

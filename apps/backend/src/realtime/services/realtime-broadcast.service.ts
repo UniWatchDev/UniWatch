@@ -4,6 +4,7 @@ import type { Server, Socket } from 'socket.io';
 import { REALTIME_SERVER_EVENTS } from '@repo/consts/realtime';
 import type {
   RealtimeChatMessage,
+  RoomPresenceChangedEvent,
   RoomStateEvent,
   UserJoinedEvent
 } from '@repo/schemas/realtime';
@@ -11,6 +12,7 @@ import type {
 import type { RealtimeBroadcastPort } from '@/realtime/realtime.broadcast-port';
 import { PlaybackCountdownService } from '@/realtime/services/playback-countdown.service';
 import { RoomStateService } from '@/realtime/services/room-state.service';
+import { RoomRepository } from '@/rooms/room.repository';
 
 /**
  * Single owner of every outbound socket write. Wraps the Socket.IO server so
@@ -24,7 +26,8 @@ export class RealtimeBroadcastService implements RealtimeBroadcastPort {
 
   constructor(
     private readonly roomState: RoomStateService,
-    private readonly countdown: PlaybackCountdownService
+    private readonly countdown: PlaybackCountdownService,
+    private readonly rooms: RoomRepository
   ) {}
 
   bind(server: Server): void {
@@ -59,12 +62,30 @@ export class RealtimeBroadcastService implements RealtimeBroadcastPort {
     };
   }
 
+  buildRoomPresence(roomId: string): RoomPresenceChangedEvent {
+    const state = this.roomState.getOrCreate(roomId);
+    return {
+      roomId,
+      status: state.status,
+      connectedUsers: state.connectedUsers,
+      countdown: state.countdown
+    };
+  }
+
   emitRoomState(roomId: string): void {
     this.emitToRoom(roomId, REALTIME_SERVER_EVENTS.roomState, this.buildRoomState(roomId));
   }
 
-  emitRoomMovieUpdated(roomId: string, movieId: string): void {
-    this.emitToRoom(roomId, REALTIME_SERVER_EVENTS.movieUpdated, { roomId, movieId });
+  emitRoomPresenceChanged(roomId: string): void {
+    this.emitToRoom(roomId, REALTIME_SERVER_EVENTS.presenceChanged, this.buildRoomPresence(roomId));
+  }
+
+  emitRoomMovieUpdated(roomId: string, movieId: string, movieName?: string): void {
+    this.emitToRoom(roomId, REALTIME_SERVER_EVENTS.movieUpdated, {
+      roomId,
+      movieId,
+      ...(movieName !== undefined ? { movieName } : {})
+    });
   }
 
   emitRoomPlaybackChanged(roomId: string, actorUserId: string | null): void {
@@ -91,11 +112,19 @@ export class RealtimeBroadcastService implements RealtimeBroadcastPort {
     this.countdown.cancel(roomId);
   }
 
-  removeRoomMember(roomId: string, userId: string): void {
-    if (!this.roomState.get(roomId)) return;
+  async removeRoomMember(roomId: string, userId: string): Promise<void> {
+    if (!this.roomState.get(roomId)) {
+      return;
+    }
+
+    if (this.roomState.isLastUserLeave(roomId, userId)) {
+      this.roomState.prepareEmptyRoom(roomId);
+    }
 
     const result = this.roomState.removeUser(roomId, userId);
-    if (!result) return;
+    if (!result) {
+      return;
+    }
 
     for (const socketId of result.socketIds) {
       const socket = this.getSocket(socketId);
@@ -107,10 +136,12 @@ export class RealtimeBroadcastService implements RealtimeBroadcastPort {
     this.emitUserLeft(roomId, userId);
 
     if (this.roomState.get(roomId)) {
-      this.emitRoomState(roomId);
-    } else {
-      this.countdown.cancel(roomId);
+      this.emitRoomPresenceChanged(roomId);
+      return;
     }
+
+    this.countdown.cancel(roomId);
+    await this.rooms.setStatus(roomId, 'waiting');
   }
 
   private requireServer(): Server {

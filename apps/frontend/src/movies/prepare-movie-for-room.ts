@@ -5,10 +5,6 @@ import type { CreateMovieInput, MovieResponse } from '@repo/schemas/movies';
 import { readHttpErrorMessage } from '@/auth/auth-fetch-helpers';
 import { uploadMovieFile, type UploadProgress } from '@/movies/upload-movie-file';
 
-export function shouldReplaceMovieFile(movie: MovieResponse): boolean {
-  return movie.has_file || movie.upload_status === 'ready';
-}
-
 /** Resolve or create a movie, then upload the video file for room creation. */
 export async function prepareMovieForRoom(
   body: CreateMovieInput,
@@ -29,7 +25,7 @@ export async function prepareMovieForRoom(
 
   const movie = resolveMovieContract.responseSchema.parse(await resolveRes.json());
   return uploadMovieFile(movie.id, file, {
-    replace: shouldReplaceMovieFile(movie),
+    replace: true,
     ...(options?.onProgress !== undefined && { onProgress: options.onProgress }),
   });
 }

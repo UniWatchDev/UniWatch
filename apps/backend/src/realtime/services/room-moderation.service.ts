@@ -61,8 +61,10 @@ export class RoomModerationService {
 
     if (!this.roomState.get(roomId)) {
       this.broadcast.clearCountdown(roomId);
+    } else {
+      await this.syncStatus(roomId, creatorId);
+      this.broadcast.emitRoomPresenceChanged(roomId);
     }
-    await this.syncStatus(roomId, creatorId);
   }
 
   private collectUserSocketIds(roomId: string, targetUserId: string): string[] {

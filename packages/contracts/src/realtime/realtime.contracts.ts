@@ -9,6 +9,7 @@ import {
   roomMovieUpdatedPayloadSchema,
   roomPlaybackChangedEventSchema,
   roomPlaybackUpdatePayloadSchema,
+  roomPresenceChangedEventSchema,
   roomReadyUpdatePayloadSchema,
   roomStateEventSchema,
   sendMessagePayloadSchema,
@@ -23,6 +24,7 @@ import {
   type RoomMovieUpdatedPayload,
   type RoomPlaybackChangedEvent,
   type RoomPlaybackUpdatePayload,
+  type RoomPresenceChangedEvent,
   type RoomReadyUpdatePayload,
   type RoomStateEvent,
   type SendMessagePayload,
@@ -107,6 +109,12 @@ export const roomStateContract: SocketEventContract<RoomStateEvent> = {
   event: REALTIME_SERVER_EVENTS.roomState,
   direction: 'server-to-client',
   payloadSchema: roomStateEventSchema
+};
+
+export const presenceChangedContract: SocketEventContract<RoomPresenceChangedEvent> = {
+  event: REALTIME_SERVER_EVENTS.presenceChanged,
+  direction: 'server-to-client',
+  payloadSchema: roomPresenceChangedEventSchema
 };
 
 export const userJoinedContract: SocketEventContract<UserJoinedEvent> = {

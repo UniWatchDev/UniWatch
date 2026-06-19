@@ -6,7 +6,8 @@ import type { MovieResponse } from '@repo/schemas/movies';
 
 import { readHttpErrorMessage } from '@/auth/auth-fetch-helpers';
 
-const POLL_MS = 2_000;
+const UPLOAD_POLL_MS = 2_000;
+const STREAM_REFRESH_BUFFER_MS = 60_000;
 
 async function fetchRoomMovie(movieId: string): Promise<MovieResponse> {
   const params = getMovieContract.paramsSchema.parse({ id: movieId });
@@ -21,7 +22,7 @@ async function fetchRoomMovie(movieId: string): Promise<MovieResponse> {
   return getMovieContract.responseSchema.parse(await res.json());
 }
 
-async function fetchRoomMovieStreamUrl(movieId: string): Promise<string> {
+async function fetchStreamUrl(movieId: string): Promise<{ url: string; expiresAtMs: number }> {
   const params = streamMovieContract.paramsSchema.parse({ id: movieId });
   const path = streamMovieContract.path.replace(':id', encodeURIComponent(params.id));
   const res = await fetch(`${API_BASE_URL}${path}`, {
@@ -31,8 +32,11 @@ async function fetchRoomMovieStreamUrl(movieId: string): Promise<string> {
   if (!res.ok) {
     throw new Error(await readHttpErrorMessage(res));
   }
-  const data = streamMovieContract.responseSchema.parse(await res.json());
-  return data.url;
+  const body = streamMovieContract.responseSchema.parse(await res.json());
+  return {
+    url: body.url,
+    expiresAtMs: new Date(body.expires_at).getTime()
+  };
 }
 
 function isMoviePlayable(movie: MovieResponse): boolean {
@@ -47,13 +51,17 @@ function isCancelled(ref: { current: boolean }): boolean {
   return ref.current;
 }
 
-export function useRoomMovie(movieId: string | null | undefined) {
+export function useRoomMovie(
+  movieId: string | null | undefined,
+  streamRevision = 0
+) {
   const [movie, setMovie] = useState<MovieResponse | null>(null);
   const [mediaSrc, setMediaSrc] = useState<string | null>(null);
   const [loading, setLoading] = useState(Boolean(movieId));
   const [error, setError] = useState<string | null>(null);
   const cancelledRef = useRef(false);
   const inFlightRef = useRef(false);
+  const streamRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (movieId == null || movieId.length === 0) {
@@ -64,15 +72,52 @@ export function useRoomMovie(movieId: string | null | undefined) {
       return;
     }
 
-    let lastMovieSignature: string | null = null;
-    let currentMediaSrc: string | null = null;
-
     cancelledRef.current = false;
     inFlightRef.current = false;
     setMovie(null);
     setMediaSrc(null);
     setError(null);
     setLoading(true);
+
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+    const clearStreamRefresh = (): void => {
+      if (streamRefreshTimerRef.current !== null) {
+        clearTimeout(streamRefreshTimerRef.current);
+        streamRefreshTimerRef.current = null;
+      }
+    };
+
+    const stopPolling = (): void => {
+      if (pollTimer !== null) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
+    };
+
+    const scheduleStreamRefresh = (expiresAtMs: number): void => {
+      clearStreamRefresh();
+      const refreshInMs = Math.max(5_000, expiresAtMs - Date.now() - STREAM_REFRESH_BUFFER_MS);
+      streamRefreshTimerRef.current = setTimeout(() => {
+        void refreshStream();
+      }, refreshInMs);
+    };
+
+    const refreshStream = async (): Promise<void> => {
+      if (isCancelled(cancelledRef)) return;
+      try {
+        const stream = await fetchStreamUrl(movieId);
+        if (isCancelled(cancelledRef)) return;
+        setMediaSrc(stream.url);
+        setError(null);
+        scheduleStreamRefresh(stream.expiresAtMs);
+      } catch (err: unknown) {
+        if (!isCancelled(cancelledRef)) {
+          setError(err instanceof Error ? err.message : 'Failed to load stream URL');
+          setMediaSrc(null);
+        }
+      }
+    };
 
     const load = async () => {
       if (isCancelled(cancelledRef) || inFlightRef.current) return;
@@ -83,23 +128,13 @@ export function useRoomMovie(movieId: string | null | undefined) {
         if (isCancelled(cancelledRef)) return;
 
         setMovie(next);
-        const signature = `${next.file_uploaded_at ?? ''}:${next.updated_at}`;
         const playable = isMoviePlayable(next);
-        const shouldReloadStream = playable && (currentMediaSrc === null || signature !== lastMovieSignature);
 
-        if (playable && shouldReloadStream) {
-          const nextMediaSrc = await fetchRoomMovieStreamUrl(movieId);
-          if (isCancelled(cancelledRef)) return;
-          setMediaSrc(nextMediaSrc);
-          currentMediaSrc = nextMediaSrc;
-          lastMovieSignature = signature;
-          setError(null);
-        }
-
-        if (!playable) {
+        if (playable) {
+          stopPolling();
+          await refreshStream();
+        } else {
           setMediaSrc(null);
-          currentMediaSrc = null;
-          lastMovieSignature = null;
           setError(null);
         }
       } catch (err: unknown) {
@@ -115,17 +150,18 @@ export function useRoomMovie(movieId: string | null | undefined) {
       }
     };
 
-    const pollTimer = setInterval(() => {
+    pollTimer = setInterval(() => {
       void load();
-    }, POLL_MS);
+    }, UPLOAD_POLL_MS);
 
     void load();
 
     return () => {
       cancelledRef.current = true;
-      clearInterval(pollTimer);
+      stopPolling();
+      clearStreamRefresh();
     };
-  }, [movieId]);
+  }, [movieId, streamRevision]);
 
   return {
     movie,

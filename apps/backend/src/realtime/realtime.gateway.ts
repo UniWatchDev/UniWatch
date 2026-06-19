@@ -37,6 +37,7 @@ import type { SocketUserInfo } from '@/realtime/realtime.types';
 import { ConnectionRegistryService } from '@/realtime/services/connection-registry.service';
 import { PlaybackCountdownService } from '@/realtime/services/playback-countdown.service';
 import { RealtimeBroadcastService } from '@/realtime/services/realtime-broadcast.service';
+import { RoomMovieChangeService } from '@/realtime/services/room-movie-change.service';
 import { RoomModerationService } from '@/realtime/services/room-moderation.service';
 import { RoomStateService } from '@/realtime/services/room-state.service';
 import { SocketAuthService } from '@/realtime/services/socket-auth.service';
@@ -69,7 +70,8 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     private readonly registry: ConnectionRegistryService,
     private readonly countdown: PlaybackCountdownService,
     private readonly broadcast: RealtimeBroadcastService,
-    private readonly moderation: RoomModerationService
+    private readonly moderation: RoomModerationService,
+    private readonly movieChange: RoomMovieChangeService
   ) {}
 
   afterInit(server: Server): void {
@@ -117,6 +119,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     const existing = this.roomState.getOrCreate(roomId);
     const wasAlreadyConnected = existing.connectedUsers.some((entry) => entry.userId === user.userId);
     this.roomState.syncMovie(roomId, this.resolveRoomMovieId(room.movie));
+    this.clearOrphanCountdown(roomId);
     const joined = this.roomState.joinUser({
       roomId,
       userId: user.userId,
@@ -146,6 +149,9 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     @MessageBody(new ZodWsValidationPipe(leaveRoomPayloadSchema)) { roomId }: LeaveRoomPayload
   ): Promise<void> {
     const user = getAuthenticatedUser(socket);
+    if (this.roomState.isLastSocketLeave(roomId, socket.id)) {
+      this.roomState.prepareEmptyRoom(roomId);
+    }
     const result = this.roomState.removeSocket(roomId, socket.id);
     await socket.leave(roomId);
 
@@ -153,14 +159,18 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       this.broadcast.emitUserLeft(roomId, user.userId);
     }
     if (this.roomState.get(roomId)) {
-      this.broadcast.emitRoomState(roomId);
+      this.broadcast.emitRoomPresenceChanged(roomId);
     } else {
       this.countdown.cancel(roomId);
     }
 
     const room = await this.rooms.findRawById(roomId).catch(() => null);
     if (room != null) {
-      await this.syncRoomStatus(roomId, creatorRefToId(room.creator as CreatorRefLike));
+      if (!this.roomState.get(roomId)) {
+        await this.finalizeRoomWhenEmpty(roomId, creatorRefToId(room.creator as CreatorRefLike));
+      } else {
+        await this.syncRoomStatus(roomId, creatorRefToId(room.creator as CreatorRefLike));
+      }
     }
     this.logger.debug(`${user.userId} left room ${roomId}`);
   }
@@ -189,38 +199,12 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     this.assertInRoom(socket, roomId);
     const room = await this.assertRoomCreator(roomId, user.userId);
 
-    const currentPlayback = this.roomState.getOrCreate(roomId).playback;
-    const hasPendingStart = this.countdown.getPending(roomId) !== undefined;
-    this.roomState.syncMovie(roomId, movieId);
-    this.roomState.setAllUsersReady(roomId, false);
-
-    if (currentPlayback.isPlaying || hasPendingStart) {
-      this.countdown.setPending(roomId, {
-        movieId,
-        positionSec: 0,
-        playbackRate: currentPlayback.playbackRate
-      });
-      this.countdown.start(roomId, (id) => {
-        this.finishCountdown(id);
-      });
-      this.roomState.updatePlayback(roomId, {
-        movieId,
-        isPlaying: false,
-        positionSec: 0,
-        playbackRate: currentPlayback.playbackRate
-      });
-    } else {
-      this.countdown.cancel(roomId);
-    }
-
-    await this.syncRoomStatus(roomId, creatorRefToId(room.creator));
-
-    const message = this.buildMovieAnnouncement(roomId, socket.id, user, room);
-    this.roomState.addMessage(roomId, message);
-    this.broadcast.emitRoomMovieUpdated(roomId, movieId);
-    this.broadcast.emitRoomState(roomId);
-    this.broadcast.emitRoomPlaybackChanged(roomId, user.userId);
-    this.broadcast.emitMessage(roomId, message);
+    await this.movieChange.applyMovieChange(roomId, movieId, {
+      actorUserId: user.userId,
+      actorUserName: user.userName,
+      creatorId: creatorRefToId(room.creator) ?? user.userId,
+      movieName: room.movie_name ?? null
+    });
   }
 
   @SubscribeMessage(REALTIME_CLIENT_EVENTS.playbackUpdate)
@@ -230,19 +214,23 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     payload: RoomPlaybackUpdatePayload
   ): Promise<void> {
     const user = getAuthenticatedUser(socket);
-    const { roomId, movieId, isPlaying, positionSec, playbackRate, force } = payload;
+    const { roomId, movieId, isPlaying, positionSec, playbackRate, force, ended } = payload;
     this.assertInRoom(socket, roomId);
     const room = await this.assertRoomCreator(roomId, user.userId);
 
     const runtime = this.roomState.getOrCreate(roomId);
     const previousPlayback = runtime.playback;
-    if (this.resolveRoomMovieId(room.movie) !== movieId) {
+    if (!this.isAllowedPlaybackMovieId(runtime, room, movieId)) {
       throw new WsException('Forbidden');
     }
 
     if (!isPlaying) {
       this.countdown.cancel(roomId);
-      this.roomState.updatePlayback(roomId, { movieId, isPlaying: false, positionSec, playbackRate });
+      if (ended === true) {
+        this.roomState.resetPlaybackSession(roomId);
+      } else {
+        this.roomState.updatePlayback(roomId, { movieId, isPlaying: false, positionSec, playbackRate });
+      }
       await this.syncRoomStatus(roomId, creatorRefToId(room.creator));
       this.broadcast.emitRoomPlaybackChanged(roomId, user.userId);
       this.broadcast.emitRoomState(roomId);
@@ -253,18 +241,25 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       this.roomState.updatePlayback(roomId, { movieId, isPlaying: true, positionSec, playbackRate });
       this.countdown.cancel(roomId);
       await this.syncRoomStatus(roomId, creatorRefToId(room.creator));
-      this.broadcast.emitRoomPlaybackChanged(roomId, user.userId);
-      this.broadcast.emitRoomState(roomId);
+      // Keep server position fresh for joiners, but avoid room-wide playback broadcasts
+      // during continuous play — those cause viewers to seek/replay and stutter.
+      const rateChanged = previousPlayback.playbackRate !== playbackRate;
+      const seeked =
+        force === true ||
+        Math.abs(positionSec - previousPlayback.positionSec) > 1;
+      if (rateChanged || seeked) {
+        this.broadcast.emitRoomPlaybackChanged(roomId, user.userId);
+      }
       return;
     }
 
     this.assertPlaybackAllowed(roomId, runtime.connectedUsers.length, creatorRefToId(room.creator), force);
     this.countdown.setPending(roomId, { movieId, positionSec, playbackRate });
     this.countdown.start(roomId, (id) => {
-      this.finishCountdown(id);
+      this.movieChange.finishCountdown(id);
     });
     await this.syncRoomStatus(roomId, creatorRefToId(room.creator));
-    this.broadcast.emitRoomState(roomId);
+    this.broadcast.emitRoomPresenceChanged(roomId);
   }
 
   @SubscribeMessage(REALTIME_CLIENT_EVENTS.readyUpdate)
@@ -287,7 +282,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     }
 
     await this.syncRoomStatus(roomId, creatorRefToId(room.creator));
-    this.broadcast.emitRoomState(roomId);
+    this.broadcast.emitRoomPresenceChanged(roomId);
   }
 
   @SubscribeMessage(REALTIME_CLIENT_EVENTS.kickUser)
@@ -325,16 +320,31 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   }
 
   private removeSocketFromRoom(roomId: string, socketId: string, userId: string): void {
+    if (this.roomState.isLastSocketLeave(roomId, socketId)) {
+      this.roomState.prepareEmptyRoom(roomId);
+    }
     const result = this.roomState.removeSocket(roomId, socketId);
     if (result && !result.userStillConnected) {
       this.broadcast.emitUserLeft(roomId, userId);
     }
     if (this.roomState.get(roomId)) {
-      this.broadcast.emitRoomState(roomId);
-    } else {
+      this.broadcast.emitRoomPresenceChanged(roomId);
+      void this.syncRoomStatus(roomId);
+      return;
+    }
+    this.countdown.cancel(roomId);
+    void this.finalizeRoomWhenEmpty(roomId);
+  }
+
+  private async finalizeRoomWhenEmpty(roomId: string, creatorId: string | null = null): Promise<void> {
+    this.countdown.cancel(roomId);
+    await this.syncRoomStatus(roomId, creatorId);
+  }
+
+  private clearOrphanCountdown(roomId: string): void {
+    if (this.countdown.hasTimer(roomId) && this.countdown.getPending(roomId) === undefined) {
       this.countdown.cancel(roomId);
     }
-    void this.syncRoomStatus(roomId);
   }
 
   private assertPlaybackAllowed(
@@ -348,30 +358,6 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     if (!isSoloHost && !roomReady && force !== true) {
       throw new WsException('All users must be ready before playback starts.');
     }
-  }
-
-  private finishCountdown(roomId: string): void {
-    if (!this.roomState.get(roomId)) return;
-
-    const pending = this.countdown.getPending(roomId);
-    if (pending === undefined) {
-      this.roomState.clearCountdown(roomId);
-      void this.syncRoomStatus(roomId);
-      this.broadcast.emitRoomState(roomId);
-      return;
-    }
-
-    this.countdown.deletePending(roomId);
-    this.roomState.updatePlayback(roomId, {
-      movieId: pending.movieId,
-      isPlaying: true,
-      positionSec: pending.positionSec,
-      playbackRate: pending.playbackRate
-    });
-    this.roomState.clearCountdown(roomId);
-    void this.syncRoomStatus(roomId);
-    this.broadcast.emitRoomPlaybackChanged(roomId, null);
-    this.broadcast.emitRoomState(roomId);
   }
 
   private buildChatMessage(
@@ -390,20 +376,6 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       content,
       timestamp: new Date().toISOString()
     };
-  }
-
-  private buildMovieAnnouncement(
-    roomId: string,
-    socketId: string,
-    user: SocketUserInfo,
-    room: RoomDocument
-  ): RealtimeChatMessage {
-    const movieName = room.movie_name?.trim();
-    const content =
-      movieName !== undefined && movieName.length > 0
-        ? `Movie changed to "${movieName}". Waiting for the host to play it.`
-        : 'Movie changed. Waiting for the host to play it.';
-    return this.buildChatMessage(roomId, socketId, user, content);
   }
 
   private assertInRoom(socket: Socket, roomId: string): void {
@@ -427,6 +399,23 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       return String(movie._id);
     }
     return null;
+  }
+
+  /** Accept runtime playback movie id or persisted room.movie during mid-session swaps. */
+  private isAllowedPlaybackMovieId(
+    runtime: { playback: { movieId: string | null } },
+    room: RoomDocument,
+    movieId: string
+  ): boolean {
+    const allowed = new Set<string>();
+    const dbMovieId = this.resolveRoomMovieId(room.movie);
+    if (dbMovieId !== null) {
+      allowed.add(dbMovieId);
+    }
+    if (runtime.playback.movieId !== null) {
+      allowed.add(runtime.playback.movieId);
+    }
+    return allowed.has(movieId);
   }
 
   private hasDocumentId(value: unknown): value is { _id: unknown } {

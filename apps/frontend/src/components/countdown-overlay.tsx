@@ -9,7 +9,7 @@ interface CountdownOverlayProps {
   onComplete: () => void;
 }
 
-const STEPS = ['3', '2', '1', '🎬'] as const;
+const STEPS = ['3', '2', '1'] as const;
 type Step = (typeof STEPS)[number];
 const TICK_MS = 250;
 
@@ -43,8 +43,11 @@ export function CountdownOverlay({ members, endsAt, onComplete }: CountdownOverl
     }
   }, [hasEnded, onComplete]);
 
-  const digit: Step = STEPS[stepIndex] ?? '🎬';
-  const isFinal = digit === '🎬';
+  if (hasEnded) {
+    return null;
+  }
+
+  const digit: Step = STEPS[stepIndex] ?? '1';
 
   return (
     <div
@@ -55,27 +58,23 @@ export function CountdownOverlay({ members, endsAt, onComplete }: CountdownOverl
         pointerEvents: 'none'
       }}
     >
-      {!isFinal && (
-        <p
-          className="mb-4 font-mono text-xs uppercase tracking-[0.3em]"
-          style={{ color: 'var(--text-muted)' }}
-        >
-          Starting in
-        </p>
-      )}
+      <p
+        className="mb-4 font-mono text-xs uppercase tracking-[0.3em]"
+        style={{ color: 'var(--text-muted)' }}
+      >
+        Starting in
+      </p>
 
       <div
         key={digit}
         className="countdown-digit mb-6 select-none"
         style={{
-          fontSize: isFinal ? 72 : 112,
+          fontSize: 112,
           fontFamily: 'var(--font-display)',
           fontWeight: 900,
           lineHeight: 1,
-          color: isFinal ? '#fb923c' : '#ffffff',
-          textShadow: isFinal
-            ? '0 0 60px rgba(249,115,22,0.5)'
-            : '0 0 40px rgba(255,255,255,0.15)',
+          color: '#ffffff',
+          textShadow: '0 0 40px rgba(255,255,255,0.15)',
         }}
       >
         {digit}

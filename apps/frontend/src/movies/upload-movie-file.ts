@@ -26,6 +26,42 @@ export function validateMovieFile(file: File): string | null {
   return null;
 }
 
+function readUploadErrorMessage(status: number, response: unknown): string {
+  if (typeof response === 'object' && response !== null) {
+    if ('detail' in response && typeof response.detail === 'string') {
+      return response.detail;
+    }
+    if ('errors' in response && Array.isArray(response.errors) && response.errors.length > 0) {
+      const first: unknown = response.errors[0];
+      if (
+        typeof first === 'object' &&
+        first !== null &&
+        'message' in first &&
+        typeof first.message === 'string'
+      ) {
+        return first.message;
+      }
+    }
+  }
+
+  if (typeof response === 'string' && response.trim().length > 0) {
+    return response;
+  }
+
+  if (status === 401) {
+    return 'Your session expired. Sign in again and retry the upload.';
+  }
+
+  return `Upload failed (HTTP ${String(status)})`;
+}
+
+function parseUploadResponse(response: unknown): MovieResponse {
+  if (typeof response === 'string') {
+    return uploadMovieContract.responseSchema.parse(JSON.parse(response));
+  }
+  return uploadMovieContract.responseSchema.parse(response);
+}
+
 export function uploadMovieFile(
   movieId: string,
   file: File,
@@ -40,6 +76,7 @@ export function uploadMovieFile(
     xhr.open('POST', `${API_BASE_URL}${path}${query}`);
     xhr.withCredentials = true;
     xhr.responseType = 'json';
+    xhr.setRequestHeader('Accept', 'application/json');
 
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable && options.onProgress) {
@@ -54,24 +91,26 @@ export function uploadMovieFile(
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) {
         try {
-          resolve(uploadMovieContract.responseSchema.parse(xhr.response));
+          resolve(parseUploadResponse(xhr.response));
         } catch (error) {
-          reject(error instanceof Error ? error : new Error('Invalid upload response'));
+          reject(
+            error instanceof Error
+              ? new Error(`Upload completed but the server response was invalid: ${error.message}`)
+              : new Error('Upload completed but the server response was invalid.')
+          );
         }
         return;
       }
-      const message =
-        typeof xhr.response === 'object' &&
-        xhr.response !== null &&
-        'detail' in xhr.response &&
-        typeof (xhr.response as { detail: unknown }).detail === 'string'
-          ? (xhr.response as { detail: string }).detail
-          : `Upload failed (HTTP ${String(xhr.status)})`;
-      reject(new Error(message));
+
+      reject(new Error(readUploadErrorMessage(xhr.status, xhr.response)));
     };
 
     xhr.onerror = () => {
-      reject(new Error('Upload failed'));
+      reject(
+        new Error(
+          'Upload failed due to a network error. Check that the backend is running on port 3000 and try again.'
+        )
+      );
     };
 
     const formData = new FormData();

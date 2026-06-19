@@ -9,6 +9,7 @@ import {
   REALTIME_BROADCAST_PORT,
   type RealtimeBroadcastPort
 } from '@/realtime/realtime.broadcast-port';
+import { RoomMovieChangeService } from '@/realtime/services/room-movie-change.service';
 import { RoomStateService } from '@/realtime/services/room-state.service';
 import { RoomRepository } from '@/rooms/room.repository';
 import { RoomsService } from '@/rooms/rooms.service';
@@ -51,6 +52,10 @@ describe('RoomsService', () => {
     removeRoomMember: jest.fn()
   } as unknown as jest.Mocked<RealtimeBroadcastPort>;
 
+  const movieChangeService = {
+    applyMovieChange: jest.fn().mockResolvedValue(undefined)
+  } as unknown as jest.Mocked<RoomMovieChangeService>;
+
   beforeEach(async () => {
     jest.clearAllMocks();
     const module: TestingModule = await Test.createTestingModule({
@@ -60,7 +65,8 @@ describe('RoomsService', () => {
         { provide: MoviesService, useValue: moviesService },
         { provide: ConfigService, useValue: configService },
         { provide: RoomStateService, useValue: roomStateService },
-        { provide: REALTIME_BROADCAST_PORT, useValue: realtimeBroadcast }
+        { provide: REALTIME_BROADCAST_PORT, useValue: realtimeBroadcast },
+        { provide: RoomMovieChangeService, useValue: movieChangeService }
       ]
     }).compile();
 

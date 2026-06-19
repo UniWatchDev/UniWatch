@@ -1,11 +1,14 @@
 import { Types } from 'mongoose';
 import type { Server } from 'socket.io';
+import { REALTIME_SERVER_EVENTS } from '@repo/consts/realtime';
+import type { PlaybackState } from '@repo/schemas/realtime';
 
 import { RealtimeGateway } from '@/realtime/realtime.gateway';
 import { ConnectionRegistryService } from '@/realtime/services/connection-registry.service';
 import { PlaybackCountdownService } from '@/realtime/services/playback-countdown.service';
 import { RealtimeBroadcastService } from '@/realtime/services/realtime-broadcast.service';
 import { RoomModerationService } from '@/realtime/services/room-moderation.service';
+import { RoomMovieChangeService } from '@/realtime/services/room-movie-change.service';
 import { RoomStateService } from '@/realtime/services/room-state.service';
 import type { SocketAuthService } from '@/realtime/services/socket-auth.service';
 import type { RoomRepository } from '@/rooms/room.repository';
@@ -29,6 +32,7 @@ describe('RealtimeGateway', () => {
   let registry: ConnectionRegistryService;
   let countdown: PlaybackCountdownService;
   let broadcast: RealtimeBroadcastService;
+  let movieChange: RoomMovieChangeService;
   let moderation: RoomModerationService;
   let rooms: jest.Mocked<
     Pick<RoomRepository, 'findOneAccessibleById' | 'setStatus' | 'banUser' | 'findRawById'>
@@ -53,13 +57,14 @@ describe('RealtimeGateway', () => {
     roomState = new RoomStateService();
     registry = new ConnectionRegistryService();
     countdown = new PlaybackCountdownService(roomState);
-    broadcast = new RealtimeBroadcastService(roomState, countdown);
     rooms = {
       findOneAccessibleById: jest.fn(),
-      setStatus: jest.fn(),
+      setStatus: jest.fn().mockResolvedValue(null),
       banUser: jest.fn(),
       findRawById: jest.fn()
     };
+    broadcast = new RealtimeBroadcastService(roomState, countdown, rooms as unknown as RoomRepository);
+    movieChange = new RoomMovieChangeService(roomState, countdown, broadcast, rooms as unknown as RoomRepository);
     moderation = new RoomModerationService(rooms as unknown as RoomRepository, roomState, broadcast);
     gateway = new RealtimeGateway(
       rooms as unknown as RoomRepository,
@@ -68,7 +73,8 @@ describe('RealtimeGateway', () => {
       registry,
       countdown,
       broadcast,
-      moderation
+      moderation,
+      movieChange
     );
 
     roomEmit = jest.fn();
@@ -98,6 +104,41 @@ describe('RealtimeGateway', () => {
       movie_name: movieName
     } as never);
   }
+
+  function roomEmitPlaybackPayload(eventName: string): { playback: PlaybackState } {
+    for (const entry of roomEmit.mock.calls) {
+      const [event, payload] = entry as [string, { playback: PlaybackState }];
+      if (event === eventName) {
+        return payload;
+      }
+    }
+    throw new Error(`Expected room emit for ${eventName}`);
+  }
+
+  function roomEmitHasEvent(eventName: string): boolean {
+    return roomEmit.mock.calls.some(([event]) => event === eventName);
+  }
+
+  it('sets the room to waiting when the last member disconnects during playback', async () => {
+    mockHostRoom(initialMovieId);
+    roomState.syncMovie(roomId, initialMovieId);
+    roomState.updatePlayback(roomId, {
+      movieId: initialMovieId,
+      isPlaying: true,
+      positionSec: 120,
+      playbackRate: 1
+    });
+
+    gateway.handleDisconnect({
+      id: 'socket-1',
+      rooms: new Set([roomId])
+    } as never);
+
+    await Promise.resolve();
+
+    expect(roomState.get(roomId)).toBeUndefined();
+    expect(rooms.setStatus).toHaveBeenCalledWith(roomId, 'waiting');
+  });
 
   it('keeps the room member until the last socket for that user disconnects', () => {
     registry.register('socket-2', { userId: hostId, userName: 'Host' });
@@ -198,6 +239,7 @@ describe('RealtimeGateway', () => {
       'room:user-joined',
       expect.objectContaining({ userId: viewerId, roomId })
     );
+    expect(roomEmit).not.toHaveBeenCalledWith('room:state', expect.anything());
   });
 
   it('queues playback until the countdown ends', async () => {
@@ -237,6 +279,14 @@ describe('RealtimeGateway', () => {
     expect(livePlayback?.isPlaying).toBe(true);
     expect(livePlayback?.positionSec).toBe(12);
     expect(livePlayback?.updatedAt).toBe('2026-06-16T12:00:03.000Z');
+    expect(roomEmit).toHaveBeenCalledWith('room:playback-changed', expect.any(Object));
+    expect(roomEmit).toHaveBeenCalledWith(
+      'room:presence-changed',
+      expect.objectContaining({
+        countdown: { active: false, endsAt: null }
+      })
+    );
+    expect(roomEmitHasEvent(REALTIME_SERVER_EVENTS.roomState)).toBe(false);
   });
 
   it('clears the countdown when playback pauses', async () => {
@@ -262,6 +312,131 @@ describe('RealtimeGateway', () => {
 
     expect(roomState.get(roomId)?.countdown.active).toBe(false);
     expect(roomState.get(roomId)?.countdown.endsAt).toBeNull();
+  });
+
+  it('pauses at zero and resets readiness when the movie changes during playback', async () => {
+    const viewerId = new Types.ObjectId().toString();
+    mockHostRoom(initialMovieId);
+    roomState.syncMovie(roomId, initialMovieId);
+    roomState.joinUser({ roomId, userId: viewerId, userName: 'Viewer', socketId: 'socket-2' });
+    roomState.setUserReady(roomId, hostId, true);
+    roomState.setUserReady(roomId, viewerId, true);
+    roomState.updatePlayback(roomId, {
+      movieId: initialMovieId,
+      isPlaying: true,
+      positionSec: 90,
+      playbackRate: 1
+    });
+
+    rooms.findOneAccessibleById.mockResolvedValueOnce({
+      _id: new Types.ObjectId(roomId),
+      creator: new Types.ObjectId(hostId),
+      movie: new Types.ObjectId(nextMovieId),
+      movie_name: 'Next movie'
+    } as never);
+
+    roomEmit.mockClear();
+
+    await gateway.handleMovieUpdated(socket as never, { roomId, movieId: nextMovieId });
+
+    const playback = roomState.get(roomId)?.playback;
+    expect(playback?.movieId).toBe(nextMovieId);
+    expect(playback?.isPlaying).toBe(false);
+    expect(playback?.positionSec).toBe(0);
+    expect(roomState.get(roomId)?.connectedUsers.every((user) => !user.isReady)).toBe(true);
+    expect(roomState.syncStatus(roomId, hostId)).toBe('waiting');
+    expect(roomEmit).toHaveBeenCalledWith('room:movie-updated', expect.objectContaining({ movieId: nextMovieId }));
+    expect(roomEmit).toHaveBeenCalledWith('room:playback-changed', expect.any(Object));
+    expect(roomEmit).toHaveBeenCalledWith('room:presence-changed', expect.any(Object));
+    expect(roomEmitHasEvent('room:message-received')).toBe(true);
+    const messages = roomState.get(roomId)?.messages ?? [];
+    expect(messages.at(-1)?.content).toContain('Next movie');
+    expect(roomState.get(roomId)?.countdown.active).toBe(false);
+  });
+
+  it('starts playback after swap when host plays and countdown completes', async () => {
+    const viewerId = new Types.ObjectId().toString();
+    mockHostRoom(initialMovieId);
+    roomState.syncMovie(roomId, initialMovieId);
+    roomState.joinUser({ roomId, userId: viewerId, userName: 'Viewer', socketId: 'socket-2' });
+    roomState.setUserReady(roomId, hostId, true);
+    roomState.setUserReady(roomId, viewerId, true);
+    roomState.updatePlayback(roomId, {
+      movieId: initialMovieId,
+      isPlaying: true,
+      positionSec: 90,
+      playbackRate: 1
+    });
+
+    rooms.findOneAccessibleById.mockResolvedValueOnce({
+      _id: new Types.ObjectId(roomId),
+      creator: new Types.ObjectId(hostId),
+      movie: new Types.ObjectId(nextMovieId),
+      movie_name: 'Next movie'
+    } as never);
+
+    await gateway.handleMovieUpdated(socket as never, { roomId, movieId: nextMovieId });
+
+    expect(roomState.get(roomId)?.countdown.active).toBe(false);
+    expect(roomState.get(roomId)?.playback.isPlaying).toBe(false);
+
+    roomState.setUserReady(roomId, hostId, true);
+    roomState.setUserReady(roomId, viewerId, true);
+    mockHostRoom(nextMovieId, 'Next movie');
+
+    roomEmit.mockClear();
+
+    await gateway.handlePlaybackUpdate(socket as never, {
+      roomId,
+      movieId: nextMovieId,
+      isPlaying: true,
+      positionSec: 0,
+      playbackRate: 1
+    });
+
+    expect(roomState.get(roomId)?.countdown.active).toBe(true);
+
+    jest.advanceTimersByTime(3000);
+
+    const startedPlayback = roomState.get(roomId)?.playback;
+    expect(roomState.get(roomId)?.countdown.active).toBe(false);
+    expect(startedPlayback?.movieId).toBe(nextMovieId);
+    expect(startedPlayback?.isPlaying).toBe(true);
+
+    expect(roomEmitHasEvent(REALTIME_SERVER_EVENTS.playbackChanged)).toBe(true);
+    const playbackPayload = roomEmitPlaybackPayload(REALTIME_SERVER_EVENTS.playbackChanged);
+    expect(playbackPayload.playback.isPlaying).toBe(true);
+    expect(playbackPayload.playback.movieId).toBe(nextMovieId);
+  });
+
+  it('accepts host play for runtime movie id when persisted room.movie is stale', async () => {
+    mockHostRoom(initialMovieId);
+    roomState.syncMovie(roomId, nextMovieId);
+    roomState.updatePlayback(roomId, {
+      movieId: nextMovieId,
+      isPlaying: false,
+      positionSec: 0,
+      playbackRate: 1
+    });
+    roomState.setUserReady(roomId, hostId, true);
+
+    rooms.findOneAccessibleById.mockResolvedValue({
+      _id: new Types.ObjectId(roomId),
+      creator: new Types.ObjectId(hostId),
+      movie: new Types.ObjectId(initialMovieId),
+      movie_name: 'Old movie'
+    } as never);
+
+    await gateway.handlePlaybackUpdate(socket as never, {
+      roomId,
+      movieId: nextMovieId,
+      isPlaying: true,
+      positionSec: 0,
+      playbackRate: 1
+    });
+
+    expect(roomState.get(roomId)?.countdown.active).toBe(true);
+    expect(roomState.get(roomId)?.playback.movieId).toBe(nextMovieId);
   });
 
   it('keeps a queued start aligned when the movie changes before the countdown ends', async () => {
@@ -385,5 +560,182 @@ describe('RealtimeGateway', () => {
     expect(roomState.get(roomId)?.countdown.active).toBe(true);
     jest.advanceTimersByTime(3000);
     expect(roomState.get(roomId)?.playback.isPlaying).toBe(true);
+  });
+
+  it('does not broadcast position ticks while playback is already running', async () => {
+    mockHostRoom(initialMovieId);
+    roomState.syncMovie(roomId, initialMovieId);
+    roomState.updatePlayback(roomId, {
+      movieId: initialMovieId,
+      isPlaying: true,
+      positionSec: 60,
+      playbackRate: 1
+    });
+
+    roomEmit.mockClear();
+
+    await gateway.handlePlaybackUpdate(socket as never, {
+      roomId,
+      movieId: initialMovieId,
+      isPlaying: true,
+      positionSec: 61,
+      playbackRate: 1
+    });
+
+    expect(roomState.get(roomId)?.playback.positionSec).toBe(61);
+    expect(roomEmit).not.toHaveBeenCalledWith('room:playback-changed', expect.any(Object));
+    expect(roomEmitHasEvent(REALTIME_SERVER_EVENTS.roomState)).toBe(false);
+  });
+
+  it('broadcasts seek and rate changes during active playback', async () => {
+    mockHostRoom(initialMovieId);
+    roomState.syncMovie(roomId, initialMovieId);
+    roomState.updatePlayback(roomId, {
+      movieId: initialMovieId,
+      isPlaying: true,
+      positionSec: 60,
+      playbackRate: 1
+    });
+
+    roomEmit.mockClear();
+
+    await gateway.handlePlaybackUpdate(socket as never, {
+      roomId,
+      movieId: initialMovieId,
+      isPlaying: true,
+      positionSec: 120,
+      playbackRate: 1,
+      force: true
+    });
+
+    expect(roomEmit).toHaveBeenCalledWith('room:playback-changed', expect.any(Object));
+    expect(roomEmitHasEvent(REALTIME_SERVER_EVENTS.roomState)).toBe(false);
+
+    roomEmit.mockClear();
+
+    await gateway.handlePlaybackUpdate(socket as never, {
+      roomId,
+      movieId: initialMovieId,
+      isPlaying: true,
+      positionSec: 120,
+      playbackRate: 1.5
+    });
+
+    expect(roomEmit).toHaveBeenCalledWith('room:playback-changed', expect.any(Object));
+  });
+
+  it('keeps playback running when a viewer leaves during an active watch', async () => {
+    const viewerId = new Types.ObjectId().toString();
+    mockHostRoom(initialMovieId);
+    roomState.syncMovie(roomId, initialMovieId);
+    roomState.joinUser({ roomId, userId: viewerId, userName: 'Viewer', socketId: 'socket-2' });
+    roomState.updatePlayback(roomId, {
+      movieId: initialMovieId,
+      isPlaying: true,
+      positionSec: 120,
+      playbackRate: 1
+    });
+    roomState.syncStatus(roomId, hostId);
+    rooms.findRawById.mockResolvedValue({
+      _id: new Types.ObjectId(roomId),
+      creator: new Types.ObjectId(hostId)
+    } as never);
+
+    const viewerSocket = actorSocket('socket-2', viewerId, 'Viewer');
+    (viewerSocket as unknown as { leave: jest.Mock }).leave = jest.fn().mockResolvedValue(undefined);
+    await gateway.handleLeave(viewerSocket as never, { roomId });
+
+    const playback = roomState.get(roomId)?.playback;
+    expect(playback?.isPlaying).toBe(true);
+    expect(playback?.movieId).toBe(initialMovieId);
+    expect(roomState.syncStatus(roomId, hostId)).toBe('watching');
+    expect(roomEmit).toHaveBeenCalledWith('room:presence-changed', expect.any(Object));
+    expect(roomEmitHasEvent(REALTIME_SERVER_EVENTS.roomState)).toBe(false);
+  });
+
+  it('resets the playback session when the host reports the movie ended', async () => {
+    const viewerId = new Types.ObjectId().toString();
+    mockHostRoom(initialMovieId);
+    roomState.syncMovie(roomId, initialMovieId);
+    roomState.joinUser({ roomId, userId: viewerId, userName: 'Viewer', socketId: 'socket-2' });
+    roomState.setUserReady(roomId, hostId, true);
+    roomState.setUserReady(roomId, viewerId, true);
+    roomState.updatePlayback(roomId, {
+      movieId: initialMovieId,
+      isPlaying: true,
+      positionSec: 5400,
+      playbackRate: 1
+    });
+    roomState.syncStatus(roomId, hostId);
+
+    await gateway.handlePlaybackUpdate(socket as never, {
+      roomId,
+      movieId: initialMovieId,
+      isPlaying: false,
+      positionSec: 5400,
+      playbackRate: 1,
+      ended: true
+    });
+
+    const runtime = roomState.get(roomId);
+    expect(runtime?.playback.isPlaying).toBe(false);
+    expect(runtime?.playback.positionSec).toBe(0);
+    expect(runtime?.playback.playbackRate).toBe(1);
+    expect(runtime?.countdown.active).toBe(false);
+    expect(runtime?.connectedUsers.every((user) => !user.isReady)).toBe(true);
+    expect(roomState.syncStatus(roomId, hostId)).not.toBe('watching');
+    expect(roomEmit).toHaveBeenCalledWith('room:playback-changed', expect.any(Object));
+    expect(roomEmit).toHaveBeenCalledWith('room:state', expect.any(Object));
+    const playbackChangedPayload = roomEmitPlaybackPayload('room:playback-changed');
+    expect(playbackChangedPayload.playback.isPlaying).toBe(false);
+    expect(playbackChangedPayload.playback.positionSec).toBe(0);
+    const endStatePayload = roomEmitPlaybackPayload('room:state');
+    expect(endStatePayload.playback.isPlaying).toBe(false);
+    expect(endStatePayload.playback.positionSec).toBe(0);
+  });
+
+  it('emits presence-changed when a viewer toggles ready', async () => {
+    const viewerId = new Types.ObjectId().toString();
+    mockHostRoom(initialMovieId);
+    registry.register('socket-2', { userId: viewerId, userName: 'Viewer' });
+    roomState.joinUser({ roomId, userId: viewerId, userName: 'Viewer', socketId: 'socket-2' });
+    const viewer = actorSocket('socket-2', viewerId, 'Viewer');
+    roomEmit.mockClear();
+
+    await gateway.handleReadyUpdate(viewer as never, { roomId, isReady: true });
+
+    expect(roomEmit).toHaveBeenCalledWith('room:presence-changed', expect.any(Object));
+    expect(roomEmitHasEvent(REALTIME_SERVER_EVENTS.roomState)).toBe(false);
+  });
+
+  it('clears orphan countdown timers when a user rejoins after disconnect mid-countdown', async () => {
+    mockHostRoom(initialMovieId);
+    roomState.syncMovie(roomId, initialMovieId);
+
+    await gateway.handlePlaybackUpdate(socket as never, {
+      roomId,
+      movieId: initialMovieId,
+      isPlaying: true,
+      positionSec: 0,
+      playbackRate: 1
+    });
+    expect(roomState.get(roomId)?.countdown.active).toBe(true);
+
+    gateway.handleDisconnect({
+      id: 'socket-1',
+      rooms: new Set([roomId])
+    } as never);
+
+    const rejoinSocket = actorSocket('socket-3', hostId, 'Host');
+    rejoinSocket.rooms = new Set();
+    (rejoinSocket as unknown as { join: jest.Mock }).join = jest.fn((): Promise<void> => {
+      rejoinSocket.rooms.add(roomId);
+      return Promise.resolve();
+    });
+    registry.register('socket-3', { userId: hostId, userName: 'Host' });
+
+    await gateway.handleJoin(rejoinSocket as never, { roomId });
+
+    expect(roomState.get(roomId)?.countdown.active).toBe(false);
   });
 });
