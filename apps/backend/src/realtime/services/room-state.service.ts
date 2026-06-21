@@ -46,6 +46,10 @@ export class RoomStateService {
     return this.roomStates.get(roomId);
   }
 
+  destroyRoom(roomId: string): void {
+    this.roomStates.delete(roomId);
+  }
+
   getOrCreate(roomId: string): RealtimeRoomState {
     const existing = this.roomStates.get(roomId);
     if (existing) return existing;
