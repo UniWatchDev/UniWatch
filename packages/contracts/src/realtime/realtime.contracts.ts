@@ -3,6 +3,7 @@ import {
   joinRoomPayloadSchema,
   leaveRoomPayloadSchema,
   realtimeChatMessageSchema,
+  roomClosedEventSchema,
   roomErrorEventSchema,
   roomModerateUserPayloadSchema,
   roomMovieUpdatedEventSchema,
@@ -18,6 +19,7 @@ import {
   type JoinRoomPayload,
   type LeaveRoomPayload,
   type RealtimeChatMessage,
+  type RoomClosedEvent,
   type RoomErrorEvent,
   type RoomModerateUserPayload,
   type RoomMovieUpdatedEvent,
@@ -151,4 +153,10 @@ export const roomErrorContract: SocketEventContract<RoomErrorEvent> = {
   event: REALTIME_SERVER_EVENTS.error,
   direction: 'server-to-client',
   payloadSchema: roomErrorEventSchema
+};
+
+export const roomClosedContract: SocketEventContract<RoomClosedEvent> = {
+  event: REALTIME_SERVER_EVENTS.roomClosed,
+  direction: 'server-to-client',
+  payloadSchema: roomClosedEventSchema
 };

@@ -9,6 +9,7 @@ import {
   leaveRoomPayloadSchema,
   roomModerateUserPayloadSchema,
   realtimeChatMessageSchema,
+  roomClosedEventSchema,
   roomErrorEventSchema,
   roomMovieUpdatedEventSchema,
   roomMovieUpdatedPayloadSchema,
@@ -40,6 +41,7 @@ interface UseRoomSocketOptions {
   initialMemberIds: string[];
   onMovieUpdated?: (movieId: string, movieName?: string) => void;
   onPlaybackChanged?: (event: PlaybackChangeEvent) => void;
+  onRoomClosed?: (message: string) => void;
 }
 
 interface UseRoomSocketReturn {
@@ -111,7 +113,8 @@ export function useRoomSocket({
   creatorName,
   initialMemberIds,
   onMovieUpdated,
-  onPlaybackChanged
+  onPlaybackChanged,
+  onRoomClosed
 }: UseRoomSocketOptions): UseRoomSocketReturn {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [members, setMembers] = useState<Member[]>(() =>
@@ -134,6 +137,11 @@ export function useRoomSocket({
     connectedUsers: []
   }));
   const socketRef = useRef<Socket | null>(null);
+  const onRoomClosedRef = useRef(onRoomClosed);
+
+  useEffect(() => {
+    onRoomClosedRef.current = onRoomClosed;
+  }, [onRoomClosed]);
 
   const sendMessage = useCallback(
     (content: string) => {
@@ -201,6 +209,7 @@ export function useRoomSocket({
     // events carry presence/countdown updates without touching playback unless the
     // server signals a meaningful playback change (countdown end, isPlaying flip, drift).
     let hasInitialSnapshot = false;
+    let roomClosed = false;
 
     const mapConnectedUsers = (
       users: Array<{ userId: string; userName: string; color: string; isReady: boolean }>
@@ -247,6 +256,9 @@ export function useRoomSocket({
     // gateway re-runs handleConnection per connection. Re-emitting room:join here
     // is what restores room membership after a dropped socket reconnects.
     socket.on(REALTIME_SERVER_EVENTS.connectionAck, () => {
+      if (roomClosed) {
+        return;
+      }
       setConnectionGeneration((gen) => gen + 1);
       socket.emit(REALTIME_CLIENT_EVENTS.join, joinRoomPayloadSchema.parse({ roomId }));
     });
@@ -408,8 +420,25 @@ export function useRoomSocket({
       pushPlaybackChange({ actorUserId: parsed.data.actorUserId, playback: parsed.data.playback });
     });
 
+    socket.on(REALTIME_SERVER_EVENTS.roomClosed, (data: unknown) => {
+      const parsed = roomClosedEventSchema.safeParse(data);
+      if (!parsed.success) {
+        console.error('[room:socket]', 'Invalid room:closed payload');
+        return;
+      }
+      if (parsed.data.roomId !== roomId) {
+        return;
+      }
+
+      roomClosed = true;
+      socket.disconnect();
+      onRoomClosedRef.current?.(parsed.data.message);
+    });
+
     return () => {
-      socket.emit(REALTIME_CLIENT_EVENTS.leave, leaveRoomPayloadSchema.parse({ roomId }));
+      if (!roomClosed) {
+        socket.emit(REALTIME_CLIENT_EVENTS.leave, leaveRoomPayloadSchema.parse({ roomId }));
+      }
       socket.disconnect();
       socketRef.current = null;
     };

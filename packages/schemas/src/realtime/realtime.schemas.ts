@@ -186,6 +186,13 @@ export const roomErrorEventSchema = z.object({
 
 export type RoomErrorEvent = z.infer<typeof roomErrorEventSchema>;
 
+export const roomClosedEventSchema = z.strictObject({
+  roomId: z.string(),
+  message: z.string()
+});
+
+export type RoomClosedEvent = z.infer<typeof roomClosedEventSchema>;
+
 // ---------------------------------------------------------------------------
 // Constant
 // ---------------------------------------------------------------------------

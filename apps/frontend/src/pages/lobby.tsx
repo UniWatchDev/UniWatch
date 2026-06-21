@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 import { listRoomsContract } from '@repo/contracts/rooms';
 import { API_BASE_URL } from '@repo/consts/api';
+import { RoomClosedLobbyNotice } from '@/components/room-closed-lobby-notice';
 import { StarField } from '@/components/star-field';
 import { FeaturedRoomHero } from '@/components/featured-room-hero';
 import { CinemaRoomCard } from '@/components/cinema-room-card';
@@ -26,14 +27,28 @@ const FILTER_BUTTONS: { label: string; value: FilterStatus }[] = [
   { label: 'Waiting', value: 'waiting' },
 ];
 
+type LobbyLocationState = {
+  roomClosedMessage?: string;
+};
+
 export function Lobby() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const locationState = location.state as LobbyLocationState | null;
+  const [roomClosedMessage, setRoomClosedMessage] = useState<string | null>(
+    () => locationState?.roomClosedMessage ?? null
+  );
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<FilterStatus>('all');
   const [rooms, setRooms] = useState<RoomResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  const dismissRoomClosedNotice = () => {
+    setRoomClosedMessage(null);
+    void navigate('.', { replace: true, state: {} });
+  };
 
   const fetchRooms = async (signal: AbortSignal) => {
     const res = await fetch(`${API_BASE_URL}${listRoomsContract.path}`, {
@@ -96,6 +111,13 @@ export function Lobby() {
       <StarField />
 
       <div className="lobby-content relative z-10 mx-auto max-w-[1200px] px-4 pb-16 pt-6 sm:px-6 sm:pt-8">
+
+        {roomClosedMessage !== null && (
+          <RoomClosedLobbyNotice
+            message={roomClosedMessage}
+            onDismiss={dismissRoomClosedNotice}
+          />
+        )}
 
         {/* Hero */}
         <FeaturedRoomHero onCreateRoom={() => { void navigate('/rooms/new'); }} />

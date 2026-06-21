@@ -5,15 +5,13 @@ import { Types } from 'mongoose';
 import type { TestingModule } from '@nestjs/testing';
 
 import { MoviesService } from '@/movies/movies.service';
-import {
-  REALTIME_BROADCAST_PORT,
-  type RealtimeBroadcastPort
-} from '@/realtime/realtime.broadcast-port';
+import { REALTIME_BROADCAST_PORT, type RealtimeBroadcastPort } from '@/realtime/realtime.broadcast-port';
 import { RoomMovieChangeService } from '@/realtime/services/room-movie-change.service';
 import { RoomStateService } from '@/realtime/services/room-state.service';
 import { RoomRepository } from '@/rooms/room.repository';
 import { RoomsService } from '@/rooms/rooms.service';
 import type { Env } from '@/utils/env.validation';
+import { ROOM_CLOSED_MESSAGE } from '@repo/consts/realtime';
 
 describe('RoomsService', () => {
   let service: RoomsService;
@@ -49,7 +47,8 @@ describe('RoomsService', () => {
     emitRoomPlaybackChanged: jest.fn(),
     emitRoomState: jest.fn(),
     clearCountdown: jest.fn(),
-    removeRoomMember: jest.fn()
+    removeRoomMember: jest.fn(),
+    closeRoom: jest.fn().mockResolvedValue(undefined)
   } as unknown as jest.Mocked<RealtimeBroadcastPort>;
 
   const movieChangeService = {
@@ -154,5 +153,27 @@ describe('RoomsService', () => {
     expect((realtimeBroadcast.removeRoomMember as jest.Mock).mock.calls).toEqual([[roomId, userId]]);
     expect((roomStateService.syncStatus as jest.Mock).mock.calls).toEqual([[roomId, creatorId]]);
     expect((roomsRepo.setStatus as jest.Mock).mock.calls).toEqual([[roomId, 'waiting']]);
+  });
+
+  it('closes the realtime room when the creator deletes it', async () => {
+    const roomId = new Types.ObjectId().toString();
+    const creatorId = new Types.ObjectId().toString();
+
+    roomsRepo.findRawById.mockResolvedValue({
+      _id: new Types.ObjectId(roomId),
+      creator: new Types.ObjectId(creatorId),
+      deleted_at: null,
+      movie: null
+    } as never);
+    roomsRepo.softDeleteIfCreator.mockResolvedValue({
+      _id: new Types.ObjectId(roomId),
+      creator: new Types.ObjectId(creatorId),
+      deleted_at: new Date()
+    } as never);
+
+    await expect(service.delete(roomId, creatorId)).resolves.toEqual({ success: true });
+    expect((realtimeBroadcast.closeRoom as jest.Mock).mock.calls).toEqual([
+      [roomId, ROOM_CLOSED_MESSAGE]
+    ]);
   });
 });

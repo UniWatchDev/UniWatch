@@ -21,8 +21,12 @@ export const REALTIME_SERVER_EVENTS = {
   messageReceived: 'room:message-received',
   movieUpdated: 'room:movie-updated',
   playbackChanged: 'room:playback-changed',
+  roomClosed: 'room:closed',
   error: 'room:error'
 } as const;
+
+/** Default copy emitted on `room:closed` when the host deletes a room. */
+export const ROOM_CLOSED_MESSAGE = 'The host has closed this room.' as const;
 
 export type RealtimeClientEvent =
   (typeof REALTIME_CLIENT_EVENTS)[keyof typeof REALTIME_CLIENT_EVENTS];

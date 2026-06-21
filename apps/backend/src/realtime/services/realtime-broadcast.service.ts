@@ -144,6 +144,28 @@ export class RealtimeBroadcastService implements RealtimeBroadcastPort {
     await this.rooms.setStatus(roomId, 'waiting');
   }
 
+  closeRoom(roomId: string, message: string): Promise<void> {
+    const state = this.roomState.get(roomId);
+    if (!state) {
+      return Promise.resolve();
+    }
+
+    const socketIds = state.connectedUsers.flatMap((user) => user.socketIds);
+
+    this.emitToRoom(roomId, REALTIME_SERVER_EVENTS.roomClosed, { roomId, message });
+
+    for (const socketId of socketIds) {
+      const socket = this.getSocket(socketId);
+      if (socket) {
+        void socket.leave(roomId);
+      }
+    }
+
+    this.countdown.cancel(roomId);
+    this.roomState.destroyRoom(roomId);
+    return Promise.resolve();
+  }
+
   private requireServer(): Server {
     if (!this.server) {
       this.logger.error('Realtime server accessed before initialization');

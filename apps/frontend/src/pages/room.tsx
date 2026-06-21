@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+
+import { ROOM_CLOSED_MESSAGE } from '@repo/consts/realtime';
 import type { RoomPreview, RoomResponse, RoomStatus } from '@repo/schemas/rooms';
 import { useRoomSocket, type PlaybackChangeEvent } from '@/hooks/use-room-socket';
 import { attachMovieToRoom } from '@/movies/attach-room-movie';
@@ -18,6 +20,7 @@ import { CountdownOverlay } from '@/components/countdown-overlay';
 import { ForcePlayConfirmationModal } from '@/components/force-play-confirmation-modal';
 import { InviteFriends } from '@/components/invite-friends';
 import { RoomMovieChangeNotice } from '@/components/room-movie-change-notice';
+import { RoomClosedOverlay } from '@/components/room-closed-overlay';
 import { RoomPasswordGate } from '@/components/room-password-gate';
 import { Users, MessageSquare, Volume2, VolumeX } from 'lucide-react';
 import { MOCK_FRIENDS } from '@/data/mock-profile-data';
@@ -31,6 +34,8 @@ import {
 } from '@/pages/room-api';
 import { RoomStatusBadge } from '@/rooms/room-status-badge';
 import { roomStatusShortLabel } from '@/rooms/room-status-display';
+
+const ROOM_CLOSED_REDIRECT_MS = 1_800;
 
 function canCurrentUserAccessRoomMovie(
   currentUserId: string | null,
@@ -133,7 +138,37 @@ export function RoomPage() {
   const suppressPlaybackEmitRef = useRef(false);
   const currentTimeRef = useRef(0);
   const lastProgressUiAtRef = useRef(0);
+  const roomClosedRedirectRef = useRef(false);
+  const roomClosedPendingRef = useRef(false);
+  const roomClosedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const PROGRESS_UI_MS = 250;
+  const [roomClosedNotice, setRoomClosedNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (roomClosedTimerRef.current !== null) {
+        clearTimeout(roomClosedTimerRef.current);
+      }
+    };
+  }, []);
+
+  const redirectToLobbyClosed = useCallback(
+    (message: string) => {
+      if (roomClosedRedirectRef.current || roomClosedPendingRef.current) {
+        return;
+      }
+      roomClosedPendingRef.current = true;
+      setRoomClosedNotice(message);
+      if (roomClosedTimerRef.current !== null) {
+        clearTimeout(roomClosedTimerRef.current);
+      }
+      roomClosedTimerRef.current = setTimeout(() => {
+        roomClosedRedirectRef.current = true;
+        void navigate('/rooms', { replace: true, state: { roomClosedMessage: message } });
+      }, ROOM_CLOSED_REDIRECT_MS);
+    },
+    [navigate]
+  );
 
   const refreshRoom = useCallback(async () => {
     if (id === undefined) return;
@@ -152,9 +187,14 @@ export function RoomPage() {
         return updated;
       });
     } catch (err: unknown) {
-      console.error('[room]', err instanceof Error ? err.message : 'Failed to refresh room');
+      const msg = err instanceof Error ? err.message : '';
+      if (msg.includes('404')) {
+        redirectToLobbyClosed(ROOM_CLOSED_MESSAGE);
+        return;
+      }
+      console.error('[room]', msg || 'Failed to refresh room');
     }
-  }, [id]);
+  }, [id, redirectToLobbyClosed]);
 
   const handleMovieUpdated = useCallback((movieId: string, movieName?: string) => {
     if (movieId.length === 0) return;
@@ -204,6 +244,13 @@ export function RoomPage() {
     setRemotePlaybackEvent(null);
   }, []);
 
+  const handleRoomClosed = useCallback(
+    (message: string) => {
+      redirectToLobbyClosed(message);
+    },
+    [redirectToLobbyClosed]
+  );
+
   const {
     messages,
     members,
@@ -223,7 +270,8 @@ export function RoomPage() {
     creatorName: room?.creator_name ?? undefined,
     initialMemberIds: room?.allowed_users ?? [],
     onMovieUpdated: handleMovieUpdated,
-    onPlaybackChanged: handlePlaybackChanged
+    onPlaybackChanged: handlePlaybackChanged,
+    onRoomClosed: handleRoomClosed
   });
 
   const authoritativeMovieId = resolveActiveRoomMovieId(
@@ -339,6 +387,10 @@ export function RoomPage() {
             }
           } catch {
             if (!cancelled.current) setLoadError('You do not have access to this room.');
+          }
+        } else if (msg.includes('404')) {
+          if (!cancelled.current) {
+            redirectToLobbyClosed(ROOM_CLOSED_MESSAGE);
           }
         } else if (!cancelled.current) {
           setLoadError(msg || 'Failed to load room');
@@ -763,6 +815,8 @@ export function RoomPage() {
         overflow: 'hidden',
       }}
     >
+      {roomClosedNotice !== null && <RoomClosedOverlay message={roomClosedNotice} />}
+
       {/* Top bar */}
       <header
         style={{

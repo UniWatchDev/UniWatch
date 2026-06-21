@@ -8,6 +8,7 @@ export interface RealtimeBroadcastPort {
   emitRoomPlaybackChanged(roomId: string, actorUserId: string | null): void;
   emitRoomState(roomId: string): void;
   removeRoomMember(roomId: string, userId: string): Promise<void>;
+  closeRoom(roomId: string, message: string): Promise<void>;
 }
 
 export const REALTIME_BROADCAST_PORT = Symbol('REALTIME_BROADCAST_PORT');

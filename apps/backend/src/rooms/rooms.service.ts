@@ -6,6 +6,8 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Types } from 'mongoose';
+
+import { ROOM_CLOSED_MESSAGE } from '@repo/consts/realtime';
 import type { CreateRoomInput, RoomPreview, RoomResponse, UpdateRoomInput } from '@repo/schemas/rooms';
 import { RoomType, RoomStatus, type RoomDocument } from '@/rooms/room.schema';
 import { MoviesService } from '@/movies/movies.service';
@@ -252,6 +254,7 @@ export class RoomsService {
     const doc = await this.rooms.softDeleteIfCreator(id, userId);
     if (doc) {
       await this.scheduleLinkedMoviePurge(movieIdBefore);
+      await this.realtime.closeRoom(id, ROOM_CLOSED_MESSAGE);
       return { success: true };
     }
     if (!raw || raw.deleted_at) {
