@@ -116,13 +116,17 @@ const baseEnvSchema = z.object({
     ),
   MOVIE_FILE_TTL_HOURS: z.coerce.number().int().positive().default(24),
   MOVIE_STREAM_URL_EXPIRES_SECONDS: z.coerce.number().int().positive().default(900),
+  /** Minimum HLS segments required before a movie becomes partially playable. */
+  HLS_MIN_SEGMENTS_BEFORE_PLAYABLE: z.coerce.number().int().positive().default(2),
+  /** Debounce window (ms) for incremental HLS publish scans. */
+  HLS_PUBLISH_DEBOUNCE_MS: z.coerce.number().int().positive().default(300),
   /**
    * Public base URL for HLS playback served from the R2 bucket (no trailing slash),
    * e.g. `https://cdn.example.com` or the R2 `*.r2.dev` domain. Required for HLS
    * playback URLs; the processing worker fails the job if it is empty when needed.
    */
   R2_PUBLIC_BASE_URL: z.string().default(''),
-  /** Lifetime of presigned PUT upload URLs (direct client → R2). */
+  /** Lifetime of presigned PUT upload URLs for the legacy direct-upload path. */
   PRESIGNED_UPLOAD_EXPIRES_SECONDS: z.coerce.number().int().positive().default(600)
 });
 

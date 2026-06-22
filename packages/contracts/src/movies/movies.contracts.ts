@@ -14,6 +14,7 @@ import {
   deleteMovieResponseSchema,
   movieIdParamsSchema,
   movieResponseSchema,
+  movieUploadRequestSchema,
   moviesListSchema,
   movieStreamResponseSchema,
   presignUploadRequestSchema,
@@ -25,6 +26,7 @@ import {
   type DeleteMovieResponse,
   type MovieIdParams,
   type MovieResponse,
+  type MovieUploadRequest,
   type MovieStreamResponse,
   type PresignUploadRequest,
   type PresignUploadResponse,
@@ -84,14 +86,20 @@ export const deleteMovieContract: EndpointContract<
 };
 
 /** Multipart upload — body validated server-side; response matches `movieResponseSchema`. */
-export const uploadMovieContract: EndpointContract<MovieResponse, void, MovieIdParams> = {
+export const uploadMovieContract: EndpointContract<
+  MovieResponse,
+  void,
+  MovieIdParams,
+  MovieUploadRequest
+> = {
   method: 'POST',
   path: MOVIE_UPLOAD_ENDPOINT,
   responseSchema: movieResponseSchema,
-  paramsSchema: movieIdParamsSchema
+  paramsSchema: movieIdParamsSchema,
+  querySchema: movieUploadRequestSchema
 };
 
-/** Request a short-lived presigned PUT URL for direct client → R2 upload. */
+/** Request a short-lived presigned PUT URL for the legacy direct client → R2 upload. */
 export const presignUploadContract: EndpointContract<
   PresignUploadResponse,
   PresignUploadRequest,
@@ -104,7 +112,7 @@ export const presignUploadContract: EndpointContract<
   paramsSchema: movieIdParamsSchema
 };
 
-/** Signal the original upload finished; kicks off async HLS processing. */
+/** Signal the legacy direct upload finished; kicks off async HLS processing. */
 export const completeUploadContract: EndpointContract<
   CompleteUploadResponse,
   CompleteUploadRequest,

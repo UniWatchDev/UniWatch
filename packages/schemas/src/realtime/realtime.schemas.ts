@@ -61,7 +61,8 @@ export const realtimeRoomStateSchema = z.object({
   /** Capped at the last 100 messages. */
   messages: z.array(realtimeChatMessageSchema),
   playback: playbackStateSchema,
-  countdown: countdownStateSchema
+  countdown: countdownStateSchema,
+  publishedDurationSec: z.number().nonnegative().nullable()
 });
 
 export type RealtimeRoomState = z.infer<typeof realtimeRoomStateSchema>;
@@ -142,7 +143,8 @@ export const roomStateEventSchema = z.object({
   connectedUsers: z.array(connectedUserSchema),
   messages: z.array(realtimeChatMessageSchema),
   playback: playbackStateSchema,
-  countdown: countdownStateSchema
+  countdown: countdownStateSchema,
+  publishedDurationSec: z.number().nonnegative().nullable()
 });
 
 export type RoomStateEvent = z.infer<typeof roomStateEventSchema>;
@@ -204,6 +206,14 @@ export const videoProcessingEventSchema = z.strictObject({
 
 export type VideoProcessingEvent = z.infer<typeof videoProcessingEventSchema>;
 
+export const videoProgressEventSchema = z.strictObject({
+  roomId: z.string(),
+  videoId: z.string(),
+  percent: z.number().min(0).max(100)
+});
+
+export type VideoProgressEvent = z.infer<typeof videoProgressEventSchema>;
+
 export const videoReadyEventSchema = z.strictObject({
   roomId: z.string(),
   videoId: z.string(),
@@ -212,6 +222,16 @@ export const videoReadyEventSchema = z.strictObject({
 });
 
 export type VideoReadyEvent = z.infer<typeof videoReadyEventSchema>;
+
+export const videoPlayableEventSchema = z.strictObject({
+  roomId: z.string(),
+  videoId: z.string(),
+  playbackUrl: z.string(),
+  availableQualities: z.array(z.number()),
+  partial: z.literal(true)
+});
+
+export type VideoPlayableEvent = z.infer<typeof videoPlayableEventSchema>;
 
 export const videoFailedEventSchema = z.strictObject({
   roomId: z.string(),

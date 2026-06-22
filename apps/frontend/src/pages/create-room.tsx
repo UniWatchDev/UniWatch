@@ -12,7 +12,7 @@ import {
 } from '@/movies/movie-metadata-fields';
 import { MovieUploadField } from '@/movies/movie-upload-field';
 import { resolveMovieForRoom } from '@/movies/prepare-movie-for-room';
-import { uploadMovieViaPresign } from '@/movies/upload-movie-file';
+import { startRoomUpload } from '@/movies/room-upload-tracker';
 
 interface FormState {
   name: string;
@@ -158,9 +158,9 @@ export function CreateRoom() {
 
       // Non-blocking: the room opens immediately. The upload runs directly to R2
       // in the background and the room view reflects uploading → processing →
-      // ready via status polling and realtime video events.
+      // ready via the upload tracker, status polling, and realtime video events.
       if (movieFile && movieId !== undefined) {
-        void uploadMovieViaPresign(movieId, movieFile, room.id).catch(() => undefined);
+        startRoomUpload(room.id, movieId, movieFile);
       }
 
       void navigate(`/room/${room.id}`);

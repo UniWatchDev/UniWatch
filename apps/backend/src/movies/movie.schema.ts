@@ -79,6 +79,9 @@ export class MovieRecord {
   @Prop({ type: String, default: null })
   playback_url?: string | null;
 
+  @Prop({ type: Boolean, default: false })
+  playback_partial!: boolean;
+
   @Prop({ type: [Number], default: [] })
   available_qualities!: number[];
 

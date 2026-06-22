@@ -105,9 +105,7 @@ export class RoomMovieChangeService {
         ? trimmedMovieName
         : undefined
     );
-    this.broadcast.emitRoomState(roomId);
     this.broadcast.emitRoomPlaybackChanged(roomId, options.actorUserId);
-    this.broadcast.emitRoomPresenceChanged(roomId);
     this.broadcast.emitMessage(roomId, message);
   }
 

@@ -93,6 +93,7 @@ export class MovieRepository {
       thumbnail_key: string | null;
       hls_prefix: string | null;
       playback_url: string | null;
+      playback_partial: boolean;
       available_qualities: number[];
       error_message: string | null;
       mime_type: string | null;

@@ -38,6 +38,13 @@ import {
 } from '@/realtime/realtime.broadcast-port';
 import { RoomRecord, type RoomDocument } from '@/rooms/room.schema';
 import type { Env } from '@/utils/env.validation';
+
+interface UploadedMovieFile {
+  mimetype: string;
+  originalname: string;
+  size: number;
+  path: string;
+}
 import { isDuplicateKeyError } from '@/utils/is-duplicate-key-error';
 
 function toResponse(doc: MovieDocument): MovieResponse {
@@ -70,6 +77,7 @@ function toResponse(doc: MovieDocument): MovieResponse {
     has_file: hasFile,
     hls_prefix: doc.hls_prefix ?? null,
     playback_url: doc.file_deleted_at == null ? (doc.playback_url ?? null) : null,
+    playback_partial: doc.playback_partial,
     available_qualities: doc.available_qualities,
     error_message: doc.error_message ?? null,
     file_deleted_at: doc.file_deleted_at?.toISOString() ?? null,
@@ -171,7 +179,7 @@ export class MoviesService {
   async uploadFile(
     id: string,
     ownerId: string,
-    file: Express.Multer.File,
+    file: UploadedMovieFile,
     replace: boolean
   ): Promise<MovieResponse> {
     const doc = await this.movies.findOwnedById(id, ownerId);
@@ -232,6 +240,7 @@ export class MoviesService {
         mime_type: resolvedMime,
         size_bytes: file.size,
         upload_status: MovieUploadStatus.READY,
+        playback_partial: false,
         file_uploaded_at: new Date(),
         file_deleted_at: null,
         file_purge_at: null
@@ -285,7 +294,8 @@ export class MoviesService {
       storage_key: objectKey,
       mime_type: resolvedMime,
       size_bytes: body.file_size,
-      error_message: null
+      error_message: null,
+      playback_partial: false
     });
     if (!updated) {
       return await this.assertExistsAndOwnedOrThrow(id);
@@ -323,7 +333,8 @@ export class MoviesService {
 
     const updated = await this.movies.update(id, ownerId, {
       upload_status: MovieUploadStatus.PROCESSING,
-      error_message: null
+      error_message: null,
+      playback_partial: false
     });
     if (!updated) {
       return await this.assertExistsAndOwnedOrThrow(id);

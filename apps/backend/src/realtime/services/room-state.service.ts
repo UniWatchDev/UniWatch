@@ -41,6 +41,7 @@ type RoomRuntimeStatus = RealtimeRoomState['status'];
 export class RoomStateService {
   /** roomId → in-memory runtime state */
   private readonly roomStates = new Map<string, RealtimeRoomState>();
+  private readonly publishedDurations = new Map<string, number | null>();
 
   get(roomId: string): RealtimeRoomState | undefined {
     return this.roomStates.get(roomId);
@@ -48,6 +49,7 @@ export class RoomStateService {
 
   destroyRoom(roomId: string): void {
     this.roomStates.delete(roomId);
+    this.publishedDurations.delete(roomId);
   }
 
   getOrCreate(roomId: string): RealtimeRoomState {
@@ -60,7 +62,8 @@ export class RoomStateService {
       connectedUsers: [],
       messages: [],
       playback: this.makeDefaultPlayback(),
-      countdown: this.makeDefaultCountdown()
+      countdown: this.makeDefaultCountdown(),
+      publishedDurationSec: null
     };
     this.roomStates.set(roomId, state);
     return state;
@@ -159,6 +162,7 @@ export class RoomStateService {
 
     if (state.connectedUsers.length === 0) {
       this.roomStates.delete(roomId);
+      this.publishedDurations.delete(roomId);
     }
 
     return { removed, userStillConnected };
@@ -180,6 +184,7 @@ export class RoomStateService {
 
     if (state.connectedUsers.length === 0) {
       this.roomStates.delete(roomId);
+      this.publishedDurations.delete(roomId);
     }
 
     return {
@@ -237,6 +242,8 @@ export class RoomStateService {
       return state.playback;
     }
 
+    this.clearCountdown(roomId);
+    this.setAllUsersReady(roomId, false);
     state.playback = {
       movieId,
       isPlaying: false,
@@ -245,6 +252,19 @@ export class RoomStateService {
       updatedAt: new Date().toISOString()
     };
     return state.playback;
+  }
+
+  setPublishedDuration(roomId: string, durationSec: number | null): void {
+    if (durationSec === null) {
+      this.publishedDurations.delete(roomId);
+      return;
+    }
+    this.getOrCreate(roomId);
+    this.publishedDurations.set(roomId, durationSec);
+  }
+
+  getPublishedDuration(roomId: string): number | null {
+    return this.publishedDurations.get(roomId) ?? null;
   }
 
   updatePlayback(roomId: string, playback: Omit<PlaybackState, 'updatedAt'>): PlaybackState {

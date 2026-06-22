@@ -18,7 +18,7 @@ export interface StorageService {
   deleteObject(key: string): Promise<void>;
   getPresignedGetUrl(key: string, expiresInSeconds: number): Promise<string>;
   /**
-   * Short-lived presigned PUT URL for direct client → storage uploads.
+   * Short-lived presigned PUT URL for the legacy direct client → storage uploads.
    * Requires a real S3/R2 driver; the in-memory driver cannot satisfy it.
    */
   getPresignedPutUrl(

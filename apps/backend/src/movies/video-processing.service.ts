@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
-import { createReadStream, promises as fs } from 'node:fs';
+import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { Types, type Model } from 'mongoose';
@@ -9,16 +9,17 @@ import { Types, type Model } from 'mongoose';
 import { MovieUploadStatus } from '@/movies/movie.schema';
 import { MovieRepository } from '@/movies/movie.repository';
 import {
-  hlsContentType,
-  listFilesRecursive,
+  HLS_SEGMENT_SECONDS,
   probeVideo,
   selectVariants,
   transcodeToHls
 } from '@/movies/hls/ffmpeg-hls';
+import { HlsSegmentPublisher } from '@/movies/hls/hls-segment-publisher';
 import {
   REALTIME_BROADCAST_PORT,
   type RealtimeBroadcastPort
 } from '@/realtime/realtime.broadcast-port';
+import { RoomStateService } from '@/realtime/services/room-state.service';
 import { RoomRecord, type RoomDocument } from '@/rooms/room.schema';
 import { STORAGE_SERVICE, type StorageService } from '@/storage/storage.interface';
 import type { Env } from '@/utils/env.validation';
@@ -47,6 +48,7 @@ export class VideoProcessingService {
     private readonly config: ConfigService<Env, true>,
     @Inject(STORAGE_SERVICE) private readonly storage: StorageService,
     @Inject(REALTIME_BROADCAST_PORT) private readonly broadcast: RealtimeBroadcastPort,
+    private readonly roomState: RoomStateService,
     @InjectModel(RoomRecord.name) private readonly roomModel: Model<RoomDocument>
   ) {}
 
@@ -85,6 +87,8 @@ export class VideoProcessingService {
 
     const startedAt = Date.now();
     const workDir = await fs.mkdtemp(path.join(tmpdir(), 'uniwatch-hls-'));
+    let publisher: HlsSegmentPublisher | null = null;
+    let partialCheckTimer: ReturnType<typeof setInterval> | undefined;
     try {
       this.logger.log(`Processing movie ${movieId}: downloading original…`);
       const inputPath = path.join(workDir, `original${path.extname(originalKey) || '.mp4'}`);
@@ -94,21 +98,114 @@ export class VideoProcessingService {
       const variants = selectVariants(probe.height);
       const hlsDir = path.join(workDir, 'hls');
       await fs.mkdir(hlsDir, { recursive: true });
+      await Promise.all(
+        variants.map((variant) => fs.mkdir(path.join(hlsDir, `${String(variant.height)}p`), { recursive: true }))
+      );
+      const lowestVariant = variants[variants.length - 1] ?? variants[0];
+      const hlsPrefix = `videos/${movieId}/hls`;
+      const playbackUrl = this.buildPlaybackUrl(movieId);
+      const qualities = variants.map((variant) => variant.height).sort((a, b) => b - a);
+      const segmentPublisher = new HlsSegmentPublisher({
+        storage: this.storage,
+        prefix: hlsPrefix,
+        debounceMs: this.config.get('HLS_PUBLISH_DEBOUNCE_MS', { infer: true })
+      });
+      publisher = segmentPublisher;
+      const minSegmentsBeforePlayable = this.config.get('HLS_MIN_SEGMENTS_BEFORE_PLAYABLE', {
+        infer: true
+      });
+      let partialPublished = false;
+      let partialCheckRunning = false;
+      let partialCheckQueued = false;
+
+      const publishPartialMilestone = async (publishedSegments: number): Promise<void> => {
+        if (partialPublished) {
+          return;
+        }
+        partialPublished = true;
+        const publishedDurationSec = Math.max(0, publishedSegments * HLS_SEGMENT_SECONDS);
+        await this.movies.update(movieId, ownerId, {
+          upload_status: MovieUploadStatus.PROCESSING,
+          hls_prefix: hlsPrefix,
+          playback_url: playbackUrl,
+          playback_partial: true,
+          available_qualities: qualities,
+          duration_seconds: probe.durationSec,
+          error_message: null,
+          file_uploaded_at: new Date(),
+          file_deleted_at: null,
+          file_purge_at: null
+        });
+        await this.promoteRoomMovie(roomId, movieId, doc.name);
+        this.broadcast.emitRoomMovieUpdated(roomId, movieId, doc.name);
+        this.broadcast.emitVideoPlayable(roomId, movieId, playbackUrl, qualities, publishedDurationSec);
+      };
+
+      const maybePublishPartial = async (): Promise<void> => {
+        if (lowestVariant === undefined) {
+          return;
+        }
+        if (partialCheckRunning) {
+          partialCheckQueued = true;
+          return;
+        }
+        partialCheckRunning = true;
+        try {
+          const segmentCount = await this.countSegments(path.join(hlsDir, `${String(lowestVariant.height)}p`));
+          if (segmentCount >= minSegmentsBeforePlayable) {
+            this.roomState.setPublishedDuration(roomId, segmentCount * HLS_SEGMENT_SECONDS);
+            if (!partialPublished) {
+              await segmentPublisher.flush();
+              await publishPartialMilestone(segmentCount);
+            }
+          }
+        } finally {
+          partialCheckRunning = false;
+          if (partialCheckQueued) {
+            partialCheckQueued = false;
+            await maybePublishPartial();
+          }
+        }
+      };
+
+      segmentPublisher.start(hlsDir, variants.map((variant) => variant.height));
+      partialCheckTimer = setInterval(() => {
+        void maybePublishPartial();
+      }, 1000);
+
       this.logger.log(
         `Movie ${movieId}: source ${String(probe.width)}x${String(probe.height)}, ` +
           `transcoding ${variants.map((v) => `${String(v.height)}p`).join('/')}…`
       );
-      await transcodeToHls(inputPath, hlsDir, variants, probe.hasAudio);
 
-      const hlsPrefix = `videos/${movieId}/hls`;
-      this.logger.log(`Movie ${movieId}: transcode done, uploading HLS to R2…`);
-      await this.uploadHlsDir(hlsDir, hlsPrefix);
+      let lastProgressAt = 0;
+      let lastProgressPercent = -1;
+      const emitTranscodeProgress = (seconds: number): void => {
+        if (probe.durationSec === null || probe.durationSec <= 0) return;
+        const rawPercent = (seconds / probe.durationSec) * 100;
+        const percent = Math.min(99, Math.max(0, Math.round(rawPercent)));
+        const now = Date.now();
+        if (percent <= lastProgressPercent && now - lastProgressAt < 1000) return;
+        if (percent - lastProgressPercent < 2 && now - lastProgressAt < 1000) return;
+        lastProgressPercent = percent;
+        lastProgressAt = now;
+        this.broadcast.emitVideoProgress(roomId, movieId, percent);
+      };
 
-      const playbackUrl = this.buildPlaybackUrl(movieId);
-      const qualities = variants.map((variant) => variant.height).sort((a, b) => b - a);
+      this.broadcast.emitVideoProgress(roomId, movieId, 0);
+      await transcodeToHls(inputPath, hlsDir, variants, probe.hasAudio, {
+        onProgress: emitTranscodeProgress
+      });
+
+      await maybePublishPartial();
+      await segmentPublisher.flush();
+      clearInterval(partialCheckTimer);
+
+      this.logger.log(`Movie ${movieId}: transcode done, finalizing HLS publish…`);
 
       await this.movies.update(movieId, ownerId, {
         upload_status: MovieUploadStatus.READY,
+        playback_partial: false,
         hls_prefix: hlsPrefix,
         playback_url: playbackUrl,
         available_qualities: qualities,
@@ -120,8 +217,9 @@ export class VideoProcessingService {
       });
 
       await this.promoteRoomMovie(roomId, movieId, doc.name);
-      this.broadcast.emitVideoReady(roomId, movieId, playbackUrl, qualities);
       this.broadcast.emitRoomMovieUpdated(roomId, movieId, doc.name);
+      this.broadcast.emitVideoProgress(roomId, movieId, 100);
+      this.broadcast.emitVideoReady(roomId, movieId, playbackUrl, qualities);
       const elapsedSec = Math.round((Date.now() - startedAt) / 1000);
       this.logger.log(`Movie ${movieId} ready (${qualities.join('/')}p) in ${String(elapsedSec)}s`);
     } catch (error) {
@@ -129,6 +227,10 @@ export class VideoProcessingService {
       this.logger.error(`Processing failed for movie ${movieId}: ${message}`);
       await this.markFailed(movieId, ownerId, roomId, message);
     } finally {
+      clearInterval(partialCheckTimer);
+      if (publisher !== null) {
+        await publisher.stop().catch(() => undefined);
+      }
       await fs.rm(workDir, { recursive: true, force: true }).catch(() => undefined);
     }
   }
@@ -153,17 +255,12 @@ export class VideoProcessingService {
     });
   }
 
-  private async uploadHlsDir(hlsDir: string, prefix: string): Promise<void> {
-    const files = await listFilesRecursive(hlsDir);
-    for (const file of files) {
-      const relative = path.relative(hlsDir, file).split(path.sep).join('/');
-      const stats = await fs.stat(file);
-      await this.storage.putObject({
-        key: `${prefix}/${relative}`,
-        body: createReadStream(file),
-        contentType: hlsContentType(file),
-        contentLength: stats.size
-      });
+  private async countSegments(dir: string): Promise<number> {
+    try {
+      const entries = await fs.readdir(dir, { withFileTypes: true });
+      return entries.filter((entry) => entry.isFile() && entry.name.endsWith('.ts')).length;
+    } catch {
+      return 0;
     }
   }
 
@@ -193,6 +290,7 @@ export class VideoProcessingService {
   ): Promise<void> {
     await this.movies.update(movieId, ownerId, {
       upload_status: MovieUploadStatus.FAILED,
+      playback_partial: false,
       error_message: message.slice(0, 500)
     });
     await this.roomModel

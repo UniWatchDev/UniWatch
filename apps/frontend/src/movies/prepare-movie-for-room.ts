@@ -6,7 +6,7 @@ import { readHttpErrorMessage } from '@/auth/auth-fetch-helpers';
 
 /**
  * Resolve or create the movie metadata record for a room. The actual file
- * upload happens separately and asynchronously via `uploadMovieViaPresign`, so
+ * upload happens separately and asynchronously via `uploadMovieViaStream`, so
  * room creation never blocks on the upload.
  */
 export async function resolveMovieForRoom(body: CreateMovieInput): Promise<MovieResponse> {

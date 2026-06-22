@@ -1,12 +1,13 @@
 import { Route, Routes, useLocation } from 'react-router-dom';
 
 import { ThemeProvider } from '@/theme/theme-provider';
+import { ThemeToggle } from '@/theme/theme-toggle';
 
 import { CookieAuthProvider } from '@/auth/cookie-auth-provider';
 import { RequireAuth } from '@/auth/require-auth';
 import { NavBar } from '@/nav/nav-bar';
 import { SiteFooter } from '@/components/site-footer';
-import { shouldShowFooter } from '@/nav/nav-paths';
+import { shouldHideNav, shouldShowFooter } from '@/nav/nav-paths';
 import { ProtectedAppPage } from '@/protected-app-page';
 import { ChangePasswordPage } from '@/pages/change-password';
 import { CreateRoom } from '@/pages/create-room';
@@ -26,10 +27,19 @@ import { PrivacyPolicyPage } from '@/pages/privacy-policy';
 
 function AppShell() {
   const { pathname } = useLocation();
+  const hideNav = shouldHideNav(pathname);
+  const hideNavToggleInRoom = pathname.startsWith('/room/');
 
   return (
-    <div className="flex min-h-dvh flex-1 flex-col">
-      {pathname !== '/' && <NavBar />}
+    <div className="relative flex min-h-dvh flex-1 flex-col">
+      {pathname !== '/' && !hideNav && <NavBar />}
+      {hideNav && !hideNavToggleInRoom && (
+        <div className="app-theme-toggle-shell pointer-events-none">
+          <div className="pointer-events-auto">
+            <ThemeToggle />
+          </div>
+        </div>
+      )}
       <div className="flex min-h-0 flex-1 flex-col">
         <Routes>
           <Route path="/change-password" element={<ChangePasswordPage />} />

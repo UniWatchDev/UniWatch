@@ -1,10 +1,17 @@
-import { DoorClosed } from 'lucide-react';
+import { Ban, DoorClosed, UserX } from 'lucide-react';
 
 interface RoomClosedOverlayProps {
   message: string;
 }
 
+function overlayContext(message: string): { title: string; Icon: typeof DoorClosed } {
+  if (message.includes('kicked')) return { title: 'Kicked from room', Icon: UserX };
+  if (message.includes('blocked')) return { title: 'Blocked from room', Icon: Ban };
+  return { title: 'Room closed', Icon: DoorClosed };
+}
+
 export function RoomClosedOverlay({ message }: RoomClosedOverlayProps) {
+  const { title, Icon } = overlayContext(message);
   return (
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 px-6 backdrop-blur-sm animate-in fade-in duration-300"
@@ -18,7 +25,7 @@ export function RoomClosedOverlay({ message }: RoomClosedOverlayProps) {
           className="flex size-16 items-center justify-center rounded-full border border-amber-500/30 bg-amber-500/15 text-amber-100"
           aria-hidden="true"
         >
-          <DoorClosed className="size-8" />
+          <Icon className="size-8" />
         </div>
 
         <div>
@@ -26,7 +33,7 @@ export function RoomClosedOverlay({ message }: RoomClosedOverlayProps) {
             id="room-closed-title"
             className="m-0 font-mono text-xs uppercase tracking-[0.24em] text-amber-200/70"
           >
-            Room closed
+            {title}
           </p>
           <p id="room-closed-description" className="mt-3 mb-0 text-lg font-semibold text-white">
             {message}

@@ -8,6 +8,7 @@ import { MoviesService } from '@/movies/movies.service';
 import { MoviesController } from '@/movies/movies.controller';
 import { MovieCleanupService } from '@/movies/movie-cleanup.service';
 import { MovieIndexSyncService } from '@/movies/movie-index-sync.service';
+import { MovieIngestService } from '@/movies/movie-ingest.service';
 import { VideoProcessingService } from '@/movies/video-processing.service';
 import { RealtimeModule } from '@/realtime/realtime.module';
 import { RoomRecord, RoomSchema } from '@/rooms/room.schema';
@@ -29,6 +30,7 @@ import { StorageModule } from '@/storage/storage.module';
     MovieRepository,
     MovieCleanupService,
     MovieIndexSyncService,
+    MovieIngestService,
     VideoProcessingService
   ],
   exports: [MovieRepository, MoviesService]

@@ -1,6 +1,6 @@
 import {
-  BadRequestException,
   Body,
+  BadRequestException,
   Controller,
   Delete,
   Get,
@@ -12,18 +12,11 @@ import {
   Query,
   Req,
   Res,
-  UploadedFile,
-  UseGuards,
-  UseInterceptors
+  UseGuards
 } from '@nestjs/common';
-import type { Response } from 'express';
-import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags } from '@nestjs/swagger';
 import { ZodResponse } from 'nestjs-zod';
-import { diskStorage } from 'multer';
-import { tmpdir } from 'node:os';
-import { randomUUID } from 'node:crypto';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import type {
   CompleteUploadResponse,
   MovieResponse,
@@ -44,13 +37,58 @@ import {
   PresignUploadResponseDto,
   UpdateMovieDto
 } from '@/movies/movies.dto';
+import { MovieIngestService } from '@/movies/movie-ingest.service';
 import { MoviesService } from '@/movies/movies.service';
+
+type ParsedMovieUploadQuery = {
+  room_id: string;
+  file_name: string;
+  file_type: string;
+  file_size: number;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function parseMovieUploadQuery(query: unknown): ParsedMovieUploadQuery {
+  if (!isRecord(query)) {
+    throw new BadRequestException('Upload query is required');
+  }
+
+  const roomId = query['room_id'];
+  const fileName = query['file_name'];
+  const fileType = query['file_type'];
+  const fileSize = query['file_size'];
+  if (typeof roomId !== 'string' || !/^[a-f\d]{24}$/iu.test(roomId)) {
+    throw new BadRequestException('room_id must be a valid room id');
+  }
+  if (typeof fileName !== 'string' || fileName.trim().length === 0) {
+    throw new BadRequestException('file_name is required');
+  }
+  if (typeof fileType !== 'string' || fileType.trim().length === 0) {
+    throw new BadRequestException('file_type is required');
+  }
+  if (typeof fileSize !== 'number' || !Number.isFinite(fileSize) || fileSize <= 0) {
+    throw new BadRequestException('file_size must be a positive number');
+  }
+
+  return {
+    room_id: roomId,
+    file_name: fileName,
+    file_type: fileType,
+    file_size: fileSize
+  };
+}
 
 @ApiTags('movies')
 @Controller('movies')
 @UseGuards(JwtAuthGuard)
 export class MoviesController {
-  constructor(private readonly moviesService: MoviesService) {}
+  constructor(
+    private readonly moviesService: MoviesService,
+    private readonly movieIngest: MovieIngestService
+  ) {}
 
   @Get()
   @ZodResponse({ status: 200, description: 'List all movies', type: [MovieResponseDto] })
@@ -167,33 +205,22 @@ export class MoviesController {
 
   @Post(':id/upload')
   @HttpCode(200)
-  @UseInterceptors(
-    FileInterceptor('file', {
-      storage: diskStorage({
-        destination: tmpdir(),
-        filename: (_req, file, cb) => {
-          cb(null, `${randomUUID()}-${file.originalname}`);
-        }
-      }),
-      limits: { files: 1 }
-    })
-  )
   @ZodResponse({ status: 200, description: 'Upload movie file', type: MovieResponseDto })
   upload(
     @Req() req: Request,
     @Param() params: MovieIdParamsDto,
-    @UploadedFile() file: Express.Multer.File | undefined,
-    @Query('replace') replace?: string
+    @Query() query: unknown
   ): Promise<MovieResponse> {
-    if (file === undefined) {
-      throw new BadRequestException('File is required');
-    }
-    return this.moviesService.uploadFile(
-      params.id,
-      getAuthenticatedUserId(req),
-      file,
-      replace === 'true'
-    );
+    const uploadQuery = parseMovieUploadQuery(query);
+    return this.movieIngest.ingestUpload({
+      movieId: params.id,
+      ownerId: getAuthenticatedUserId(req),
+      roomId: uploadQuery.room_id,
+      fileName: uploadQuery.file_name,
+      fileType: uploadQuery.file_type,
+      fileSize: uploadQuery.file_size,
+      body: req
+    });
   }
 
   @Post(':id/presign-upload')

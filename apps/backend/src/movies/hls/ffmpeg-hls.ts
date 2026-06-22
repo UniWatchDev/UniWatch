@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import type { Readable } from 'node:stream';
 import ffmpegPath from 'ffmpeg-static';
 import ffprobeStatic from 'ffprobe-static';
 
@@ -26,11 +27,13 @@ const STANDARD_VARIANTS: readonly HlsVariant[] = [
   { height: 480, bitrateKbps: 1400 }
 ] as const;
 
+export const STANDARD_HLS_VARIANTS: readonly HlsVariant[] = STANDARD_VARIANTS;
+
 const AUDIO_BITRATE_KBPS = 128;
 // Longer segments mean fewer playlist/segment requests, which matters on a
 // rate-limited origin (the R2 r2.dev dev URL). Each segment still starts on a
 // forced keyframe so it stays independently decodable and seekable.
-const SEGMENT_SECONDS = 6;
+export const HLS_SEGMENT_SECONDS = 6;
 /** Video bitrate used when the source is shorter than the smallest standard rung. */
 const FALLBACK_BITRATE_KBPS = 1400;
 
@@ -113,7 +116,8 @@ export async function transcodeToHls(
   inputPath: string,
   outDir: string,
   variants: HlsVariant[],
-  hasAudio: boolean
+  hasAudio: boolean,
+  options?: { onProgress?: (seconds: number) => void }
 ): Promise<void> {
   const binary = ffmpegPath;
   if (binary === null) {
@@ -124,7 +128,36 @@ export async function transcodeToHls(
     await fs.mkdir(path.join(outDir, `${String(variant.height)}p`), { recursive: true });
   }
 
-  await runProcess(binary, buildLadderArgs(inputPath, outDir, variants, hasAudio));
+  const args = buildLadderArgs(inputPath, outDir, variants, hasAudio, options?.onProgress !== undefined);
+  if (options?.onProgress !== undefined) {
+    await runProcessWithProgress(binary, args, options.onProgress);
+    return;
+  }
+  await runProcess(binary, args);
+}
+
+export async function transcodeToHlsFromStream(
+  input: Readable,
+  outDir: string,
+  variants: HlsVariant[],
+  hasAudio: boolean,
+  options?: { onProgress?: (seconds: number) => void }
+): Promise<void> {
+  const binary = ffmpegPath;
+  if (binary === null) {
+    throw new Error('ffmpeg-static did not provide a binary path');
+  }
+
+  for (const variant of variants) {
+    await fs.mkdir(path.join(outDir, `${String(variant.height)}p`), { recursive: true });
+  }
+
+  const args = buildLadderArgs('pipe:0', outDir, variants, hasAudio, options?.onProgress !== undefined);
+  if (options?.onProgress !== undefined) {
+    await runProcessWithProgressAndInput(binary, args, input, options.onProgress);
+    return;
+  }
+  await runProcessWithInput(binary, args, input);
 }
 
 /** Per-encoder thread budget that keeps at least one core free for the API. */
@@ -158,10 +191,15 @@ function buildLadderArgs(
   inputPath: string,
   outDir: string,
   variants: HlsVariant[],
-  hasAudio: boolean
+  hasAudio: boolean,
+  reportProgress = false
 ): string[] {
   const threads = encoderThreadCount(variants.length);
-  const args = ['-y', '-i', inputPath, '-filter_complex', buildSplitScaleFilter(variants)];
+  const args = ['-y', '-i', inputPath];
+  if (reportProgress) {
+    args.push('-progress', 'pipe:1', '-nostats');
+  }
+  args.push('-filter_complex', buildSplitScaleFilter(variants));
 
   // Map every scaled video output, then one audio copy per variant (if any).
   variants.forEach((_, index) => {
@@ -169,7 +207,7 @@ function buildLadderArgs(
   });
   if (hasAudio) {
     variants.forEach(() => {
-      args.push('-map', '0:a:0');
+      args.push('-map', '0:a:0?');
     });
   }
 
@@ -188,7 +226,7 @@ function buildLadderArgs(
     '-preset',
     'veryfast',
     '-force_key_frames',
-    `expr:gte(t,n_forced*${String(SEGMENT_SECONDS)})`,
+    `expr:gte(t,n_forced*${String(HLS_SEGMENT_SECONDS)})`,
     '-sc_threshold',
     '0'
   );
@@ -214,9 +252,11 @@ function buildLadderArgs(
     '-f',
     'hls',
     '-hls_time',
-    String(SEGMENT_SECONDS),
+    String(HLS_SEGMENT_SECONDS),
     '-hls_playlist_type',
-    'vod',
+    'event',
+    '-hls_list_size',
+    '0',
     '-hls_flags',
     'independent_segments',
     '-master_pl_name',
@@ -272,4 +312,154 @@ function runProcess(command: string, args: string[]): Promise<string> {
       reject(new Error(`${path.basename(command)} exited with code ${String(code)}: ${tail}`));
     });
   });
+}
+
+function runProcessWithProgress(
+  command: string,
+  args: string[],
+  onProgress: (seconds: number) => void
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args);
+    let stderr = '';
+    let progressBuffer = '';
+
+    const flushProgressLine = (line: string): void => {
+      const seconds = parseFfmpegProgressSeconds(line);
+      if (seconds !== null) {
+        onProgress(seconds);
+      }
+    };
+
+    child.stdout.on('data', (chunk: Buffer) => {
+      progressBuffer += chunk.toString();
+      const lines = progressBuffer.split('\n');
+      progressBuffer = lines.pop() ?? '';
+      for (const line of lines) {
+        flushProgressLine(line.trim());
+      }
+    });
+
+    child.stderr.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
+
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (progressBuffer.trim().length > 0) {
+        flushProgressLine(progressBuffer.trim());
+      }
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      const tail = stderr.trim().split('\n').slice(-5).join('\n');
+      reject(new Error(`${path.basename(command)} exited with code ${String(code)}: ${tail}`));
+    });
+  });
+}
+
+function runProcessWithInput(
+  command: string,
+  args: string[],
+  input: Readable
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { stdio: ['pipe', 'pipe', 'pipe'] });
+    let stderr = '';
+
+    input.on('error', reject);
+    child.stdin.on('error', reject);
+    child.stderr.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      const tail = stderr.trim().split('\n').slice(-5).join('\n');
+      reject(new Error(`${path.basename(command)} exited with code ${String(code)}: ${tail}`));
+    });
+
+    input.pipe(child.stdin);
+  });
+}
+
+function runProcessWithProgressAndInput(
+  command: string,
+  args: string[],
+  input: Readable,
+  onProgress: (seconds: number) => void
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { stdio: ['pipe', 'pipe', 'pipe'] });
+    let stderr = '';
+    let progressBuffer = '';
+
+    const flushProgressLine = (line: string): void => {
+      const seconds = parseFfmpegProgressSeconds(line);
+      if (seconds !== null) {
+        onProgress(seconds);
+      }
+    };
+
+    input.on('error', reject);
+    child.stdin.on('error', reject);
+    child.stdout.on('data', (chunk: Buffer) => {
+      progressBuffer += chunk.toString();
+      const lines = progressBuffer.split('\n');
+      progressBuffer = lines.pop() ?? '';
+      for (const line of lines) {
+        flushProgressLine(line.trim());
+      }
+    });
+    child.stderr.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (progressBuffer.trim().length > 0) {
+        flushProgressLine(progressBuffer.trim());
+      }
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      const tail = stderr.trim().split('\n').slice(-5).join('\n');
+      reject(new Error(`${path.basename(command)} exited with code ${String(code)}: ${tail}`));
+    });
+
+    input.pipe(child.stdin);
+  });
+}
+
+/** Parse ffmpeg -progress key=value lines into elapsed output seconds. */
+function parseFfmpegProgressSeconds(line: string): number | null {
+  if (line.startsWith('out_time_us=')) {
+    const micros = Number.parseInt(line.slice('out_time_us='.length), 10);
+    return Number.isFinite(micros) ? micros / 1_000_000 : null;
+  }
+  if (line.startsWith('out_time_ms=')) {
+    const millis = Number.parseInt(line.slice('out_time_ms='.length), 10);
+    return Number.isFinite(millis) ? millis / 1000 : null;
+  }
+  if (line.startsWith('out_time=')) {
+    return parseFfmpegTimecode(line.slice('out_time='.length));
+  }
+  return null;
+}
+
+/** HH:MM:SS.microseconds from ffmpeg progress output. */
+function parseFfmpegTimecode(value: string): number | null {
+  const match = /^(\d+):(\d+):(\d+(?:\.\d+)?)$/u.exec(value.trim());
+  if (match === null) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  const seconds = Number(match[3]);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes) || !Number.isFinite(seconds)) {
+    return null;
+  }
+  return hours * 3600 + minutes * 60 + seconds;
 }

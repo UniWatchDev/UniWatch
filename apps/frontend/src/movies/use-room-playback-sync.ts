@@ -4,6 +4,7 @@ import type { CountdownState, PlaybackState } from '@repo/schemas/realtime';
 import type { PlaybackChangeEvent } from '@/hooks/use-room-socket';
 import {
   applyServerPlaybackToVideo,
+  PLAYBACK_DRIFT_THRESHOLD_SEC,
   type ApplyServerPlaybackMode,
   type PlaybackRate
 } from '@/movies/room-playback';
@@ -12,6 +13,7 @@ export interface UseRoomPlaybackSyncOptions {
   videoRef: React.RefObject<HTMLVideoElement | null>;
   roomMovieId: string | null;
   mediaSrc: string | null;
+  partialPlayback: boolean;
   videoReady: boolean;
   posterFrameReady: boolean;
   isOwner: boolean;
@@ -37,6 +39,7 @@ export function useRoomPlaybackSync({
   videoRef,
   roomMovieId,
   mediaSrc,
+  partialPlayback,
   videoReady,
   posterFrameReady,
   isOwner,
@@ -162,7 +165,19 @@ export function useRoomPlaybackSync({
         return;
       }
 
-      onApplied(applied);
+      if (partialPlayback) {
+        const seekableEnd = getSeekableEnd(video);
+        const maxPlayablePosition = seekableEnd > 0 ? Math.max(0, seekableEnd - 1) : null;
+        if (maxPlayablePosition !== null && video.currentTime > maxPlayablePosition) {
+          video.currentTime = maxPlayablePosition;
+        }
+      }
+
+      onApplied({
+        currentTime: video.currentTime,
+        isPlaying: applied.isPlaying,
+        playbackRate: applied.playbackRate
+      });
 
       if (
         countdownJustEnded &&
@@ -198,10 +213,60 @@ export function useRoomPlaybackSync({
     playback.isPlaying,
     playback.movieId,
     posterFrameReady,
+    partialPlayback,
     remotePlaybackEvent,
     roomMovieId,
     suppressPlaybackEmitRef,
     videoReady,
     videoRef
   ]);
+
+  useEffect(() => {
+    if (isOwner || roomMovieId === null || mediaSrc === null) {
+      return;
+    }
+
+    const syncDriftToHost = () => {
+      const video = videoRef.current;
+      const snapshotPlayback = playbackRef.current;
+      const serverPlaying = snapshotPlayback.isPlaying && !countdown.active;
+      const mediaReadyForPaused = videoReady || posterFrameReady;
+      if (
+        video === null ||
+        snapshotPlayback.movieId !== roomMovieId ||
+        (serverPlaying ? !videoReady : !mediaReadyForPaused)
+      ) {
+        return;
+      }
+
+      applyServerPlaybackToVideo(
+        video,
+        snapshotPlayback,
+        roomMovieId,
+        'soft',
+        PLAYBACK_DRIFT_THRESHOLD_SEC,
+        onPlayFailed
+      );
+    };
+
+    syncDriftToHost();
+    const timer = setInterval(syncDriftToHost, 1_000);
+    return () => {
+      clearInterval(timer);
+    };
+  }, [
+    countdown.active,
+    isOwner,
+    mediaSrc,
+    onPlayFailed,
+    posterFrameReady,
+    roomMovieId,
+    videoReady,
+    videoRef
+  ]);
+}
+
+function getSeekableEnd(video: HTMLVideoElement): number {
+  if (video.seekable.length === 0) return 0;
+  return video.seekable.end(video.seekable.length - 1);
 }

@@ -10,17 +10,18 @@ import {
   Req,
   UseGuards
 } from '@nestjs/common';
-import type { RoomPreview } from '@repo/schemas/rooms';
 import { ApiTags } from '@nestjs/swagger';
 import { ZodResponse } from 'nestjs-zod';
 import type { Request } from 'express';
-import type { RoomResponse } from '@repo/schemas/rooms';
+import type { BlockedUser, RoomPreview, RoomResponse } from '@repo/schemas/rooms';
 import { getAuthenticatedUserId } from '@/auth/get-authenticated-user-id';
 import { JwtAuthGuard } from '@/auth/jwt-auth.guard';
 import {
+  BlockedUserDto,
   CreateRoomDto,
   JoinRoomBodyDto,
   JoinRoomResponseDto,
+  RoomBlockedUserParamsDto,
   RoomIdParamsDto,
   RoomPreviewDto,
   RoomResponseDto,
@@ -78,6 +79,24 @@ export class RoomsController {
     @Param() params: RoomIdParamsDto
   ): Promise<{ success: true }> {
     return this.roomsService.leave(params.id, getAuthenticatedUserId(req));
+  }
+
+  @Get(':id/blocked-users')
+  @ZodResponse({ status: 200, description: 'List blocked users', type: [BlockedUserDto] })
+  listBlockedUsers(
+    @Req() req: Request,
+    @Param() params: RoomIdParamsDto
+  ): Promise<BlockedUser[]> {
+    return this.roomsService.listBlockedUsers(params.id, getAuthenticatedUserId(req));
+  }
+
+  @Delete(':id/blocked-users/:userId')
+  @ZodResponse({ status: 200, description: 'Unblock a user', type: [BlockedUserDto] })
+  unblockUser(
+    @Req() req: Request,
+    @Param() params: RoomBlockedUserParamsDto
+  ): Promise<BlockedUser[]> {
+    return this.roomsService.unblockUser(params.id, getAuthenticatedUserId(req), params.userId);
   }
 
   @Patch(':id')

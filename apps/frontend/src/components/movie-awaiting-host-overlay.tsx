@@ -16,7 +16,7 @@ export function MovieAwaitingHostOverlay({
 
   return (
     <div
-      className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-linear-to-b from-black/35 via-black/55 to-black/75 px-6 text-center pointer-events-none"
+      className="movie-awaiting-host-overlay absolute inset-0 flex flex-col items-center justify-center bg-linear-to-b from-black/35 via-black/55 to-black/75 px-6 text-center pointer-events-none"
       aria-live="polite"
     >
       <div className="flex max-w-md flex-col items-center gap-4">

@@ -178,8 +178,8 @@ describe('RealtimeGateway', () => {
 
     await gateway.handleKickUser(socket as never, { roomId, targetUserId: viewerId });
 
-    expect(viewerSocketTwo.emit).toHaveBeenCalledWith('room:error', { message: 'kicked from the room' });
-    expect(viewerSocketThree.emit).toHaveBeenCalledWith('room:error', { message: 'kicked from the room' });
+    expect(viewerSocketTwo.emit).toHaveBeenCalledWith('room:error', { message: 'You have been kicked from this room.' });
+    expect(viewerSocketThree.emit).toHaveBeenCalledWith('room:error', { message: 'You have been kicked from this room.' });
     expect(viewerSocketTwo.disconnect).toHaveBeenCalledWith(true);
     expect(viewerSocketThree.disconnect).toHaveBeenCalledWith(true);
   });
@@ -196,7 +196,7 @@ describe('RealtimeGateway', () => {
     await gateway.handleBlockUser(socket as never, { roomId, targetUserId: viewerId });
 
     expect((rooms.banUser as jest.Mock).mock.calls).toHaveLength(1);
-    expect(viewerSocket.emit).toHaveBeenCalledWith('room:error', { message: 'blocked from the room' });
+    expect(viewerSocket.emit).toHaveBeenCalledWith('room:error', { message: 'You have been blocked from this room.' });
     expect(viewerSocket.disconnect).toHaveBeenCalledWith(true);
   });
 

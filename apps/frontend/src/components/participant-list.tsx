@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import type { Member } from '@/types/room';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { AtSign, Ban, Crown, MoreVertical, UserPlus, UserX } from 'lucide-react';
+import { AtSign, Ban, Crown, MoreVertical, UserMinus, UserPlus, UserX } from 'lucide-react';
 import { initials } from '@/utils/initials';
 
 interface ParticipantListProps {
@@ -33,6 +33,20 @@ export function ParticipantList({
 }: ParticipantListProps) {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
+  // Close the open options menu when clicking anywhere outside of a member row.
+  useEffect(() => {
+    if (openMenuId === null) return undefined;
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest('[data-member-menu]') !== null) {
+        return;
+      }
+      setOpenMenuId(null);
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => { document.removeEventListener('mousedown', handlePointerDown); };
+  }, [openMenuId]);
+
   if (members.length === 0) {
     return (
       <p
@@ -52,6 +66,7 @@ export function ParticipantList({
         return (
           <li
             key={member.id}
+            data-member-menu
             className="relative flex items-center gap-3 rounded-lg px-2 py-2"
             style={{
               background: isYou ? 'rgba(245,158,11,0.07)' : 'transparent',
@@ -121,44 +136,37 @@ export function ParticipantList({
               </p>
             </div>
 
-            <button
-              type="button"
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-white/10"
-              style={{ color: 'var(--text-muted)' }}
-              onClick={() => {
-                setOpenMenuId((current) => (current === member.id ? null : member.id));
-              }}
-              aria-label={`${member.name} options`}
-              aria-expanded={isMenuOpen}
-            >
-              <MoreVertical size={14} />
-            </button>
-
-            {isMenuOpen && (
-              <div
-                className="absolute right-2 top-10 z-20 w-44 overflow-hidden rounded-xl border"
-                style={{
-                  borderColor: 'var(--border-medium)',
-                  background: 'rgba(18, 12, 6, 0.98)',
-                  boxShadow: '0 18px 40px rgba(0, 0, 0, 0.3)'
+            {!isYou && (
+              <button
+                type="button"
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-white/10"
+                style={{ color: 'var(--text-muted)' }}
+                onClick={() => {
+                  setOpenMenuId((current) => (current === member.id ? null : member.id));
                 }}
+                aria-label={`${member.name} options`}
+                aria-expanded={isMenuOpen}
               >
+                <MoreVertical size={14} />
+              </button>
+            )}
+
+            {isMenuOpen && !isYou && (
+              <div className="participant-menu absolute right-2 top-10 z-20 w-44 overflow-hidden rounded-xl">
                 <button
                   type="button"
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-white/5"
-                  style={{ color: 'var(--text-primary)' }}
+                  className="participant-menu__item flex w-full items-center gap-2 px-3 py-2 text-left text-sm"
                   onClick={() => {
                     onAddFriend(member);
                     setOpenMenuId(null);
                   }}
                 >
-                  <UserPlus size={13} />
-                  Add as friend
+                  {member.isFriend ? <UserMinus size={13} /> : <UserPlus size={13} />}
+                  {member.isFriend ? 'Remove friend' : 'Add as friend'}
                 </button>
                 <button
                   type="button"
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-white/5"
-                  style={{ color: 'var(--text-primary)' }}
+                  className="participant-menu__item flex w-full items-center gap-2 px-3 py-2 text-left text-sm"
                   onClick={() => {
                     onTagUser(member);
                     setOpenMenuId(null);
@@ -169,10 +177,13 @@ export function ParticipantList({
                 </button>
                 {canModerate && member.id !== currentUserId && (
                   <>
+                    <div className="participant-menu__divider mx-2 my-1" />
+                    <p className="participant-menu__label px-3 pb-1 pt-0.5 text-[9px] font-bold uppercase tracking-[0.1em]">
+                      Moderation
+                    </p>
                     <button
                       type="button"
-                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-white/5"
-                      style={{ color: 'var(--text-primary)' }}
+                      className="participant-menu__item flex w-full items-center gap-2 px-3 py-2 text-left text-sm"
                       onClick={() => {
                         onKickUser(member);
                         setOpenMenuId(null);
@@ -183,8 +194,7 @@ export function ParticipantList({
                     </button>
                     <button
                       type="button"
-                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-white/5"
-                      style={{ color: '#fca5a5' }}
+                      className="participant-menu__item participant-menu__item--danger flex w-full items-center gap-2 px-3 py-2 text-left text-sm"
                       onClick={() => {
                         onBlockUser(member);
                         setOpenMenuId(null);

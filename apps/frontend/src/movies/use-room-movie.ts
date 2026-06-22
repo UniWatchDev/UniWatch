@@ -40,7 +40,10 @@ async function fetchStreamUrl(movieId: string): Promise<{ url: string; expiresAt
 }
 
 function isMoviePlayable(movie: MovieResponse): boolean {
-  return movie.has_file && movie.upload_status === 'ready';
+  return (
+    movie.upload_status === 'ready' ||
+    (movie.upload_status === 'processing' && movie.playback_partial && movie.playback_url !== null)
+  );
 }
 
 function isMovieWorking(movie: MovieResponse): boolean {
@@ -53,7 +56,7 @@ function isMovieWorking(movie: MovieResponse): boolean {
 
 /** A processed movie streams adaptive HLS straight from its public playback URL. */
 function hlsPlaybackUrl(movie: MovieResponse): string | null {
-  return movie.upload_status === 'ready' && movie.playback_url !== null
+  return isMoviePlayable(movie) && movie.playback_url !== null
     ? movie.playback_url
     : null;
 }
@@ -143,9 +146,9 @@ export function useRoomMovie(
 
         setMovie(next);
         const playable = isMoviePlayable(next);
+        const fullyReady = next.upload_status === 'ready';
 
         if (playable) {
-          stopPolling();
           const hlsUrl = hlsPlaybackUrl(next);
           if (hlsUrl !== null) {
             // Public HLS playlist — no presigned refresh lifecycle needed.
@@ -156,6 +159,9 @@ export function useRoomMovie(
           } else {
             setIsHls(false);
             await refreshStream();
+          }
+          if (fullyReady) {
+            stopPolling();
           }
         } else {
           setIsHls(false);

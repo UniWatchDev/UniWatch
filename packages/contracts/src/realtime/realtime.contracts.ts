@@ -17,7 +17,9 @@ import {
   userJoinedEventSchema,
   userLeftEventSchema,
   videoFailedEventSchema,
+  videoPlayableEventSchema,
   videoProcessingEventSchema,
+  videoProgressEventSchema,
   videoReadyEventSchema,
   type JoinRoomPayload,
   type LeaveRoomPayload,
@@ -36,7 +38,9 @@ import {
   type UserJoinedEvent,
   type UserLeftEvent,
   type VideoFailedEvent,
+  type VideoPlayableEvent,
   type VideoProcessingEvent,
+  type VideoProgressEvent,
   type VideoReadyEvent
 } from '@repo/schemas/realtime';
 import type { z } from 'zod';
@@ -171,6 +175,18 @@ export const videoProcessingContract: SocketEventContract<VideoProcessingEvent> 
   event: REALTIME_SERVER_EVENTS.videoProcessing,
   direction: 'server-to-client',
   payloadSchema: videoProcessingEventSchema
+};
+
+export const videoPlayableContract: SocketEventContract<VideoPlayableEvent> = {
+  event: REALTIME_SERVER_EVENTS.videoPlayable,
+  direction: 'server-to-client',
+  payloadSchema: videoPlayableEventSchema
+};
+
+export const videoProgressContract: SocketEventContract<VideoProgressEvent> = {
+  event: REALTIME_SERVER_EVENTS.videoProgress,
+  direction: 'server-to-client',
+  payloadSchema: videoProgressEventSchema
 };
 
 export const videoReadyContract: SocketEventContract<VideoReadyEvent> = {

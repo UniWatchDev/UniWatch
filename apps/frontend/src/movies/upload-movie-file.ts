@@ -1,15 +1,11 @@
 import {
   MOVIE_ALLOWED_FORMATS_LABEL,
-  MOVIE_COMPLETE_UPLOAD_ENDPOINT,
   MOVIE_MAX_BYTES,
-  MOVIE_PRESIGN_UPLOAD_ENDPOINT,
   resolveMovieMime
 } from '@repo/consts/movies';
-import { completeUploadContract, presignUploadContract } from '@repo/contracts/movies';
+import { uploadMovieContract } from '@repo/contracts/movies';
 import { API_BASE_URL } from '@repo/consts/api';
-import type { PresignUploadResponse } from '@repo/schemas/movies';
-
-import { readHttpErrorMessage } from '@/auth/auth-fetch-helpers';
+import type { MovieResponse } from '@repo/schemas/movies';
 
 export { MOVIE_FILE_ACCEPT } from '@repo/consts/movies';
 
@@ -29,42 +25,18 @@ export function validateMovieFile(file: File): string | null {
   return null;
 }
 
-/** Ask the backend for a presigned PUT URL for direct-to-R2 upload. */
-async function presignMovieUpload(
-  movieId: string,
-  file: File,
-  contentType: string
-): Promise<PresignUploadResponse> {
-  const params = presignUploadContract.paramsSchema.parse({ id: movieId });
-  const path = MOVIE_PRESIGN_UPLOAD_ENDPOINT.replace(':id', encodeURIComponent(params.id));
-  const body = presignUploadContract.bodySchema.parse({
-    file_name: file.name,
-    file_type: contentType,
-    file_size: file.size
-  });
-  const res = await fetch(`${API_BASE_URL}${path}`, {
-    method: presignUploadContract.method,
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    credentials: 'include',
-    body: JSON.stringify(body)
-  });
-  if (!res.ok) {
-    throw new Error(await readHttpErrorMessage(res));
-  }
-  return presignUploadContract.responseSchema.parse(await res.json());
-}
-
-/** Upload the raw file straight to R2 via the presigned URL (no cookies cross-origin). */
-function putFileToUrl(
+function uploadFileToBackend(
   uploadUrl: string,
   file: File,
   contentType: string,
   onProgress?: (progress: UploadProgress) => void
-): Promise<void> {
+): Promise<MovieResponse> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open('PUT', uploadUrl);
+    xhr.open('POST', uploadUrl);
+    xhr.withCredentials = true;
     xhr.setRequestHeader('Content-Type', contentType);
+    xhr.responseType = 'json';
 
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable && onProgress) {
@@ -78,16 +50,24 @@ function putFileToUrl(
 
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) {
-        resolve();
+        const parsed = uploadMovieContract.responseSchema.safeParse(xhr.response);
+        if (!parsed.success) {
+          reject(new Error('Backend returned an invalid movie payload'));
+          return;
+        }
+        resolve(parsed.data);
         return;
       }
-      reject(new Error(`Upload to storage failed (HTTP ${String(xhr.status)})`));
+      const details = typeof xhr.responseText === 'string' && xhr.responseText.length > 0
+        ? `: ${xhr.responseText.slice(0, 200)}`
+        : '';
+      reject(new Error(`Upload failed (HTTP ${String(xhr.status)})${details}`));
     };
 
     xhr.onerror = () => {
       reject(
         new Error(
-          'Upload failed due to a network or CORS error. Confirm the R2 bucket allows PUT from this origin.'
+          'Upload failed due to a network or auth error. Confirm the backend is reachable and the session cookie is valid.'
         )
       );
     };
@@ -96,37 +76,35 @@ function putFileToUrl(
   });
 }
 
-/** Tell the backend the upload finished so it can start async HLS processing. */
-async function completeMovieUpload(movieId: string, roomId: string): Promise<void> {
-  const params = completeUploadContract.paramsSchema.parse({ id: movieId });
-  const path = MOVIE_COMPLETE_UPLOAD_ENDPOINT.replace(':id', encodeURIComponent(params.id));
-  const body = completeUploadContract.bodySchema.parse({ room_id: roomId });
-  const res = await fetch(`${API_BASE_URL}${path}`, {
-    method: completeUploadContract.method,
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    credentials: 'include',
-    body: JSON.stringify(body)
-  });
-  if (!res.ok) {
-    throw new Error(await readHttpErrorMessage(res));
-  }
-}
-
 /**
- * Full direct-upload flow for a movie tied to a room:
- * presign → PUT to R2 → complete (which enqueues async transcoding).
+ * Full upload flow for a movie tied to a room:
+ * send the raw file body to the backend relay, which streams it into ffmpeg and R2.
  */
-export async function uploadMovieViaPresign(
+export async function uploadMovieViaStream(
   movieId: string,
   file: File,
   roomId: string,
   options?: { onProgress?: (progress: UploadProgress) => void }
-): Promise<void> {
+): Promise<MovieResponse> {
   const contentType = resolveMovieMime(file.type, file.name);
   if (contentType === null) {
     throw new Error(`Only ${MOVIE_ALLOWED_FORMATS_LABEL} video files are supported.`);
   }
-  const presign = await presignMovieUpload(movieId, file, contentType);
-  await putFileToUrl(presign.upload_url, file, contentType, options?.onProgress);
-  await completeMovieUpload(movieId, roomId);
+  const params = uploadMovieContract.paramsSchema.parse({ id: movieId });
+  const query = {
+    room_id: roomId,
+    file_name: file.name,
+    file_type: contentType,
+    file_size: file.size
+  };
+  const path = uploadMovieContract.path.replace(':id', encodeURIComponent(params.id));
+  const url = new URL(`${API_BASE_URL}${path}`);
+  url.search = new URLSearchParams({
+    room_id: query.room_id,
+    file_name: query.file_name,
+    file_type: query.file_type,
+    file_size: String(query.file_size)
+  }).toString();
+
+  return await uploadFileToBackend(url.toString(), file, contentType, options?.onProgress);
 }

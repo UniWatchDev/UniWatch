@@ -79,6 +79,7 @@ export const movieResponseSchema = z.object({
   has_file: z.boolean(),
   hls_prefix: z.string().nullable(),
   playback_url: z.string().nullable(),
+  playback_partial: z.boolean(),
   available_qualities: z.array(z.number()),
   error_message: z.string().nullable(),
   file_deleted_at: z.string().nullable(),
@@ -110,7 +111,7 @@ export const movieStreamResponseSchema = z.object({
 export type MovieStreamResponse = z.infer<typeof movieStreamResponseSchema>;
 
 // ---------------------------------------------------------------------------
-// Direct-to-R2 presigned upload + async processing
+// Legacy direct-to-R2 presigned upload + async processing
 // ---------------------------------------------------------------------------
 
 export const presignUploadRequestSchema = z.strictObject({
@@ -129,6 +130,15 @@ export const presignUploadResponseSchema = z.object({
 });
 
 export type PresignUploadResponse = z.infer<typeof presignUploadResponseSchema>;
+
+export const movieUploadRequestSchema = z.strictObject({
+  room_id: objectId,
+  file_name: z.string().min(1, 'File name is required'),
+  file_type: z.string().min(1, 'File type is required'),
+  file_size: z.coerce.number().int().positive('File size must be positive')
+});
+
+export type MovieUploadRequest = z.infer<typeof movieUploadRequestSchema>;
 
 export const completeUploadRequestSchema = z.strictObject({
   room_id: objectId

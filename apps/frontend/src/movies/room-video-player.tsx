@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 
 import { MovieAwaitingHostOverlay } from '@/components/movie-awaiting-host-overlay';
-import { MovieUploadProgress } from '@/movies/movie-upload-progress';
+import { ReadyStateOverlay } from '@/components/ready-state-overlay';
+import type { ReadyOverlayState } from '@/components/ready-state-overlay';
+import { ViewerNoMovieOverlay } from '@/components/viewer-no-movie-overlay';
 import type { PlaybackRate } from '@/movies/room-playback';
 import { RoomVideoPlayerControls } from '@/movies/room-video-player-controls';
 import type { SelectedQuality } from '@/movies/use-hls-player';
@@ -9,7 +11,7 @@ import { useFullscreenOverlayControls } from '@/movies/use-fullscreen-overlay-co
 
 function CenterPlayIcon() {
   return (
-    <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
       <polygon points="5,3 19,12 5,21" />
     </svg>
   );
@@ -18,12 +20,12 @@ function CenterPlayIcon() {
 export function RoomVideoPlayer({
   roomName,
   movieName,
-  statusText,
-  isLive,
   loading,
   error,
   isUploading,
   isFailed,
+  uploadPercent = null,
+  processingPercent = null,
   mediaSrc,
   isHls = false,
   videoKey,
@@ -37,6 +39,7 @@ export function RoomVideoPlayer({
   bufferedEnd,
   qualities,
   selectedQuality,
+  currentLevel = null,
   isPlaying,
   playbackRate,
   muted,
@@ -45,6 +48,17 @@ export function RoomVideoPlayer({
   awaitingHostMovieName,
   awaitingHostLoading = false,
   isHostViewer = false,
+  showSoloHostPlayOverlay = false,
+  ownerUploadOverlay,
+  readyOverlayState = null,
+  readyOverlayMovieName,
+  readyUploadPercent = null,
+  readyProcessingPercent = null,
+  processingPartial = false,
+  readyCount = 0,
+  readinessTotal = 0,
+  isCurrentUserReady = false,
+  onToggleReady,
   onLoadedData,
   onTogglePlay,
   onTimeUpdate,
@@ -61,17 +75,15 @@ export function RoomVideoPlayer({
   onPlaybackRateChange,
   onToggleMute,
   onVolumeChange,
-  ownerActions,
-  placeholderText,
 }: {
   roomName: string;
   movieName: string | null | undefined;
-  statusText: string;
-  isLive: boolean;
   loading: boolean;
   error: string | null;
   isUploading: boolean;
   isFailed: boolean;
+  uploadPercent?: number | null;
+  processingPercent?: number | null;
   mediaSrc: string | null;
   isHls?: boolean;
   videoKey: string | null;
@@ -85,6 +97,7 @@ export function RoomVideoPlayer({
   bufferedEnd: number;
   qualities: number[];
   selectedQuality: SelectedQuality;
+  currentLevel?: number | null;
   isPlaying: boolean;
   playbackRate: number;
   muted: boolean;
@@ -93,6 +106,17 @@ export function RoomVideoPlayer({
   awaitingHostMovieName?: string | null;
   awaitingHostLoading?: boolean;
   isHostViewer?: boolean;
+  showSoloHostPlayOverlay?: boolean;
+  ownerUploadOverlay?: React.ReactNode;
+  readyOverlayState?: ReadyOverlayState | null;
+  readyOverlayMovieName?: string | null;
+  readyUploadPercent?: number | null;
+  readyProcessingPercent?: number | null;
+  processingPartial?: boolean;
+  readyCount?: number;
+  readinessTotal?: number;
+  isCurrentUserReady?: boolean;
+  onToggleReady?: () => void;
   onLoadedData?: () => void;
   onTogglePlay: () => void;
   onTimeUpdate: () => void;
@@ -109,20 +133,21 @@ export function RoomVideoPlayer({
   onPlaybackRateChange: (rate: PlaybackRate) => void;
   onToggleMute: () => void;
   onVolumeChange: (volume: number) => void;
-  ownerActions?: React.ReactNode;
-  placeholderText?: string;
 }) {
   const shellRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const { overlayVisible, revealControls } = useFullscreenOverlayControls(isFullscreen, isPlaying);
-  const showPlaceholder = mediaSrc === null;
+  const { overlayVisible, revealControls, hideControls } = useFullscreenOverlayControls(isFullscreen, isPlaying);
+  const showPlaceholder = mediaSrc === null && readyOverlayState === null;
+  const showNoMovieOverlay =
+    showPlaceholder && !loading && !isUploading && !isFailed && error === null;
   const showCenterPlay =
     canControl &&
     !isPlaying &&
     videoReady &&
     mediaSrc !== null &&
     !videoError &&
-    !showAwaitingHostOverlay;
+    !showAwaitingHostOverlay &&
+    !showSoloHostPlayOverlay;
 
   useEffect(() => {
     const onNativeFullscreenChange = () => {
@@ -151,18 +176,18 @@ export function RoomVideoPlayer({
     <RoomVideoPlayerControls
       canControl={canControl}
       showHostControls={showHostControls}
+      isPlaying={isPlaying}
       currentTime={currentTime}
       duration={duration}
       bufferedEnd={bufferedEnd}
       qualities={qualities}
       selectedQuality={selectedQuality}
+      currentLevel={currentLevel ?? null}
       playbackRate={playbackRate}
       muted={muted}
       volume={volume}
       isFullscreen={isFullscreen}
-      movieName={movieName}
-      statusText={statusText}
-      isLive={isLive}
+      onTogglePlay={onTogglePlay}
       onScrub={onScrub}
       onSeekBy={onSeekBy}
       onSelectQuality={onSelectQuality}
@@ -178,7 +203,8 @@ export function RoomVideoPlayer({
     <div
       ref={shellRef}
       className="room-video-player"
-      onMouseMove={isFullscreen ? revealControls : undefined}
+      onMouseMove={revealControls}
+      onMouseLeave={hideControls}
     >
       <div className="room-video-player__body">
         <div className="room-video-player__stage">
@@ -205,57 +231,81 @@ export function RoomVideoPlayer({
             />
           )}
 
-          {showPlaceholder && (
-            <div className="room-video-player__overlay room-video-player__overlay--placeholder">
-              <div className="room-video-player__placeholder-stack">
-                {loading ? (
-                  <>
-                    <p className="room-video-player__placeholder-icon">⏳</p>
-                    <p className="room-video-player__placeholder-text">Loading video…</p>
-                  </>
-                ) : isUploading ? (
-                  <>
-                    <p className="room-video-player__placeholder-icon">📤</p>
-                    <p className="room-video-player__placeholder-text">
-                      {movieName ? `"${movieName}" is still uploading…` : 'Video is still uploading…'}
-                    </p>
-                    <div className="room-video-player__upload-progress">
-                      <MovieUploadProgress percent={0} indeterminate label="Preparing video for playback" />
-                    </div>
-                  </>
-                ) : isFailed ? (
-                  <>
-                    <p className="room-video-player__placeholder-icon">⚠️</p>
-                    <p className="room-video-player__placeholder-text">Video upload failed. Edit the room to try again.</p>
-                  </>
-                ) : error ? (
-                  <>
-                    <p className="room-video-player__placeholder-icon">⚠️</p>
-                    <p className="room-video-player__placeholder-text">{error}</p>
-                  </>
-                ) : (
-                  <>
-                    <p className="room-video-player__placeholder-icon">⏳</p>
-                    <p className="room-video-player__placeholder-text">
-                      {placeholderText ?? 'Waiting for the host to upload a video…'}
-                    </p>
-                  </>
-                )}
+          {showPlaceholder && loading && (
+            <ReadyStateOverlay
+              state="processing"
+              movieName={movieName}
+              processingPercent={0}
+            />
+          )}
 
-                {ownerActions && (
-                  <div className="room-video-player__owner-actions room-video-player__overlay--interactive">
-                    {ownerActions}
-                  </div>
-                )}
+          {showPlaceholder && !loading && isUploading && (
+            <ReadyStateOverlay
+              state={uploadPercent !== null ? 'uploading' : 'processing'}
+              movieName={movieName}
+              uploadPercent={uploadPercent}
+              processingPercent={processingPercent}
+            />
+          )}
+
+          {showPlaceholder && !loading && !isUploading && isFailed && (
+            <div className="ready-overlay" aria-live="polite">
+              <div className="ready-overlay__backdrop" aria-hidden="true" />
+              <div className="ready-overlay__content fade-in">
+                <p className="ready-overlay__eyebrow">Upload failed</p>
+                <h2 className="ready-overlay__title">Could not prepare video</h2>
+                <p className="ready-overlay__hint">
+                  Video upload failed. Edit the room to try again.
+                </p>
               </div>
             </div>
           )}
 
-          {showAwaitingHostOverlay && (
+          {showPlaceholder && !loading && !isUploading && !isFailed && error !== null && (
+            <div className="ready-overlay" aria-live="polite">
+              <div className="ready-overlay__backdrop" aria-hidden="true" />
+              <div className="ready-overlay__content fade-in">
+                <p className="ready-overlay__eyebrow">Playback error</p>
+                <h2 className="ready-overlay__title">Something went wrong</h2>
+                <p className="ready-overlay__hint">{error}</p>
+              </div>
+            </div>
+          )}
+
+          {showNoMovieOverlay && ownerUploadOverlay}
+
+          {showNoMovieOverlay && !ownerUploadOverlay && !isHostViewer && (
+            <ViewerNoMovieOverlay />
+          )}
+
+          {showAwaitingHostOverlay && !readyOverlayState && (
             <MovieAwaitingHostOverlay
               movieName={awaitingHostMovieName}
               loading={awaitingHostLoading}
               isHost={isHostViewer}
+            />
+          )}
+
+          {readyOverlayState !== null && (
+            <ReadyStateOverlay
+              state={readyOverlayState}
+              movieName={readyOverlayMovieName ?? null}
+              uploadPercent={readyUploadPercent}
+              processingPercent={readyProcessingPercent}
+              partialPlayable={processingPartial}
+              readyCount={readyCount}
+              readinessTotal={readinessTotal}
+              isCurrentUserReady={isCurrentUserReady}
+              {...(onToggleReady !== undefined ? { onToggleReady } : {})}
+            />
+          )}
+
+          {showSoloHostPlayOverlay && (
+            <ReadyStateOverlay
+              state="solo-host-play"
+              movieName={movieName ?? null}
+              onPrimaryAction={onTogglePlay}
+              primaryActionLabel="Play movie"
             />
           )}
 
@@ -288,25 +338,21 @@ export function RoomVideoPlayer({
             </button>
           )}
 
-          {isFullscreen && (
+          {mediaSrc !== null && readyOverlayState === null && (
             <div
               className={`room-video-player__controls room-video-player__controls--overlay${overlayVisible ? ' is-visible' : ''}`}
             >
-              <div className="room-video-player__overlay-title">
-                <span>{roomName}</span>
-                {movieName && <span className="room-video-player__overlay-title-sep">·</span>}
-                {movieName && <span>{movieName}</span>}
-              </div>
+              {isFullscreen && (
+                <div className="room-video-player__overlay-title">
+                  <span>{roomName}</span>
+                  {movieName && <span className="room-video-player__overlay-title-sep">·</span>}
+                  {movieName && <span>{movieName}</span>}
+                </div>
+              )}
               {controls}
             </div>
           )}
         </div>
-
-        {!isFullscreen && (
-          <div className="room-video-player__controls room-video-player__controls--docked">
-            {controls}
-          </div>
-        )}
       </div>
     </div>
   );

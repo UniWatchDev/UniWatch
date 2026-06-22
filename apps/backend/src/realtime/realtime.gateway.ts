@@ -220,6 +220,11 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
     const runtime = this.roomState.getOrCreate(roomId);
     const previousPlayback = runtime.playback;
+    const publishedDurationSec = this.roomState.getPublishedDuration(roomId);
+    const maxPlayablePositionSec =
+      publishedDurationSec !== null ? Math.max(0, publishedDurationSec - 1) : null;
+    const clampedPositionSec =
+      maxPlayablePositionSec !== null ? Math.min(positionSec, maxPlayablePositionSec) : positionSec;
     if (!this.isAllowedPlaybackMovieId(runtime, room, movieId)) {
       throw new WsException('Forbidden');
     }
@@ -229,7 +234,12 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       if (ended === true) {
         this.roomState.resetPlaybackSession(roomId);
       } else {
-        this.roomState.updatePlayback(roomId, { movieId, isPlaying: false, positionSec, playbackRate });
+        this.roomState.updatePlayback(roomId, {
+          movieId,
+          isPlaying: false,
+          positionSec: clampedPositionSec,
+          playbackRate
+        });
       }
       await this.syncRoomStatus(roomId, creatorRefToId(room.creator));
       this.broadcast.emitRoomPlaybackChanged(roomId, user.userId);
@@ -238,7 +248,12 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     }
 
     if (previousPlayback.isPlaying) {
-      this.roomState.updatePlayback(roomId, { movieId, isPlaying: true, positionSec, playbackRate });
+      this.roomState.updatePlayback(roomId, {
+        movieId,
+        isPlaying: true,
+        positionSec: clampedPositionSec,
+        playbackRate
+      });
       this.countdown.cancel(roomId);
       await this.syncRoomStatus(roomId, creatorRefToId(room.creator));
       // Keep server position fresh for joiners, but avoid room-wide playback broadcasts
@@ -246,7 +261,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       const rateChanged = previousPlayback.playbackRate !== playbackRate;
       const seeked =
         force === true ||
-        Math.abs(positionSec - previousPlayback.positionSec) > 1;
+        Math.abs(clampedPositionSec - previousPlayback.positionSec) > 1;
       if (rateChanged || seeked) {
         this.broadcast.emitRoomPlaybackChanged(roomId, user.userId);
       }
@@ -254,7 +269,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     }
 
     this.assertPlaybackAllowed(roomId, runtime.connectedUsers.length, creatorRefToId(room.creator), force);
-    this.countdown.setPending(roomId, { movieId, positionSec, playbackRate });
+    this.countdown.setPending(roomId, { movieId, positionSec: clampedPositionSec, playbackRate });
     this.countdown.start(roomId, (id) => {
       this.movieChange.finishCountdown(id);
     });
@@ -297,7 +312,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       actorUserId: user.userId,
       roomId,
       targetUserId,
-      errorMessage: 'kicked from the room',
+      errorMessage: 'You have been kicked from this room.',
       shouldBan: false
     });
   }
@@ -314,7 +329,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       actorUserId: user.userId,
       roomId,
       targetUserId,
-      errorMessage: 'blocked from the room',
+      errorMessage: 'You have been blocked from this room.',
       shouldBan: true
     });
   }

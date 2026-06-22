@@ -22,7 +22,9 @@ import {
   userJoinedEventSchema,
   userLeftEventSchema,
   videoFailedEventSchema,
+  videoPlayableEventSchema,
   videoProcessingEventSchema,
+  videoProgressEventSchema,
   videoReadyEventSchema
 } from '@repo/schemas/realtime';
 import type { RoomStatus } from '@repo/schemas/rooms';
@@ -36,7 +38,7 @@ export interface PlaybackChangeEvent {
   playback: PlaybackState;
 }
 
-export type VideoLifecycleStatus = 'processing' | 'ready' | 'failed';
+export type VideoLifecycleStatus = 'processing' | 'playable' | 'ready' | 'failed';
 
 export interface VideoStatusChangeEvent {
   status: VideoLifecycleStatus;
@@ -53,6 +55,7 @@ interface UseRoomSocketOptions {
   onMovieUpdated?: (movieId: string, movieName?: string) => void;
   onPlaybackChanged?: (event: PlaybackChangeEvent) => void;
   onVideoStatusChanged?: (event: VideoStatusChangeEvent) => void;
+  onVideoProgress?: (videoId: string, percent: number) => void;
   onRoomClosed?: (message: string) => void;
 }
 
@@ -66,6 +69,7 @@ interface UseRoomSocketReturn {
     countdown: CountdownState;
     playback: PlaybackState;
     connectedUsers: Member[];
+    publishedDurationSec: number | null;
   };
   sendMessage: (content: string) => void;
   sendReadyUpdate: (isReady: boolean) => void;
@@ -127,6 +131,7 @@ export function useRoomSocket({
   onMovieUpdated,
   onPlaybackChanged,
   onVideoStatusChanged,
+  onVideoProgress,
   onRoomClosed
 }: UseRoomSocketOptions): UseRoomSocketReturn {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -147,11 +152,13 @@ export function useRoomSocket({
       playbackRate: 1,
       updatedAt: new Date().toISOString()
     },
-    connectedUsers: []
+    connectedUsers: [],
+    publishedDurationSec: null
   }));
   const socketRef = useRef<Socket | null>(null);
   const onRoomClosedRef = useRef(onRoomClosed);
   const onVideoStatusChangedRef = useRef(onVideoStatusChanged);
+  const onVideoProgressRef = useRef(onVideoProgress);
 
   useEffect(() => {
     onRoomClosedRef.current = onRoomClosed;
@@ -160,6 +167,10 @@ export function useRoomSocket({
   useEffect(() => {
     onVideoStatusChangedRef.current = onVideoStatusChanged;
   }, [onVideoStatusChanged]);
+
+  useEffect(() => {
+    onVideoProgressRef.current = onVideoProgress;
+  }, [onVideoProgress]);
 
   const sendMessage = useCallback(
     (content: string) => {
@@ -313,7 +324,8 @@ export function useRoomSocket({
           status: parsed.data.status,
           countdown: parsed.data.countdown,
           playback: nextPlayback,
-          connectedUsers: mapConnectedUsers(parsed.data.connectedUsers)
+          connectedUsers: mapConnectedUsers(parsed.data.connectedUsers),
+          publishedDurationSec: parsed.data.publishedDurationSec
         };
       });
       if (bumpAfterStateRef.current) {
@@ -406,8 +418,23 @@ export function useRoomSocket({
         return;
       }
 
-      setRoomError(parsed.data.message);
-      console.error('[room:socket]', parsed.data.message);
+      const message = parsed.data.message;
+      // Kick/block removals arrive as a room:error immediately before the
+      // server disconnects us. Treat them like a room closure so the victim
+      // sees the overlay and is redirected to the lobby instead of a silent
+      // disconnect with a stale sidebar error.
+      const isModerationRemoval =
+        message.includes('kicked from this room') ||
+        message.includes('blocked from this room');
+      if (isModerationRemoval) {
+        roomClosed = true;
+        socket.disconnect();
+        onRoomClosedRef.current?.(message);
+        return;
+      }
+
+      setRoomError(message);
+      console.error('[room:socket]', message);
     });
 
     socket.on(REALTIME_SERVER_EVENTS.movieUpdated, (data: unknown) => {
@@ -446,12 +473,28 @@ export function useRoomSocket({
       onVideoStatusChangedRef.current?.({ status: 'processing', videoId: parsed.data.videoId });
     });
 
+    socket.on(REALTIME_SERVER_EVENTS.videoProgress, (data: unknown) => {
+      const parsed = videoProgressEventSchema.safeParse(data);
+      if (!parsed.success || parsed.data.roomId !== roomId) {
+        return;
+      }
+      onVideoProgressRef.current?.(parsed.data.videoId, parsed.data.percent);
+    });
+
     socket.on(REALTIME_SERVER_EVENTS.videoReady, (data: unknown) => {
       const parsed = videoReadyEventSchema.safeParse(data);
       if (!parsed.success || parsed.data.roomId !== roomId) {
         return;
       }
       onVideoStatusChangedRef.current?.({ status: 'ready', videoId: parsed.data.videoId });
+    });
+
+    socket.on(REALTIME_SERVER_EVENTS.videoPlayable, (data: unknown) => {
+      const parsed = videoPlayableEventSchema.safeParse(data);
+      if (!parsed.success || parsed.data.roomId !== roomId) {
+        return;
+      }
+      onVideoStatusChangedRef.current?.({ status: 'playable', videoId: parsed.data.videoId });
     });
 
     socket.on(REALTIME_SERVER_EVENTS.videoFailed, (data: unknown) => {

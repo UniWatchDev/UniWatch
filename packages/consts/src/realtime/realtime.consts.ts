@@ -22,6 +22,8 @@ export const REALTIME_SERVER_EVENTS = {
   movieUpdated: 'room:movie-updated',
   playbackChanged: 'room:playback-changed',
   videoProcessing: 'room:video-processing',
+  videoProgress: 'room:video-progress',
+  videoPlayable: 'room:video-playable',
   videoReady: 'room:video-ready',
   videoFailed: 'room:video-failed',
   roomClosed: 'room:closed',

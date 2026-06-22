@@ -4,12 +4,20 @@ import {
   getRoomContract,
   joinRoomContract,
   leaveRoomContract,
-  previewRoomContract
+  listBlockedUsersContract,
+  previewRoomContract,
+  unblockUserContract
 } from '@repo/contracts/rooms';
-import type { RoomPreview, RoomResponse } from '@repo/schemas/rooms';
+import type { BlockedUser, RoomPreview, RoomResponse } from '@repo/schemas/rooms';
 
 function roomPath(template: string, id: string): string {
   return `${API_BASE_URL}${template.replace(':id', encodeURIComponent(id))}`;
+}
+
+function blockedUserPath(template: string, id: string, userId: string): string {
+  return `${API_BASE_URL}${template
+    .replace(':id', encodeURIComponent(id))
+    .replace(':userId', encodeURIComponent(userId))}`;
 }
 
 async function readErrorDetail(res: Response): Promise<string> {
@@ -57,6 +65,29 @@ export async function leaveRoom(id: string): Promise<void> {
   if (!res.ok) {
     throw new Error(await readErrorDetail(res));
   }
+}
+
+export async function fetchBlockedUsers(id: string): Promise<BlockedUser[]> {
+  const res = await fetch(roomPath(listBlockedUsersContract.path, id), {
+    headers: { Accept: 'application/json' },
+    credentials: 'include'
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res));
+  }
+  return listBlockedUsersContract.responseSchema.parse(await res.json());
+}
+
+export async function unblockUser(id: string, userId: string): Promise<BlockedUser[]> {
+  const res = await fetch(blockedUserPath(unblockUserContract.path, id, userId), {
+    method: unblockUserContract.method,
+    headers: { Accept: 'application/json' },
+    credentials: 'include'
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res));
+  }
+  return unblockUserContract.responseSchema.parse(await res.json());
 }
 
 export async function fetchCurrentUserId(): Promise<string | null> {

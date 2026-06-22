@@ -82,3 +82,21 @@ export const roomIdParamsSchema = z.strictObject({
 });
 
 export type RoomIdParams = z.infer<typeof roomIdParamsSchema>;
+
+export const roomBlockedUserParamsSchema = z.strictObject({
+  id: z.string().min(1),
+  userId: objectId
+});
+
+export type RoomBlockedUserParams = z.infer<typeof roomBlockedUserParamsSchema>;
+
+export const blockedUserSchema = z.object({
+  id: z.string(),
+  name: z.string()
+});
+
+export type BlockedUser = z.infer<typeof blockedUserSchema>;
+
+export const blockedUsersResponseSchema = z.array(blockedUserSchema);
+
+export type BlockedUsersResponse = z.infer<typeof blockedUsersResponseSchema>;

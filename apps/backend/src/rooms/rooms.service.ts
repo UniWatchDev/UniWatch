@@ -8,7 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { Types } from 'mongoose';
 
 import { ROOM_CLOSED_MESSAGE } from '@repo/consts/realtime';
-import type { CreateRoomInput, RoomPreview, RoomResponse, UpdateRoomInput } from '@repo/schemas/rooms';
+import type { BlockedUser, CreateRoomInput, RoomPreview, RoomResponse, UpdateRoomInput } from '@repo/schemas/rooms';
 import { RoomType, RoomStatus, type RoomDocument } from '@/rooms/room.schema';
 import { MoviesService } from '@/movies/movies.service';
 import {
@@ -68,6 +68,17 @@ function toResponse(doc: RoomDocument): RoomResponse {
 
 function getLiveMemberCount(roomState: RoomStateService, roomId: string): number {
   return roomState.get(roomId)?.connectedUsers.length ?? 0;
+}
+
+function toBlockedUsers(doc: RoomDocument): BlockedUser[] {
+  const banned =
+    (doc.banned_users as unknown as (PopulatedUser | null | undefined)[] | null | undefined) ?? [];
+  return banned
+    .filter((user): user is PopulatedUser => user != null)
+    .map((user) => ({
+      id: String(user._id),
+      name: user.userName ?? user.firstName ?? 'Unknown user'
+    }));
 }
 
 @Injectable()
@@ -286,6 +297,32 @@ export class RoomsService {
     const status = this.roomState.syncStatus(id, creatorId);
     await this.rooms.setStatus(id, status);
     return { success: true };
+  }
+
+  async listBlockedUsers(id: string, userId: string): Promise<BlockedUser[]> {
+    const doc = await this.assertCreator(id, userId);
+    return toBlockedUsers(doc);
+  }
+
+  async unblockUser(id: string, userId: string, targetId: string): Promise<BlockedUser[]> {
+    await this.assertCreator(id, userId);
+    const updated = await this.rooms.unbanUser(id, new Types.ObjectId(targetId));
+    if (!updated) {
+      throw new NotFoundException(`Room "${id}" not found`);
+    }
+    return toBlockedUsers(updated);
+  }
+
+  private async assertCreator(id: string, userId: string): Promise<RoomDocument> {
+    const doc = await this.rooms.findOneAccessibleById(id, userId);
+    if (doc && refToId(doc.creator as RefLike) === userId) {
+      return doc;
+    }
+    const raw = await this.rooms.findRawById(id);
+    if (!raw || raw.deleted_at) {
+      throw new NotFoundException(`Room "${id}" not found`);
+    }
+    throw new ForbiddenException('Only the room creator can manage blocked users');
   }
 
   private async scheduleLinkedMoviePurge(movieId: string | null): Promise<void> {

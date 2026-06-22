@@ -58,7 +58,8 @@ export class RealtimeBroadcastService implements RealtimeBroadcastPort {
       connectedUsers: state.connectedUsers,
       messages: state.messages,
       playback: this.roomState.getMaterializedPlayback(roomId),
-      countdown: state.countdown
+      countdown: state.countdown,
+      publishedDurationSec: this.roomState.getPublishedDuration(roomId)
     };
   }
 
@@ -81,11 +82,14 @@ export class RealtimeBroadcastService implements RealtimeBroadcastPort {
   }
 
   emitRoomMovieUpdated(roomId: string, movieId: string, movieName?: string): void {
+    this.roomState.syncMovie(roomId, movieId);
     this.emitToRoom(roomId, REALTIME_SERVER_EVENTS.movieUpdated, {
       roomId,
       movieId,
       ...(movieName !== undefined ? { movieName } : {})
     });
+    this.emitRoomState(roomId);
+    this.emitRoomPresenceChanged(roomId);
   }
 
   emitRoomPlaybackChanged(roomId: string, actorUserId: string | null): void {
@@ -97,7 +101,31 @@ export class RealtimeBroadcastService implements RealtimeBroadcastPort {
   }
 
   emitVideoProcessing(roomId: string, videoId: string): void {
+    this.roomState.setPublishedDuration(roomId, null);
+    this.emitRoomState(roomId);
     this.emitToRoom(roomId, REALTIME_SERVER_EVENTS.videoProcessing, { roomId, videoId });
+  }
+
+  emitVideoProgress(roomId: string, videoId: string, percent: number): void {
+    this.emitToRoom(roomId, REALTIME_SERVER_EVENTS.videoProgress, { roomId, videoId, percent });
+  }
+
+  emitVideoPlayable(
+    roomId: string,
+    videoId: string,
+    playbackUrl: string,
+    availableQualities: number[],
+    publishedDurationSec: number | null
+  ): void {
+    this.roomState.setPublishedDuration(roomId, publishedDurationSec);
+    this.emitRoomState(roomId);
+    this.emitToRoom(roomId, REALTIME_SERVER_EVENTS.videoPlayable, {
+      roomId,
+      videoId,
+      playbackUrl,
+      availableQualities,
+      partial: true
+    });
   }
 
   emitVideoReady(
@@ -106,6 +134,8 @@ export class RealtimeBroadcastService implements RealtimeBroadcastPort {
     playbackUrl: string,
     availableQualities: number[]
   ): void {
+    this.roomState.setPublishedDuration(roomId, null);
+    this.emitRoomState(roomId);
     this.emitToRoom(roomId, REALTIME_SERVER_EVENTS.videoReady, {
       roomId,
       videoId,
@@ -115,6 +145,8 @@ export class RealtimeBroadcastService implements RealtimeBroadcastPort {
   }
 
   emitVideoFailed(roomId: string, videoId: string, errorMessage: string): void {
+    this.roomState.setPublishedDuration(roomId, null);
+    this.emitRoomState(roomId);
     this.emitToRoom(roomId, REALTIME_SERVER_EVENTS.videoFailed, {
       roomId,
       videoId,
