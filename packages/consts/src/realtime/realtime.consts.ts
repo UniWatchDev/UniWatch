@@ -21,6 +21,9 @@ export const REALTIME_SERVER_EVENTS = {
   messageReceived: 'room:message-received',
   movieUpdated: 'room:movie-updated',
   playbackChanged: 'room:playback-changed',
+  videoProcessing: 'room:video-processing',
+  videoReady: 'room:video-ready',
+  videoFailed: 'room:video-failed',
   roomClosed: 'room:closed',
   error: 'room:error'
 } as const;

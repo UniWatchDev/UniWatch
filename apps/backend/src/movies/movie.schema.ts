@@ -26,6 +26,8 @@ export enum MovieLanguage {
 
 export enum MovieUploadStatus {
   PENDING = 'pending',
+  UPLOADING = 'uploading',
+  PROCESSING = 'processing',
   READY = 'ready',
   FAILED = 'failed'
 }
@@ -70,6 +72,18 @@ export class MovieRecord {
 
   @Prop({ type: String, default: null })
   thumbnail_key?: string | null;
+
+  @Prop({ type: String, default: null })
+  hls_prefix?: string | null;
+
+  @Prop({ type: String, default: null })
+  playback_url?: string | null;
+
+  @Prop({ type: [Number], default: [] })
+  available_qualities!: number[];
+
+  @Prop({ type: String, default: null })
+  error_message?: string | null;
 
   @Prop({ type: String, default: null })
   mime_type?: string | null;

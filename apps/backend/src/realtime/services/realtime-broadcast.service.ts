@@ -96,6 +96,32 @@ export class RealtimeBroadcastService implements RealtimeBroadcastPort {
     });
   }
 
+  emitVideoProcessing(roomId: string, videoId: string): void {
+    this.emitToRoom(roomId, REALTIME_SERVER_EVENTS.videoProcessing, { roomId, videoId });
+  }
+
+  emitVideoReady(
+    roomId: string,
+    videoId: string,
+    playbackUrl: string,
+    availableQualities: number[]
+  ): void {
+    this.emitToRoom(roomId, REALTIME_SERVER_EVENTS.videoReady, {
+      roomId,
+      videoId,
+      playbackUrl,
+      availableQualities
+    });
+  }
+
+  emitVideoFailed(roomId: string, videoId: string, errorMessage: string): void {
+    this.emitToRoom(roomId, REALTIME_SERVER_EVENTS.videoFailed, {
+      roomId,
+      videoId,
+      errorMessage
+    });
+  }
+
   emitUserJoined(roomId: string, payload: UserJoinedEvent): void {
     this.emitToRoom(roomId, REALTIME_SERVER_EVENTS.userJoined, payload);
   }

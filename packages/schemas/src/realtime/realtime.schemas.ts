@@ -194,6 +194,34 @@ export const roomClosedEventSchema = z.strictObject({
 export type RoomClosedEvent = z.infer<typeof roomClosedEventSchema>;
 
 // ---------------------------------------------------------------------------
+// Async video processing lifecycle (server → client)
+// ---------------------------------------------------------------------------
+
+export const videoProcessingEventSchema = z.strictObject({
+  roomId: z.string(),
+  videoId: z.string()
+});
+
+export type VideoProcessingEvent = z.infer<typeof videoProcessingEventSchema>;
+
+export const videoReadyEventSchema = z.strictObject({
+  roomId: z.string(),
+  videoId: z.string(),
+  playbackUrl: z.string(),
+  availableQualities: z.array(z.number())
+});
+
+export type VideoReadyEvent = z.infer<typeof videoReadyEventSchema>;
+
+export const videoFailedEventSchema = z.strictObject({
+  roomId: z.string(),
+  videoId: z.string(),
+  errorMessage: z.string()
+});
+
+export type VideoFailedEvent = z.infer<typeof videoFailedEventSchema>;
+
+// ---------------------------------------------------------------------------
 // Constant
 // ---------------------------------------------------------------------------
 

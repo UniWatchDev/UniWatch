@@ -13,8 +13,8 @@ import { MovieUploadProgress } from '@/movies/movie-upload-progress';
 import { attachMovieToRoom } from '@/movies/attach-room-movie';
 import { formatMovieUploadAge } from '@/movies/format-movie-upload-age';
 import { fetchOwnedMovies } from '@/movies/fetch-owned-movies';
-import { prepareMovieForRoom } from '@/movies/prepare-movie-for-room';
-import { validateMovieFile } from '@/movies/upload-movie-file';
+import { resolveMovieForRoom } from '@/movies/prepare-movie-for-room';
+import { uploadMovieViaPresign, validateMovieFile } from '@/movies/upload-movie-file';
 import { formatFetchError } from '@/auth/auth-fetch-helpers';
 
 function PencilIcon() {
@@ -102,6 +102,7 @@ export function EditRoom() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploadPercent, setUploadPercent] = useState<number | null>(null);
   const [movieFileError, setMovieFileError] = useState<string | null>(null);
@@ -245,6 +246,7 @@ export function EditRoom() {
     if (!id) return;
     setSaving(true);
     setApiError(null);
+    setNoticeMessage(null);
     setUploadPercent(null);
     try {
       if (field === 'movieFile') {
@@ -264,39 +266,20 @@ export function EditRoom() {
           language: 'english',
           ...(drafts.movieDescription.trim() && { description: drafts.movieDescription.trim() }),
         });
+        const movie = await resolveMovieForRoom(movieBody);
         setUploadPercent(0);
-        const movie = await prepareMovieForRoom(movieBody, drafts.movieFile, {
+        // Direct-to-R2 upload, then complete-upload enqueues async transcoding.
+        // The backend promotes this video to the room once processing finishes,
+        // so the current movie keeps playing until the new one is ready.
+        await uploadMovieViaPresign(movie.id, drafts.movieFile, id, {
           onProgress: (progress) => { setUploadPercent(progress.percent); },
         });
-        const path = updateRoomContract.path.replace(':id', encodeURIComponent(id));
-        const patchBody = updateRoomContract.bodySchema.parse({
-          movie: movie.id,
-          movie_name: movie.name,
-          ...(movie.description != null
-            ? { movie_description: movie.description }
-            : drafts.movieDescription.trim()
-              ? { movie_description: drafts.movieDescription.trim() }
-              : {}),
-        });
-        const res = await fetch(`${API_BASE_URL}${path}`, {
-          method: updateRoomContract.method,
-          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(patchBody),
-        });
-        if (!res.ok) {
-          throw new Error(`HTTP ${String(res.status)}: ${await res.text()}`);
-        }
-        const updated = updateRoomContract.responseSchema.parse(await res.json());
-        setRoom(updated);
-        setDrafts((prev) => ({
-          ...prev,
-          movieFile: null,
-          movieName: updated.movie_name ?? movie.name,
-          movieDescription: updated.movie_description ?? '',
-        }));
+        setDrafts((prev) => ({ ...prev, movieFile: null }));
         setEditing((prev) => ({ ...prev, movieFile: false }));
         setUploadPercent(null);
+        setNoticeMessage(
+          'Video uploaded. It is processing now and will switch in automatically once ready.'
+        );
         setSaving(false);
         return;
       }
@@ -478,6 +461,22 @@ export function EditRoom() {
             }}
           >
             {apiError}
+          </div>
+        )}
+
+        {noticeMessage && (
+          <div
+            style={{
+              marginBottom: 16,
+              padding: '10px 14px',
+              borderRadius: 8,
+              background: 'var(--accent-dim)',
+              border: '1px solid rgba(124,58,237,0.3)',
+              fontSize: 13,
+              color: 'var(--text-secondary)',
+            }}
+          >
+            {noticeMessage}
           </div>
         )}
 

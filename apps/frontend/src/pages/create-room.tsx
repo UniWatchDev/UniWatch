@@ -11,8 +11,8 @@ import {
   type MovieMetadataFormValues,
 } from '@/movies/movie-metadata-fields';
 import { MovieUploadField } from '@/movies/movie-upload-field';
-import { MovieUploadProgress } from '@/movies/movie-upload-progress';
-import { prepareMovieForRoom } from '@/movies/prepare-movie-for-room';
+import { resolveMovieForRoom } from '@/movies/prepare-movie-for-room';
+import { uploadMovieViaPresign } from '@/movies/upload-movie-file';
 
 interface FormState {
   name: string;
@@ -46,7 +46,6 @@ export function CreateRoom() {
   const [roomNameTouched, setRoomNameTouched] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<'roomName' | 'password' | 'movieFile' | keyof MovieMetadataFormValues, string>>>({});
   const [submitting, setSubmitting] = useState(false);
-  const [uploadPercent, setUploadPercent] = useState<number | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -111,15 +110,14 @@ export function CreateRoom() {
     if (!validate()) return;
     setSubmitting(true);
     setApiError(null);
-    setUploadPercent(null);
 
     try {
       let movieId: string | undefined;
       let movieName = form.movie.name.trim();
       let movieDescription = form.movie.description.trim();
+      const movieFile = form.movieFile;
 
-      if (form.movieFile) {
-        setUploadPercent(0);
+      if (movieFile) {
         const movieBody = createMovieContract.bodySchema.parse({
           name: form.movie.name.trim(),
           language: form.movie.language,
@@ -132,13 +130,10 @@ export function CreateRoom() {
           }),
           ...(form.movie.description.trim() && { description: form.movie.description.trim() }),
         });
-        const movie = await prepareMovieForRoom(movieBody, form.movieFile, {
-          onProgress: (progress) => { setUploadPercent(progress.percent); },
-        });
+        const movie = await resolveMovieForRoom(movieBody);
         movieId = movie.id;
         movieName = movie.name;
         movieDescription = movie.description ?? movieDescription;
-        setUploadPercent(null);
       }
 
       const body = createRoomContract.bodySchema.parse({
@@ -160,12 +155,19 @@ export function CreateRoom() {
         throw new Error(await readHttpErrorMessage(res));
       }
       const room = createRoomContract.responseSchema.parse(await res.json());
+
+      // Non-blocking: the room opens immediately. The upload runs directly to R2
+      // in the background and the room view reflects uploading → processing →
+      // ready via status polling and realtime video events.
+      if (movieFile && movieId !== undefined) {
+        void uploadMovieViaPresign(movieId, movieFile, room.id).catch(() => undefined);
+      }
+
       void navigate(`/room/${room.id}`);
     } catch (err: unknown) {
       setApiError(formatFetchError(err));
     } finally {
       setSubmitting(false);
-      setUploadPercent(null);
     }
   };
 
@@ -228,17 +230,20 @@ export function CreateRoom() {
           </div>
         )}
 
-        {uploadPercent !== null && (
+        {form.movieFile && (
           <div
             style={{
               marginBottom: 16,
-              padding: '14px 16px',
+              padding: '12px 14px',
               borderRadius: 10,
               background: 'var(--accent-dim)',
               border: '1px solid rgba(124,58,237,0.25)',
+              fontSize: 13,
+              color: 'var(--text-secondary)',
             }}
           >
-            <MovieUploadProgress percent={uploadPercent} label="Uploading your video" />
+            Your room opens right away. The video keeps uploading and processing in the
+            background — everyone in the room sees its status and can watch once it is ready.
           </div>
         )}
 
@@ -310,13 +315,7 @@ export function CreateRoom() {
             disabled={submitting || !authInitialized}
             style={{ marginTop: 4, padding: '12px 24px', fontSize: 15, width: '100%', opacity: submitting || !authInitialized ? 0.7 : 1 }}
           >
-            {!authInitialized
-              ? 'Waiting for session…'
-              : submitting
-                ? uploadPercent !== null
-                  ? `Uploading… ${String(uploadPercent)}%`
-                  : 'Creating…'
-                : 'Create Room'}
+            {!authInitialized ? 'Waiting for session…' : submitting ? 'Creating…' : 'Create Room'}
           </button>
         </form>
       </div>

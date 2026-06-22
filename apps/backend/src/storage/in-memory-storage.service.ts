@@ -42,6 +42,19 @@ export class InMemoryStorageService implements StorageService {
     return Promise.resolve(`memory://${encodeURIComponent(key)}`);
   }
 
+  getPresignedPutUrl(
+    key: string,
+    contentType: string,
+    expiresInSeconds: number
+  ): Promise<string> {
+    void key;
+    void contentType;
+    void expiresInSeconds;
+    return Promise.reject(
+      new Error('Presigned PUT uploads require STORAGE_DRIVER=s3 (Cloudflare R2).')
+    );
+  }
+
   getObject(key: string, range?: { start: number; end: number }): Promise<StoredObject | null> {
     const stored = this.objects.get(key);
     if (stored === undefined) {

@@ -59,6 +59,19 @@ export class S3StorageService implements StorageService {
     return getSignedUrl(this.client, command, { expiresIn: expiresInSeconds });
   }
 
+  async getPresignedPutUrl(
+    key: string,
+    contentType: string,
+    expiresInSeconds: number
+  ): Promise<string> {
+    const command = new PutObjectCommand({
+      Bucket: this.bucket,
+      Key: key,
+      ContentType: contentType
+    });
+    return getSignedUrl(this.client, command, { expiresIn: expiresInSeconds });
+  }
+
   async getObject(key: string, range?: { start: number; end: number }): Promise<StoredObject | null> {
     try {
       const response = await this.client.send(

@@ -8,6 +8,7 @@ import {
   SEEK_STEPS_SECONDS,
   type PlaybackRate
 } from '@/movies/room-playback';
+import type { SelectedQuality } from '@/movies/use-hls-player';
 
 function VolumeIcon({ muted }: { muted: boolean }) {
   return muted ? (
@@ -50,6 +51,9 @@ export function RoomVideoPlayerControls({
   showHostControls,
   currentTime,
   duration,
+  bufferedEnd,
+  qualities,
+  selectedQuality,
   playbackRate,
   muted,
   volume,
@@ -59,6 +63,7 @@ export function RoomVideoPlayerControls({
   isLive,
   onScrub,
   onSeekBy,
+  onSelectQuality,
   onPlaybackRateChange,
   onToggleMute,
   onVolumeChange,
@@ -69,6 +74,9 @@ export function RoomVideoPlayerControls({
   showHostControls: boolean;
   currentTime: number;
   duration: number;
+  bufferedEnd: number;
+  qualities: number[];
+  selectedQuality: SelectedQuality;
   playbackRate: number;
   muted: boolean;
   volume: number;
@@ -78,6 +86,7 @@ export function RoomVideoPlayerControls({
   isLive?: boolean;
   onScrub: (seconds: number) => void;
   onSeekBy: (deltaSeconds: number) => void;
+  onSelectQuality: (quality: SelectedQuality) => void;
   onPlaybackRateChange: (rate: PlaybackRate) => void;
   onToggleMute: () => void;
   onVolumeChange: (volume: number) => void;
@@ -103,6 +112,8 @@ export function RoomVideoPlayerControls({
 
   const displayTime = isScrubbing ? scrubValue : currentTime;
   const scrubMax = Math.max(duration, 0.001);
+  const playedPercent = Math.min(100, Math.max(0, (displayTime / scrubMax) * 100));
+  const bufferedPercent = Math.min(100, Math.max(0, (bufferedEnd / scrubMax) * 100));
 
   return (
     <div className="room-video-player__controls-panel" onMouseMove={onInteract} onFocus={onInteract}>
@@ -122,31 +133,43 @@ export function RoomVideoPlayerControls({
 
       <div className="room-video-player__scrubber">
         <span className="room-video-player__time">{formatPlaybackTime(displayTime)}</span>
-        <input
-          type="range"
-          className="room-video-player__range room-video-player__range--scrub"
-          min={0}
-          max={scrubMax}
-          step="any"
-          value={displayTime}
-          disabled={!canControl}
-          onPointerDown={() => {
-            onInteract();
-            setIsScrubbing(true);
-            setScrubValue(currentTime);
-          }}
-          onPointerUp={commitScrub}
-          onPointerCancel={commitScrub}
-          onChange={(e) => {
-            onInteract();
-            const next = Number(e.target.value);
-            setScrubValue(next);
-            if (!isScrubbing) {
-              onScrub(next);
-            }
-          }}
-          aria-label="Playback position"
-        />
+        <div className="room-video-player__scrub-track">
+          <div className="room-video-player__scrub-rail" aria-hidden="true">
+            <div
+              className="room-video-player__scrub-buffer"
+              style={{ width: `${String(bufferedPercent)}%` }}
+            />
+            <div
+              className="room-video-player__scrub-played"
+              style={{ width: `${String(playedPercent)}%` }}
+            />
+          </div>
+          <input
+            type="range"
+            className="room-video-player__range room-video-player__range--scrub"
+            min={0}
+            max={scrubMax}
+            step="any"
+            value={displayTime}
+            disabled={!canControl}
+            onPointerDown={() => {
+              onInteract();
+              setIsScrubbing(true);
+              setScrubValue(currentTime);
+            }}
+            onPointerUp={commitScrub}
+            onPointerCancel={commitScrub}
+            onChange={(e) => {
+              onInteract();
+              const next = Number(e.target.value);
+              setScrubValue(next);
+              if (!isScrubbing) {
+                onScrub(next);
+              }
+            }}
+            aria-label="Playback position"
+          />
+        </div>
         <span className="room-video-player__time">{formatPlaybackTime(duration)}</span>
       </div>
 
@@ -176,6 +199,29 @@ export function RoomVideoPlayerControls({
         )}
 
         <div className="room-video-player__utility-group">
+          {qualities.length > 0 && (
+            <label className="room-video-player__speed">
+              <span className="room-video-player__speed-label">Quality</span>
+              <select
+                className="room-video-player__speed-select"
+                value={selectedQuality === 'auto' ? 'auto' : String(selectedQuality)}
+                onChange={(e) => {
+                  onInteract();
+                  const value = e.target.value;
+                  onSelectQuality(value === 'auto' ? 'auto' : Number(value));
+                }}
+                aria-label="Video quality"
+              >
+                <option value="auto">Auto</option>
+                {qualities.map((quality) => (
+                  <option key={String(quality)} value={String(quality)}>
+                    {quality}p
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+
           {showHostControls && (
             <>
               <label className="room-video-player__speed">

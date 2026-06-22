@@ -837,6 +837,82 @@ textarea.input {
   flex: none;
 }
 
+/* Custom scrub track: gray buffered bar + red playback progress behind a
+   transparent native range input (keeps keyboard + pointer scrubbing). */
+.room-video-player__scrub-track {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  height: 14px;
+}
+
+.room-video-player__scrub-rail {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.35);
+  overflow: hidden;
+}
+
+.room-video-player__scrub-buffer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: rgba(148, 163, 184, 0.7);
+}
+
+.room-video-player__scrub-played {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: #ef4444;
+}
+
+.room-video-player__range--scrub {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 14px;
+  background: transparent;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.room-video-player__range--scrub::-webkit-slider-runnable-track {
+  background: transparent;
+  height: 14px;
+}
+
+.room-video-player__range--scrub::-moz-range-track {
+  background: transparent;
+  height: 14px;
+}
+
+.room-video-player__range--scrub::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ef4444;
+  margin-top: 1px;
+  cursor: pointer;
+}
+
+.room-video-player__range--scrub::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: none;
+  border-radius: 50%;
+  background: #ef4444;
+  cursor: pointer;
+}
+
 .room-video-player__transport {
   display: flex;
   align-items: center;

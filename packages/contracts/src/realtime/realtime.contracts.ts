@@ -16,6 +16,9 @@ import {
   sendMessagePayloadSchema,
   userJoinedEventSchema,
   userLeftEventSchema,
+  videoFailedEventSchema,
+  videoProcessingEventSchema,
+  videoReadyEventSchema,
   type JoinRoomPayload,
   type LeaveRoomPayload,
   type RealtimeChatMessage,
@@ -31,7 +34,10 @@ import {
   type RoomStateEvent,
   type SendMessagePayload,
   type UserJoinedEvent,
-  type UserLeftEvent
+  type UserLeftEvent,
+  type VideoFailedEvent,
+  type VideoProcessingEvent,
+  type VideoReadyEvent
 } from '@repo/schemas/realtime';
 import type { z } from 'zod';
 
@@ -159,4 +165,22 @@ export const roomClosedContract: SocketEventContract<RoomClosedEvent> = {
   event: REALTIME_SERVER_EVENTS.roomClosed,
   direction: 'server-to-client',
   payloadSchema: roomClosedEventSchema
+};
+
+export const videoProcessingContract: SocketEventContract<VideoProcessingEvent> = {
+  event: REALTIME_SERVER_EVENTS.videoProcessing,
+  direction: 'server-to-client',
+  payloadSchema: videoProcessingEventSchema
+};
+
+export const videoReadyContract: SocketEventContract<VideoReadyEvent> = {
+  event: REALTIME_SERVER_EVENTS.videoReady,
+  direction: 'server-to-client',
+  payloadSchema: videoReadyEventSchema
+};
+
+export const videoFailedContract: SocketEventContract<VideoFailedEvent> = {
+  event: REALTIME_SERVER_EVENTS.videoFailed,
+  direction: 'server-to-client',
+  payloadSchema: videoFailedEventSchema
 };

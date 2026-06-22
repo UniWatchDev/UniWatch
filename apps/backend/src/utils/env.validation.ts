@@ -107,7 +107,7 @@ const baseEnvSchema = z.object({
   MOVIE_UPLOAD_MAX_BYTES: z.coerce.number().int().positive().default(1_073_741_824),
   MOVIE_ALLOWED_MIMES: z
     .string()
-    .default('video/mp4,video/quicktime')
+    .default('video/mp4,video/quicktime,video/webm')
     .transform((value) =>
       value
         .split(',')
@@ -115,7 +115,15 @@ const baseEnvSchema = z.object({
         .filter((part) => part.length > 0)
     ),
   MOVIE_FILE_TTL_HOURS: z.coerce.number().int().positive().default(24),
-  MOVIE_STREAM_URL_EXPIRES_SECONDS: z.coerce.number().int().positive().default(900)
+  MOVIE_STREAM_URL_EXPIRES_SECONDS: z.coerce.number().int().positive().default(900),
+  /**
+   * Public base URL for HLS playback served from the R2 bucket (no trailing slash),
+   * e.g. `https://cdn.example.com` or the R2 `*.r2.dev` domain. Required for HLS
+   * playback URLs; the processing worker fails the job if it is empty when needed.
+   */
+  R2_PUBLIC_BASE_URL: z.string().default(''),
+  /** Lifetime of presigned PUT upload URLs (direct client → R2). */
+  PRESIGNED_UPLOAD_EXPIRES_SECONDS: z.coerce.number().int().positive().default(600)
 });
 
 /** Placeholder endpoint so `S3StorageService` can construct when storage driver is in-memory. */
@@ -168,6 +176,15 @@ const envSchema = baseEnvSchema
         code: 'custom',
         message: 'APP_PUBLIC_ORIGIN must be a valid http(s) URL or empty',
         path: ['APP_PUBLIC_ORIGIN']
+      });
+    }
+
+    const publicBase = data.R2_PUBLIC_BASE_URL.trim();
+    if (publicBase.length > 0 && !isValidHttpUrl(publicBase)) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'R2_PUBLIC_BASE_URL must be a valid http(s) URL or empty',
+        path: ['R2_PUBLIC_BASE_URL']
       });
     }
 

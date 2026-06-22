@@ -30,6 +30,10 @@ export class RoomRecord {
   @Prop({ type: Types.ObjectId, ref: 'MovieRecord', default: null })
   movie?: Types.ObjectId | null;
 
+  /** A newly uploaded movie still processing; promoted to `movie` once ready. */
+  @Prop({ type: Types.ObjectId, ref: 'MovieRecord', default: null })
+  pending_movie?: Types.ObjectId | null;
+
   @Prop({ required: true, enum: RoomType })
   room_type!: RoomType;
 

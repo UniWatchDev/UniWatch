@@ -20,7 +20,10 @@ import {
   roomStateEventSchema,
   sendMessagePayloadSchema,
   userJoinedEventSchema,
-  userLeftEventSchema
+  userLeftEventSchema,
+  videoFailedEventSchema,
+  videoProcessingEventSchema,
+  videoReadyEventSchema
 } from '@repo/schemas/realtime';
 import type { RoomStatus } from '@repo/schemas/rooms';
 import { shouldUnfreezePlaybackFromRoomState } from '@repo/schemas/realtime/playback-sync';
@@ -33,6 +36,14 @@ export interface PlaybackChangeEvent {
   playback: PlaybackState;
 }
 
+export type VideoLifecycleStatus = 'processing' | 'ready' | 'failed';
+
+export interface VideoStatusChangeEvent {
+  status: VideoLifecycleStatus;
+  videoId: string;
+  errorMessage?: string;
+}
+
 interface UseRoomSocketOptions {
   roomId: string;
   disabled: boolean;
@@ -41,6 +52,7 @@ interface UseRoomSocketOptions {
   initialMemberIds: string[];
   onMovieUpdated?: (movieId: string, movieName?: string) => void;
   onPlaybackChanged?: (event: PlaybackChangeEvent) => void;
+  onVideoStatusChanged?: (event: VideoStatusChangeEvent) => void;
   onRoomClosed?: (message: string) => void;
 }
 
@@ -114,6 +126,7 @@ export function useRoomSocket({
   initialMemberIds,
   onMovieUpdated,
   onPlaybackChanged,
+  onVideoStatusChanged,
   onRoomClosed
 }: UseRoomSocketOptions): UseRoomSocketReturn {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -138,10 +151,15 @@ export function useRoomSocket({
   }));
   const socketRef = useRef<Socket | null>(null);
   const onRoomClosedRef = useRef(onRoomClosed);
+  const onVideoStatusChangedRef = useRef(onVideoStatusChanged);
 
   useEffect(() => {
     onRoomClosedRef.current = onRoomClosed;
   }, [onRoomClosed]);
+
+  useEffect(() => {
+    onVideoStatusChangedRef.current = onVideoStatusChanged;
+  }, [onVideoStatusChanged]);
 
   const sendMessage = useCallback(
     (content: string) => {
@@ -418,6 +436,34 @@ export function useRoomSocket({
       }));
       bumpPlaybackEpoch();
       pushPlaybackChange({ actorUserId: parsed.data.actorUserId, playback: parsed.data.playback });
+    });
+
+    socket.on(REALTIME_SERVER_EVENTS.videoProcessing, (data: unknown) => {
+      const parsed = videoProcessingEventSchema.safeParse(data);
+      if (!parsed.success || parsed.data.roomId !== roomId) {
+        return;
+      }
+      onVideoStatusChangedRef.current?.({ status: 'processing', videoId: parsed.data.videoId });
+    });
+
+    socket.on(REALTIME_SERVER_EVENTS.videoReady, (data: unknown) => {
+      const parsed = videoReadyEventSchema.safeParse(data);
+      if (!parsed.success || parsed.data.roomId !== roomId) {
+        return;
+      }
+      onVideoStatusChangedRef.current?.({ status: 'ready', videoId: parsed.data.videoId });
+    });
+
+    socket.on(REALTIME_SERVER_EVENTS.videoFailed, (data: unknown) => {
+      const parsed = videoFailedEventSchema.safeParse(data);
+      if (!parsed.success || parsed.data.roomId !== roomId) {
+        return;
+      }
+      onVideoStatusChangedRef.current?.({
+        status: 'failed',
+        videoId: parsed.data.videoId,
+        errorMessage: parsed.data.errorMessage
+      });
     });
 
     socket.on(REALTIME_SERVER_EVENTS.roomClosed, (data: unknown) => {

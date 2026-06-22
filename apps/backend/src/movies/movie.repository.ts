@@ -91,6 +91,10 @@ export class MovieRepository {
       upload_status: MovieUploadStatus;
       storage_key: string | null;
       thumbnail_key: string | null;
+      hls_prefix: string | null;
+      playback_url: string | null;
+      available_qualities: number[];
+      error_message: string | null;
       mime_type: string | null;
       size_bytes: number | null;
       duration_seconds: number | null;

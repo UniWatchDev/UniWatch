@@ -2,19 +2,22 @@ export const MOVIES_ENDPOINT = '/api/movies' as const;
 export const MOVIE_RESOLVE_ENDPOINT = '/api/movies/resolve' as const;
 export const MOVIE_ENDPOINT = '/api/movies/:id' as const;
 export const MOVIE_UPLOAD_ENDPOINT = '/api/movies/:id/upload' as const;
+export const MOVIE_PRESIGN_UPLOAD_ENDPOINT = '/api/movies/:id/presign-upload' as const;
+export const MOVIE_COMPLETE_UPLOAD_ENDPOINT = '/api/movies/:id/complete-upload' as const;
 export const MOVIE_STREAM_ENDPOINT = '/api/movies/:id/stream' as const;
 export const MOVIE_MEDIA_ENDPOINT = '/api/movies/:id/media' as const;
 
 export const MOVIE_MAX_BYTES = 1_073_741_824;
 
-/** Canonical MIME types accepted for movie uploads (MP4 + QuickTime .MOV). */
-export const MOVIE_ALLOWED_MIMES = ['video/mp4', 'video/quicktime'] as const;
+/** Canonical MIME types accepted for movie uploads (MP4 + QuickTime .MOV + WebM). */
+export const MOVIE_ALLOWED_MIMES = ['video/mp4', 'video/quicktime', 'video/webm'] as const;
 
 export type MovieAllowedMime = (typeof MOVIE_ALLOWED_MIMES)[number];
 
 export const MOVIE_MIME_EXTENSIONS: Record<MovieAllowedMime, string> = {
   'video/mp4': '.mp4',
-  'video/quicktime': '.mov'
+  'video/quicktime': '.mov',
+  'video/webm': '.webm'
 };
 
 export const MOVIE_FILE_ACCEPT = [
@@ -41,6 +44,7 @@ export function resolveMovieMime(mime: string, filename: string): MovieAllowedMi
   const lower = filename.toLowerCase();
   if (lower.endsWith('.mp4')) return 'video/mp4';
   if (lower.endsWith('.mov')) return 'video/quicktime';
+  if (lower.endsWith('.webm')) return 'video/webm';
   return null;
 }
 
@@ -48,4 +52,4 @@ export function extensionForMovieMime(mime: MovieAllowedMime): string {
   return MOVIE_MIME_EXTENSIONS[mime];
 }
 
-export const MOVIE_ALLOWED_FORMATS_LABEL = 'MP4 or MOV';
+export const MOVIE_ALLOWED_FORMATS_LABEL = 'MP4, MOV, or WebM';

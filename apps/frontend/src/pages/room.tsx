@@ -4,15 +4,15 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { ROOM_CLOSED_MESSAGE } from '@repo/consts/realtime';
 import type { RoomPreview, RoomResponse, RoomStatus } from '@repo/schemas/rooms';
 import { useRoomSocket, type PlaybackChangeEvent } from '@/hooks/use-room-socket';
-import { attachMovieToRoom } from '@/movies/attach-room-movie';
 import { MovieUploadField } from '@/movies/movie-upload-field';
 import { MovieUploadProgress } from '@/movies/movie-upload-progress';
 import { RoomVideoPlayer } from '@/movies/room-video-player';
 import type { PlaybackRate } from '@/movies/room-playback';
 import { useRoomPlaybackSync } from '@/movies/use-room-playback-sync';
 import { useRoomMovie } from '@/movies/use-room-movie';
-import { prepareMovieForRoom } from '@/movies/prepare-movie-for-room';
-import { validateMovieFile } from '@/movies/upload-movie-file';
+import { useHlsPlayer } from '@/movies/use-hls-player';
+import { resolveMovieForRoom } from '@/movies/prepare-movie-for-room';
+import { uploadMovieViaPresign, validateMovieFile } from '@/movies/upload-movie-file';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ParticipantList } from '@/components/participant-list';
 import { CinemaChat } from '@/components/cinema-chat';
@@ -108,6 +108,7 @@ export function RoomPage() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [bufferedEnd, setBufferedEnd] = useState(0);
   const [volume, setVolume] = useState(80);
   const [muted, setMuted] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
@@ -122,6 +123,7 @@ export function RoomPage() {
   const [ownerUploadFile, setOwnerUploadFile] = useState<File | null>(null);
   const [ownerUploadError, setOwnerUploadError] = useState<string | null>(null);
   const [ownerUploadPercent, setOwnerUploadPercent] = useState<number | null>(null);
+  const [ownerUploadNotice, setOwnerUploadNotice] = useState<string | null>(null);
   const [showRoomPassword, setShowRoomPassword] = useState(false);
   const [forcePlayModalOpen, setForcePlayModalOpen] = useState(false);
   const [remotePlaybackEvent, setRemotePlaybackEvent] = useState<PlaybackChangeEvent | null>(null);
@@ -223,6 +225,14 @@ export function RoomPage() {
     setRemotePlaybackEvent(event);
   }, []);
 
+  // Async video lifecycle (room:video-processing/ready/failed). The worker has
+  // already updated Mongo (and promoted room.movie on ready), so re-fetch the
+  // room and force the movie hook to re-poll — it picks up the new status/URL.
+  const handleVideoStatusChanged = useCallback(() => {
+    setMovieStreamRevision((revision) => revision + 1);
+    void refreshRoom();
+  }, [refreshRoom]);
+
   const handlePlaybackApplied = useCallback(
     (result: { currentTime: number; isPlaying: boolean; playbackRate: PlaybackRate }) => {
       setCurrentTime(result.currentTime);
@@ -271,6 +281,7 @@ export function RoomPage() {
     initialMemberIds: room?.allowed_users ?? [],
     onMovieUpdated: handleMovieUpdated,
     onPlaybackChanged: handlePlaybackChanged,
+    onVideoStatusChanged: handleVideoStatusChanged,
     onRoomClosed: handleRoomClosed
   });
 
@@ -309,11 +320,21 @@ export function RoomPage() {
     loading: movieLoading,
     error: movieError,
     mediaSrc,
+    isHls,
     isUploading: movieUploading,
     isPlayable: moviePlayable,
     isFailed: movieFailed
   } = useRoomMovie(roomMovieId, movieStreamRevision);
-  const isOwner = currentUserId !== null && currentUserId === room?.creator;
+  const { qualities, selectedQuality, selectQuality } = useHlsPlayer({
+    videoRef,
+    src: mediaSrc,
+    enabled: isHls
+  });
+  // Require the loaded room to match the current route: RoomPage does not remount
+  // on room→room navigation, so a stale room you own must never flash owner-only
+  // UI (host controls, Edit room) on someone else's room.
+  const isOwner =
+    currentUserId !== null && room !== null && room.id === id && currentUserId === room.creator;
 
   const showMovieSwapOverlay =
     movieChangePending !== null &&
@@ -421,6 +442,7 @@ export function RoomPage() {
     setIsPlaying(false);
     setCurrentTime(0);
     setDuration(0);
+    setBufferedEnd(0);
     setPlaybackRate(1);
   }, [mediaSrc]);
 
@@ -591,6 +613,28 @@ export function RoomPage() {
     setIsPlaying(!video.paused && !video.ended);
   };
 
+  // Buffered end for the gray buffer bar: prefer the range covering the current
+  // position, otherwise the furthest buffered end ahead of it.
+  const updateBufferedEnd = () => {
+    const video = videoRef.current;
+    if (video === null) return;
+    const ranges = video.buffered;
+    const position = video.currentTime;
+    let end = 0;
+    for (let i = 0; i < ranges.length; i += 1) {
+      const start = ranges.start(i);
+      const rangeEnd = ranges.end(i);
+      if (start <= position && position <= rangeEnd) {
+        end = rangeEnd;
+        break;
+      }
+      if (rangeEnd > end) {
+        end = rangeEnd;
+      }
+    }
+    setBufferedEnd(end);
+  };
+
   const togglePlay = () => {
     const video = videoRef.current;
     if (video === null || !canControlPlayback) return;
@@ -699,6 +743,7 @@ export function RoomPage() {
   const handleOwnerUploadFileChange = (file: File | null, validationError: string | null) => {
     setOwnerUploadFile(file);
     setOwnerUploadError(validationError);
+    setOwnerUploadNotice(null);
     if (validationError === null) {
       setOwnerUploadError(null);
     }
@@ -719,19 +764,24 @@ export function RoomPage() {
     setOwnerMovieSaving(true);
     setOwnerUploadPercent(0);
     setOwnerUploadError(null);
+    setOwnerUploadNotice(null);
     try {
       const movieBody = {
         name: ownerUploadFile.name.replace(/\.[^.]+$/, ''),
         language: 'english' as const,
       };
-      const uploadedMovie = await prepareMovieForRoom(movieBody, ownerUploadFile, {
+      const uploadedMovie = await resolveMovieForRoom(movieBody);
+      // Direct-to-R2 upload, then complete-upload enqueues async transcoding.
+      // The backend promotes this video to the room once processing finishes.
+      await uploadMovieViaPresign(uploadedMovie.id, ownerUploadFile, room.id, {
         onProgress: (progress) => {
           setOwnerUploadPercent(progress.percent);
         },
       });
-      const updated = await attachMovieToRoom(room.id, uploadedMovie);
-      setRoom(updated);
       clearOwnerUpload();
+      setOwnerUploadNotice(
+        'Video uploaded. Processing now — it will start playing automatically once ready.'
+      );
     } catch (err: unknown) {
       setOwnerUploadError(err instanceof Error ? err.message : 'Failed to upload video');
     } finally {
@@ -801,6 +851,9 @@ export function RoomPage() {
         {ownerMovieSaving ? 'Uploading…' : 'Upload'}
       </button>
       {ownerUploadPercent !== null && <MovieUploadProgress percent={ownerUploadPercent} />}
+      {ownerUploadNotice !== null && (
+        <p style={{ margin: 0, fontSize: 12, color: 'var(--accent)' }}>{ownerUploadNotice}</p>
+      )}
     </div>
   ) : null;
 
@@ -841,7 +894,7 @@ export function RoomPage() {
               type="button"
               className="btn-primary"
               style={{ padding: '7px 14px', fontSize: 13 }}
-              onClick={() => { void navigate(`/rooms/${String(id)}/edit`); }}
+              onClick={() => { void navigate(`/rooms/${id}/edit`); }}
               title="Edit room settings"
             >
               <PencilIcon />
@@ -887,6 +940,7 @@ export function RoomPage() {
               isUploading={movieUploading}
               isFailed={movieFailed}
               mediaSrc={mediaSrc}
+              isHls={isHls}
               videoKey={roomMovieId}
               videoRef={videoRef}
               videoReady={videoReady}
@@ -895,6 +949,9 @@ export function RoomPage() {
               showHostControls={isOwner}
               currentTime={currentTime}
               duration={duration}
+              bufferedEnd={bufferedEnd}
+              qualities={qualities}
+              selectedQuality={selectedQuality}
               isPlaying={isPlaying}
               playbackRate={playbackRate}
               muted={muted}
@@ -906,6 +963,7 @@ export function RoomPage() {
               onTogglePlay={togglePlay}
               onTimeUpdate={syncVideoTime}
               onLoadedMetadata={syncVideoMetadata}
+              onProgress={updateBufferedEnd}
               onLoadedData={handleVideoLoadedData}
               onPlay={() => { setIsPlaying(true); }}
               onPause={() => { setIsPlaying(false); }}
@@ -927,10 +985,11 @@ export function RoomPage() {
                 setCurrentTime(0);
                 setPlaybackRate(1);
               }}
-              onCanPlay={() => { setVideoReady(true); setVideoError(null); }}
+              onCanPlay={() => { setVideoReady(true); setVideoError(null); updateBufferedEnd(); }}
               onVideoError={handleVideoError}
               onScrub={scrubTo}
               onSeekBy={seekBy}
+              onSelectQuality={selectQuality}
               onPlaybackRateChange={changePlaybackRate}
               onToggleMute={() => { setMuted((m) => !m); }}
               onVolumeChange={(next) => { setVolume(next); setMuted(false); }}

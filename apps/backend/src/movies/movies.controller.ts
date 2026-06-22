@@ -24,15 +24,24 @@ import { diskStorage } from 'multer';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import type { Request } from 'express';
-import type { MovieResponse, MovieStreamResponse } from '@repo/schemas/movies';
+import type {
+  CompleteUploadResponse,
+  MovieResponse,
+  MovieStreamResponse,
+  PresignUploadResponse
+} from '@repo/schemas/movies';
 
 import { getAuthenticatedUserId } from '@/auth/get-authenticated-user-id';
 import { JwtAuthGuard } from '@/auth/jwt-auth.guard';
 import {
+  CompleteUploadRequestDto,
+  CompleteUploadResponseDto,
   CreateMovieDto,
   MovieIdParamsDto,
   MovieResponseDto,
   MovieStreamResponseDto,
+  PresignUploadRequestDto,
+  PresignUploadResponseDto,
   UpdateMovieDto
 } from '@/movies/movies.dto';
 import { MoviesService } from '@/movies/movies.service';
@@ -184,6 +193,40 @@ export class MoviesController {
       getAuthenticatedUserId(req),
       file,
       replace === 'true'
+    );
+  }
+
+  @Post(':id/presign-upload')
+  @HttpCode(200)
+  @ZodResponse({
+    status: 200,
+    description: 'Presigned PUT URL for direct upload to R2',
+    type: PresignUploadResponseDto
+  })
+  presignUpload(
+    @Req() req: Request,
+    @Param() params: MovieIdParamsDto,
+    @Body() body: PresignUploadRequestDto
+  ): Promise<PresignUploadResponse> {
+    return this.moviesService.presignUpload(params.id, getAuthenticatedUserId(req), body);
+  }
+
+  @Post(':id/complete-upload')
+  @HttpCode(200)
+  @ZodResponse({
+    status: 200,
+    description: 'Mark the upload complete and start async processing',
+    type: CompleteUploadResponseDto
+  })
+  completeUpload(
+    @Req() req: Request,
+    @Param() params: MovieIdParamsDto,
+    @Body() body: CompleteUploadRequestDto
+  ): Promise<CompleteUploadResponse> {
+    return this.moviesService.completeUpload(
+      params.id,
+      getAuthenticatedUserId(req),
+      body.room_id
     );
   }
 

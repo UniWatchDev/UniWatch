@@ -18,9 +18,12 @@ import {
   resolveMovieMime
 } from '@repo/consts/movies';
 import type {
+  CompleteUploadResponse,
   CreateMovieInput,
   MovieResponse,
   MovieStreamResponse,
+  PresignUploadRequest,
+  PresignUploadResponse,
   UpdateMovieInput
 } from '@repo/schemas/movies';
 
@@ -28,6 +31,11 @@ import { buildMovieThumbnailSvg } from '@/storage/movie-thumbnail.util';
 import { STORAGE_SERVICE, type StorageService, type StoredObject } from '@/storage/storage.interface';
 import { MovieUploadStatus, type MovieDocument } from '@/movies/movie.schema';
 import { MovieRepository } from '@/movies/movie.repository';
+import { VideoProcessingService } from '@/movies/video-processing.service';
+import {
+  REALTIME_BROADCAST_PORT,
+  type RealtimeBroadcastPort
+} from '@/realtime/realtime.broadcast-port';
 import { RoomRecord, type RoomDocument } from '@/rooms/room.schema';
 import type { Env } from '@/utils/env.validation';
 import { isDuplicateKeyError } from '@/utils/is-duplicate-key-error';
@@ -60,6 +68,10 @@ function toResponse(doc: MovieDocument): MovieResponse {
         ? `/api/movies/${id}/thumbnail`
         : null,
     has_file: hasFile,
+    hls_prefix: doc.hls_prefix ?? null,
+    playback_url: doc.file_deleted_at == null ? (doc.playback_url ?? null) : null,
+    available_qualities: doc.available_qualities,
+    error_message: doc.error_message ?? null,
     file_deleted_at: doc.file_deleted_at?.toISOString() ?? null,
     created_at: doc.created_at.toISOString(),
     updated_at: doc.updated_at.toISOString()
@@ -72,6 +84,8 @@ export class MoviesService {
     private readonly movies: MovieRepository,
     private readonly config: ConfigService<Env, true>,
     @Inject(STORAGE_SERVICE) private readonly storage: StorageService,
+    @Inject(REALTIME_BROADCAST_PORT) private readonly broadcast: RealtimeBroadcastPort,
+    private readonly videoProcessing: VideoProcessingService,
     @InjectModel(RoomRecord.name) private readonly roomModel: Model<RoomDocument>
   ) {}
 
@@ -241,6 +255,93 @@ export class MoviesService {
       throw error;
     } finally {
       await fs.unlink(file.path).catch(() => undefined);
+    }
+  }
+
+  async presignUpload(
+    id: string,
+    ownerId: string,
+    body: PresignUploadRequest
+  ): Promise<PresignUploadResponse> {
+    const doc = await this.movies.findOwnedById(id, ownerId);
+    if (!doc) {
+      return await this.assertExistsAndOwnedOrThrow(id);
+    }
+
+    const allowedMimes = this.config.get('MOVIE_ALLOWED_MIMES', { infer: true });
+    const maxBytes = this.config.get('MOVIE_UPLOAD_MAX_BYTES', { infer: true });
+
+    const resolvedMime = resolveMovieMime(body.file_type, body.file_name);
+    if (resolvedMime === null || !allowedMimes.includes(resolvedMime)) {
+      throw new BadRequestException(`Only ${allowedMimes.join(', ')} files are allowed`);
+    }
+    if (body.file_size > maxBytes) {
+      throw new BadRequestException(`File exceeds maximum size of ${String(maxBytes)} bytes`);
+    }
+
+    const objectKey = `uploads/${id}/original${extensionForMovieMime(resolvedMime)}`;
+    const updated = await this.movies.update(id, ownerId, {
+      upload_status: MovieUploadStatus.UPLOADING,
+      storage_key: objectKey,
+      mime_type: resolvedMime,
+      size_bytes: body.file_size,
+      error_message: null
+    });
+    if (!updated) {
+      return await this.assertExistsAndOwnedOrThrow(id);
+    }
+
+    const expiresIn = this.config.get('PRESIGNED_UPLOAD_EXPIRES_SECONDS', { infer: true });
+    const uploadUrl = await this.storage.getPresignedPutUrl(objectKey, resolvedMime, expiresIn);
+
+    return {
+      video_id: id,
+      upload_url: uploadUrl,
+      object_key: objectKey,
+      expires_in: expiresIn
+    };
+  }
+
+  async completeUpload(
+    id: string,
+    ownerId: string,
+    roomId: string
+  ): Promise<CompleteUploadResponse> {
+    const doc = await this.movies.findOwnedById(id, ownerId);
+    if (!doc) {
+      return await this.assertExistsAndOwnedOrThrow(id);
+    }
+    if (doc.upload_status !== MovieUploadStatus.UPLOADING) {
+      throw new BadRequestException('Upload has not started or has already been completed');
+    }
+
+    await this.assertRoomHost(roomId, ownerId);
+
+    await this.roomModel.findByIdAndUpdate(roomId, {
+      $set: { pending_movie: new Types.ObjectId(id) }
+    });
+
+    const updated = await this.movies.update(id, ownerId, {
+      upload_status: MovieUploadStatus.PROCESSING,
+      error_message: null
+    });
+    if (!updated) {
+      return await this.assertExistsAndOwnedOrThrow(id);
+    }
+
+    this.broadcast.emitVideoProcessing(roomId, id);
+    this.videoProcessing.enqueue({ movieId: id, ownerId, roomId });
+
+    return { id, upload_status: updated.upload_status };
+  }
+
+  private async assertRoomHost(roomId: string, userId: string): Promise<void> {
+    const room = await this.roomModel.findById(roomId);
+    if (!room || room.deleted_at != null) {
+      throw new NotFoundException(`Room "${roomId}" not found`);
+    }
+    if (room.creator.toString() !== userId) {
+      throw new ForbiddenException('Only the room host can change the video');
     }
   }
 

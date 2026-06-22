@@ -20,7 +20,13 @@ export const movieLanguageSchema = z.enum([
   'other'
 ]);
 
-export const movieUploadStatusSchema = z.enum(['pending', 'ready', 'failed']);
+export const movieUploadStatusSchema = z.enum([
+  'pending',
+  'uploading',
+  'processing',
+  'ready',
+  'failed'
+]);
 
 export type MovieGenre = z.infer<typeof movieGenreSchema>;
 export type MovieLanguage = z.infer<typeof movieLanguageSchema>;
@@ -71,6 +77,10 @@ export const movieResponseSchema = z.object({
   file_uploaded_at: z.string().nullable(),
   thumbnail_url: z.string().nullable(),
   has_file: z.boolean(),
+  hls_prefix: z.string().nullable(),
+  playback_url: z.string().nullable(),
+  available_qualities: z.array(z.number()),
+  error_message: z.string().nullable(),
   file_deleted_at: z.string().nullable(),
   created_at: z.string(),
   updated_at: z.string()
@@ -98,3 +108,37 @@ export const movieStreamResponseSchema = z.object({
 });
 
 export type MovieStreamResponse = z.infer<typeof movieStreamResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// Direct-to-R2 presigned upload + async processing
+// ---------------------------------------------------------------------------
+
+export const presignUploadRequestSchema = z.strictObject({
+  file_name: z.string().min(1, 'File name is required'),
+  file_type: z.string().min(1, 'File type is required'),
+  file_size: z.number().int().positive('File size must be positive')
+});
+
+export type PresignUploadRequest = z.infer<typeof presignUploadRequestSchema>;
+
+export const presignUploadResponseSchema = z.object({
+  video_id: z.string(),
+  upload_url: z.string().url(),
+  object_key: z.string(),
+  expires_in: z.number().int().positive()
+});
+
+export type PresignUploadResponse = z.infer<typeof presignUploadResponseSchema>;
+
+export const completeUploadRequestSchema = z.strictObject({
+  room_id: objectId
+});
+
+export type CompleteUploadRequest = z.infer<typeof completeUploadRequestSchema>;
+
+export const completeUploadResponseSchema = z.object({
+  id: z.string(),
+  upload_status: movieUploadStatusSchema
+});
+
+export type CompleteUploadResponse = z.infer<typeof completeUploadResponseSchema>;

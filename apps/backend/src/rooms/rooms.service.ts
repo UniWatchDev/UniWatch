@@ -42,7 +42,9 @@ function toResponse(doc: RoomDocument): RoomResponse {
   const creatorDoc = doc.creator as unknown as PopulatedUser | null | undefined;
   const creatorId = creatorDoc != null ? String(creatorDoc._id) : '';
   const creatorName = creatorDoc?.userName ?? creatorDoc?.firstName ?? undefined;
-  const memberCount = allowedUsers.filter((userId) => userId !== creatorId).length;
+  // Membership always includes the host. Dedupe in case the creator is also
+  // present in allowed_users so they are never double-counted.
+  const memberCount = new Set([creatorId, ...allowedUsers].filter((id) => id.length > 0)).size;
   return {
     id: doc._id.toString(),
     name: doc.name,

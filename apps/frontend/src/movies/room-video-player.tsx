@@ -4,6 +4,7 @@ import { MovieAwaitingHostOverlay } from '@/components/movie-awaiting-host-overl
 import { MovieUploadProgress } from '@/movies/movie-upload-progress';
 import type { PlaybackRate } from '@/movies/room-playback';
 import { RoomVideoPlayerControls } from '@/movies/room-video-player-controls';
+import type { SelectedQuality } from '@/movies/use-hls-player';
 import { useFullscreenOverlayControls } from '@/movies/use-fullscreen-overlay-controls';
 
 function CenterPlayIcon() {
@@ -24,6 +25,7 @@ export function RoomVideoPlayer({
   isUploading,
   isFailed,
   mediaSrc,
+  isHls = false,
   videoKey,
   videoRef,
   videoReady,
@@ -32,6 +34,9 @@ export function RoomVideoPlayer({
   showHostControls,
   currentTime,
   duration,
+  bufferedEnd,
+  qualities,
+  selectedQuality,
   isPlaying,
   playbackRate,
   muted,
@@ -44,6 +49,7 @@ export function RoomVideoPlayer({
   onTogglePlay,
   onTimeUpdate,
   onLoadedMetadata,
+  onProgress,
   onPlay,
   onPause,
   onEnded,
@@ -51,6 +57,7 @@ export function RoomVideoPlayer({
   onVideoError,
   onScrub,
   onSeekBy,
+  onSelectQuality,
   onPlaybackRateChange,
   onToggleMute,
   onVolumeChange,
@@ -66,6 +73,7 @@ export function RoomVideoPlayer({
   isUploading: boolean;
   isFailed: boolean;
   mediaSrc: string | null;
+  isHls?: boolean;
   videoKey: string | null;
   videoRef: React.RefObject<HTMLVideoElement | null>;
   videoReady: boolean;
@@ -74,6 +82,9 @@ export function RoomVideoPlayer({
   showHostControls: boolean;
   currentTime: number;
   duration: number;
+  bufferedEnd: number;
+  qualities: number[];
+  selectedQuality: SelectedQuality;
   isPlaying: boolean;
   playbackRate: number;
   muted: boolean;
@@ -86,6 +97,7 @@ export function RoomVideoPlayer({
   onTogglePlay: () => void;
   onTimeUpdate: () => void;
   onLoadedMetadata: () => void;
+  onProgress: () => void;
   onPlay: () => void;
   onPause: () => void;
   onEnded: () => void;
@@ -93,6 +105,7 @@ export function RoomVideoPlayer({
   onVideoError: () => void;
   onScrub: (seconds: number) => void;
   onSeekBy: (deltaSeconds: number) => void;
+  onSelectQuality: (quality: SelectedQuality) => void;
   onPlaybackRateChange: (rate: PlaybackRate) => void;
   onToggleMute: () => void;
   onVolumeChange: (volume: number) => void;
@@ -140,6 +153,9 @@ export function RoomVideoPlayer({
       showHostControls={showHostControls}
       currentTime={currentTime}
       duration={duration}
+      bufferedEnd={bufferedEnd}
+      qualities={qualities}
+      selectedQuality={selectedQuality}
       playbackRate={playbackRate}
       muted={muted}
       volume={volume}
@@ -149,6 +165,7 @@ export function RoomVideoPlayer({
       isLive={isLive}
       onScrub={onScrub}
       onSeekBy={onSeekBy}
+      onSelectQuality={onSelectQuality}
       onPlaybackRateChange={onPlaybackRateChange}
       onToggleMute={onToggleMute}
       onVolumeChange={onVolumeChange}
@@ -170,11 +187,14 @@ export function RoomVideoPlayer({
               key={videoKey ?? mediaSrc}
               ref={videoRef}
               className="room-video-player__video"
-              src={mediaSrc}
+              // For HLS the hls.js hook (or native Safari) owns the source; for
+              // plain MP4 the element keeps driving its own src.
+              src={isHls ? undefined : mediaSrc}
               onClick={handleStageClick}
               onTimeUpdate={onTimeUpdate}
               onLoadedMetadata={onLoadedMetadata}
               onLoadedData={onLoadedData}
+              onProgress={onProgress}
               onPlay={onPlay}
               onPause={onPause}
               onEnded={onEnded}

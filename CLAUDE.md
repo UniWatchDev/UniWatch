@@ -23,6 +23,9 @@
 | backend  | `S3_BUCKET`                | `uniwatch-dev` / `uniwatch-production` | Cloudflare R2 bucket per environment when object storage is active. |
 | backend  | `S3_ENDPOINT` / `S3_REGION` / `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | — | R2 S3 API: `https://<ACCOUNT_ID>.r2.cloudflarestorage.com`, region `auto`. Required when `STORAGE_DRIVER=s3` or `NODE_ENV=production`. |
 | backend  | `S3_FORCE_PATH_STYLE`      | `true`        | Use `true` for R2 (path-style avoids TLS handshake errors). |
+| backend  | `R2_PUBLIC_BASE_URL`       | empty         | Public base URL (no trailing slash) for HLS playback served from the R2 bucket (`*.r2.dev` or custom domain). Required for the async HLS pipeline; playback URL is `${R2_PUBLIC_BASE_URL}/videos/{videoId}/hls/master.m3u8`. Validated http(s) or empty. **R2 CORS** must allow `PUT`/`GET`/`HEAD` from the frontend origin (presigned uploads + hls.js fetches) — see env templates. |
+| backend  | `PRESIGNED_UPLOAD_EXPIRES_SECONDS` | `600` | Lifetime of presigned PUT URLs for direct browser → R2 uploads (~10 min). |
+| backend  | `MOVIE_ALLOWED_MIMES`      | `video/mp4,video/quicktime,video/webm` | Comma-separated allowed upload MIME types (now includes WebM). |
 | frontend | `VITE_PORT`                | `5173`        | Read in `vite.config.ts`                                                                                   |
 | frontend | `VITE_API_BASE_URL`        | —             | Defined in `.env` examples but **not wired** — call sites use hardcoded `API_BASE_URL` from `@repo/consts` |
 | web      | `NEXT_PUBLIC_API_BASE_URL` | —             | Defined in `.env` examples but **not wired** — same hardcoded constant                                     |

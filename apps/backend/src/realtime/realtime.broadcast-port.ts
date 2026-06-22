@@ -7,6 +7,14 @@ export interface RealtimeBroadcastPort {
   emitRoomMovieUpdated(roomId: string, movieId: string, movieName?: string): void;
   emitRoomPlaybackChanged(roomId: string, actorUserId: string | null): void;
   emitRoomState(roomId: string): void;
+  emitVideoProcessing(roomId: string, videoId: string): void;
+  emitVideoReady(
+    roomId: string,
+    videoId: string,
+    playbackUrl: string,
+    availableQualities: number[]
+  ): void;
+  emitVideoFailed(roomId: string, videoId: string, errorMessage: string): void;
   removeRoomMember(roomId: string, userId: string): Promise<void>;
   closeRoom(roomId: string, message: string): Promise<void>;
 }

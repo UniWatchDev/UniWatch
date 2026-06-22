@@ -43,8 +43,19 @@ function isMoviePlayable(movie: MovieResponse): boolean {
   return movie.has_file && movie.upload_status === 'ready';
 }
 
-function isMovieUploading(movie: MovieResponse): boolean {
-  return movie.upload_status === 'pending';
+function isMovieWorking(movie: MovieResponse): boolean {
+  return (
+    movie.upload_status === 'pending' ||
+    movie.upload_status === 'uploading' ||
+    movie.upload_status === 'processing'
+  );
+}
+
+/** A processed movie streams adaptive HLS straight from its public playback URL. */
+function hlsPlaybackUrl(movie: MovieResponse): string | null {
+  return movie.upload_status === 'ready' && movie.playback_url !== null
+    ? movie.playback_url
+    : null;
 }
 
 function isCancelled(ref: { current: boolean }): boolean {
@@ -57,6 +68,7 @@ export function useRoomMovie(
 ) {
   const [movie, setMovie] = useState<MovieResponse | null>(null);
   const [mediaSrc, setMediaSrc] = useState<string | null>(null);
+  const [isHls, setIsHls] = useState(false);
   const [loading, setLoading] = useState(Boolean(movieId));
   const [error, setError] = useState<string | null>(null);
   const cancelledRef = useRef(false);
@@ -67,6 +79,7 @@ export function useRoomMovie(
     if (movieId == null || movieId.length === 0) {
       setMovie(null);
       setMediaSrc(null);
+      setIsHls(false);
       setLoading(false);
       setError(null);
       return;
@@ -76,6 +89,7 @@ export function useRoomMovie(
     inFlightRef.current = false;
     setMovie(null);
     setMediaSrc(null);
+    setIsHls(false);
     setError(null);
     setLoading(true);
 
@@ -132,10 +146,24 @@ export function useRoomMovie(
 
         if (playable) {
           stopPolling();
-          await refreshStream();
+          const hlsUrl = hlsPlaybackUrl(next);
+          if (hlsUrl !== null) {
+            // Public HLS playlist — no presigned refresh lifecycle needed.
+            clearStreamRefresh();
+            setIsHls(true);
+            setMediaSrc(hlsUrl);
+            setError(null);
+          } else {
+            setIsHls(false);
+            await refreshStream();
+          }
         } else {
+          setIsHls(false);
           setMediaSrc(null);
           setError(null);
+          if (next.upload_status === 'failed') {
+            stopPolling();
+          }
         }
       } catch (err: unknown) {
         if (!isCancelled(cancelledRef)) {
@@ -168,7 +196,9 @@ export function useRoomMovie(
     loading,
     error,
     mediaSrc,
-    isUploading: movie != null && isMovieUploading(movie),
+    isHls,
+    availableQualities: movie?.available_qualities ?? [],
+    isUploading: movie != null && isMovieWorking(movie),
     isPlayable: movie != null && isMoviePlayable(movie),
     isFailed: movie?.upload_status === 'failed'
   };
