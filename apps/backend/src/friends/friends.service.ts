@@ -56,7 +56,7 @@ export class FriendsService {
 
     // Mutual request: target already sent actor a request → auto-accept
     if (existing !== null && existing.from.toString() === targetUserId) {
-      await this.acceptRequest(existing._id.toString(), targetUserId);
+      await this.acceptRequest(existing._id.toString());
       return { requestId: existing._id.toString() };
     }
 
@@ -66,6 +66,9 @@ export class FriendsService {
 
     const actor = await this.users.findById(actorUserId);
     if (!actor) throw new NotFoundException('User not found');
+
+    const target = await this.users.findById(targetUserId);
+    if (!target) throw new NotFoundException('Target user not found');
 
     const request = await this.requests.create(actorUserId, targetUserId);
     const requestId = request._id.toString();
@@ -94,7 +97,7 @@ export class FriendsService {
       return;
     }
 
-    await this.acceptRequest(requestId, actorUserId);
+    await this.acceptRequest(requestId);
   }
 
   async getFriendList(userId: string): Promise<PublicProfile[]> {
@@ -127,7 +130,7 @@ export class FriendsService {
   }
 
   /** Shared by sendRequest (mutual) and respondToRequest (accept). */
-  private async acceptRequest(requestId: string, acceptorUserId: string): Promise<void> {
+  private async acceptRequest(requestId: string): Promise<void> {
     const req = await this.requests.findById(requestId);
     if (!req) return;
 
@@ -140,14 +143,28 @@ export class FriendsService {
       this.users.addFriend(toId, fromId)
     ]);
 
-    // Notify the person who sent the original request
-    const acceptorDoc = await this.users.findById(acceptorUserId);
-    if (acceptorDoc) {
-      const notifyUserId = acceptorUserId === toId ? fromId : toId;
+    // Notify both parties — each receives the other's profile as `friend`.
+    // If either user doc is missing (edge case), skip that party's notification gracefully.
+    const [fromDoc, toDoc] = await Promise.all([
+      this.users.findById(fromId),
+      this.users.findById(toId)
+    ]);
+
+    if (toDoc) {
+      // Notify the original requester (fromId) with the acceptor's profile
       this.broadcast.notifyRequestAccepted({
-        targetUserId: notifyUserId,
+        targetUserId: fromId,
         requestId,
-        friend: docToPublicProfile(acceptorDoc)
+        friend: docToPublicProfile(toDoc)
+      });
+    }
+
+    if (fromDoc) {
+      // Notify the acceptor (toId) with the requester's profile
+      this.broadcast.notifyRequestAccepted({
+        targetUserId: toId,
+        requestId,
+        friend: docToPublicProfile(fromDoc)
       });
     }
   }
