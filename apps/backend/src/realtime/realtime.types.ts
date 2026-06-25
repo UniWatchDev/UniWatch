@@ -2,4 +2,5 @@
 export type SocketUserInfo = {
   userId: string;
   userName: string;
+  avatarId: string;
 };

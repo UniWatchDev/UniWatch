@@ -40,6 +40,6 @@ class NullFriendBroadcastService implements FriendBroadcastPort {
     NullFriendBroadcastService,
     { provide: FRIEND_BROADCAST_PORT, useExisting: NullFriendBroadcastService }
   ],
-  exports: [FriendsService, FriendRequestRepository]
+  exports: [FriendsService, FriendRequestRepository, FRIEND_BROADCAST_PORT]
 })
 export class FriendsModule {}
