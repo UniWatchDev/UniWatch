@@ -178,6 +178,59 @@ export class UserRepository {
       { returnDocument: 'after' }
     );
   }
+
+  /** Push `friendId` into `userId`'s friends array (no-op if already present). */
+  addFriend(userId: string, friendId: string): Promise<UserDocument | null> {
+    return this.model.findByIdAndUpdate(
+      userId,
+      { $addToSet: { friends: new Types.ObjectId(friendId) } },
+      { returnDocument: 'after' }
+    );
+  }
+
+  /** Pull `friendId` from `userId`'s friends array. */
+  removeFriend(userId: string, friendId: string): Promise<UserDocument | null> {
+    return this.model.findByIdAndUpdate(
+      userId,
+      { $pull: { friends: new Types.ObjectId(friendId) } },
+      { returnDocument: 'after' }
+    );
+  }
+
+  /** Return just the friends array as strings. */
+  async findFriendIds(userId: string): Promise<string[]> {
+    const doc = await this.model.findById(userId).select('friends').lean();
+    if (!doc) return [];
+    return (doc as { friends: Types.ObjectId[] }).friends.map((id) => id.toString());
+  }
+
+  /** Fetch multiple users by id in one query. */
+  findManyByIds(ids: string[]): Promise<UserDocument[]> {
+    const objectIds = ids.filter((id) => Types.ObjectId.isValid(id)).map((id) => new Types.ObjectId(id));
+    return this.model.find({ _id: { $in: objectIds } });
+  }
+
+  /**
+   * Case-insensitive partial match on userName.
+   * Excludes: private profiles, the viewer themselves, and any ids in excludeIds.
+   */
+  searchByUsername(
+    viewerUserId: string,
+    q: string,
+    excludeIds: string[]
+  ): Promise<UserDocument[]> {
+    const excludeObjectIds = [viewerUserId, ...excludeIds]
+      .filter((id) => Types.ObjectId.isValid(id))
+      .map((id) => new Types.ObjectId(id));
+
+    return this.model
+      .find({
+        userName: new RegExp(escapeRegex(q), 'i'),
+        isProfilePrivate: { $ne: true },
+        _id: { $nin: excludeObjectIds }
+      })
+      .limit(20);
+  }
 }
 
 function escapeRegex(value: string): string {
