@@ -67,4 +67,21 @@ export class FriendRequestRepository {
   setStatus(id: string, status: FriendRequestStatus): Promise<FriendRequestDocument | null> {
     return this.model.findByIdAndUpdate(id, { $set: { status } }, { returnDocument: 'after' });
   }
+
+  deleteById(id: string): Promise<void> {
+    return this.model.deleteOne({ _id: id }).then(() => undefined);
+  }
+
+  deleteByPair(userA: string, userB: string): Promise<void> {
+    const a = new Types.ObjectId(userA);
+    const b = new Types.ObjectId(userB);
+    return this.model
+      .deleteMany({
+        $or: [
+          { from: a, to: b },
+          { from: b, to: a }
+        ]
+      })
+      .then(() => undefined);
+  }
 }

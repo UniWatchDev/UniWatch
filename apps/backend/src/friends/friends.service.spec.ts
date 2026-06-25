@@ -36,7 +36,9 @@ describe('FriendsService', () => {
             findPendingBetween: jest.fn().mockResolvedValue(null),
             findPendingInbox: jest.fn().mockResolvedValue([]),
             findById: jest.fn(),
-            setStatus: jest.fn()
+            setStatus: jest.fn(),
+            deleteById: jest.fn().mockResolvedValue(undefined),
+            deleteByPair: jest.fn().mockResolvedValue(undefined)
           }
         },
         {
@@ -161,13 +163,30 @@ describe('FriendsService', () => {
     });
   });
 
+  describe('respondToRequest (reject)', () => {
+    it('deletes the request doc on reject (enables re-friending)', async () => {
+      const REQ_ID = 'req-reject-001';
+      requestRepo.findById.mockResolvedValueOnce({
+        _id: { toString: () => REQ_ID },
+        from: { toString: () => ALICE },
+        to: { toString: () => BOB },
+        status: 'pending'
+      } as never);
+      await service.respondToRequest({ actorUserId: BOB, requestId: REQ_ID, action: 'reject' });
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(requestRepo.deleteById).toHaveBeenCalledWith(REQ_ID);
+    });
+  });
+
   describe('unfriend', () => {
-    it('removes each user from the other\'s friend list', async () => {
+    it('removes each user from the other\'s friend list and deletes request docs', async () => {
       await service.unfriend(ALICE, BOB);
       // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(userRepo.removeFriend).toHaveBeenCalledWith(ALICE, BOB);
       // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(userRepo.removeFriend).toHaveBeenCalledWith(BOB, ALICE);
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(requestRepo.deleteByPair).toHaveBeenCalledWith(ALICE, BOB);
     });
   });
 });

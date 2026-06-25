@@ -93,7 +93,7 @@ export class FriendsService {
     if (req.to.toString() !== actorUserId) throw new ForbiddenException('Not your request');
 
     if (action === 'reject') {
-      await this.requests.setStatus(requestId, 'rejected');
+      await this.requests.deleteById(requestId);
       return;
     }
 
@@ -110,7 +110,8 @@ export class FriendsService {
   async unfriend(actorUserId: string, targetUserId: string): Promise<void> {
     await Promise.all([
       this.users.removeFriend(actorUserId, targetUserId),
-      this.users.removeFriend(targetUserId, actorUserId)
+      this.users.removeFriend(targetUserId, actorUserId),
+      this.requests.deleteByPair(actorUserId, targetUserId)
     ]);
   }
 
