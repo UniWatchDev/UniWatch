@@ -27,6 +27,7 @@ import { MoviesModule } from '@/movies/movies.module';
 import { RoomsModule } from '@/rooms/rooms.module';
 import { UsersModule } from '@/users/users.module';
 import { FriendsModule } from '@/friends/friends.module';
+import { DirectMessagesModule } from '@/direct-messages/direct-messages.module';
 
 const nodeEnv = process.env['NODE_ENV'] ?? 'development';
 const backendRoot = process.cwd().endsWith('/apps/backend')
@@ -94,7 +95,8 @@ const envFilePath = [join(backendRoot, `.env.${nodeEnv}`)];
     MoviesModule,
     RoomsModule,
     UsersModule,
-    FriendsModule
+    FriendsModule,
+    DirectMessagesModule
   ],
   controllers: [AppController],
   providers: [
