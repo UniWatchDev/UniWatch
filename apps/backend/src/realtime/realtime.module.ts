@@ -7,6 +7,8 @@ import { RoomsModule } from '@/rooms/rooms.module';
 import { REALTIME_BROADCAST_PORT } from '@/realtime/realtime.broadcast-port';
 import { RealtimeGateway } from './realtime.gateway';
 import { ConnectionRegistryService } from './services/connection-registry.service';
+import { FriendBroadcastService } from './services/friend-broadcast.service';
+import { GlobalPresenceService } from './services/global-presence.service';
 import { PlaybackCountdownService } from './services/playback-countdown.service';
 import { RealtimeBroadcastService } from './services/realtime-broadcast.service';
 import { RoomMovieChangeService } from './services/room-movie-change.service';
@@ -27,8 +29,10 @@ import { WsAuthGuard } from './ws-auth.guard';
     RoomMovieChangeService,
     RoomModerationService,
     WsAuthGuard,
+    GlobalPresenceService,
+    FriendBroadcastService,
     { provide: REALTIME_BROADCAST_PORT, useExisting: RealtimeBroadcastService }
   ],
-  exports: [RoomStateService, REALTIME_BROADCAST_PORT, RoomMovieChangeService]
+  exports: [RoomStateService, REALTIME_BROADCAST_PORT, RoomMovieChangeService, GlobalPresenceService]
 })
 export class RealtimeModule {}
