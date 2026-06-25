@@ -10,7 +10,10 @@
     "./profile": "./dist/profile/profile.contracts.js",
     "./rooms": "./dist/rooms/rooms.contracts.js",
     "./movies": "./dist/movies/movies.contracts.js",
-    "./realtime": "./dist/realtime/realtime.contracts.js"
+    "./realtime": "./dist/realtime/realtime.contracts.js",
+    "./friends": "./dist/friends/friends.contracts.js",
+    "./dm": "./dist/dm/dm.contracts.js",
+    "./users": "./dist/users/users.contracts.js"
   },
   "scripts": {
     "dev": "tsc --watch --preserveWatchOutput",
