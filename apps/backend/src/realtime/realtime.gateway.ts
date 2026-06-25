@@ -356,6 +356,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     const result = this.roomState.removeSocket(roomId, socketId);
     if (result && !result.userStillConnected) {
       this.broadcast.emitUserLeft(roomId, userId);
+      void this.friendHandler.notifyFriendsLeftRoom(userId);
     }
     if (this.roomState.get(roomId)) {
       this.broadcast.emitRoomPresenceChanged(roomId);
