@@ -134,3 +134,13 @@ export const updateProfileBodySchema = z.strictObject({
 });
 
 export type UpdateProfileBody = z.infer<typeof updateProfileBodySchema>;
+
+/** GET /api/users/search?q=:term query params. */
+export const userSearchQuerySchema = z.strictObject({
+  q: z.string().trim().min(1).max(64)
+});
+export type UserSearchQuery = z.infer<typeof userSearchQuerySchema>;
+
+/** GET /api/users/search response — array of public profiles. */
+export const userSearchResponseSchema = z.array(publicProfileSchema);
+export type UserSearchResponse = z.infer<typeof userSearchResponseSchema>;

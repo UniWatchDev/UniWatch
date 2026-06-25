@@ -198,3 +198,52 @@ export type RoomClosedEvent = z.infer<typeof roomClosedEventSchema>;
 // ---------------------------------------------------------------------------
 
 export const REALTIME_MAX_MESSAGES = 100;
+
+// ---------------------------------------------------------------------------
+// Friend presence + connection:ack
+// ---------------------------------------------------------------------------
+
+/** A friend's presence snapshot delivered in connection:ack and friend:online events. */
+export const friendPresenceSchema = z.object({
+  userId: z.string(),
+  userName: z.string(),
+  avatarId: z.string(),
+  isOnline: z.boolean(),
+  currentRoomId: z.string().optional(),
+  currentRoomName: z.string().optional()
+});
+export type FriendPresence = z.infer<typeof friendPresenceSchema>;
+
+/** Pending incoming friend request stub (delivered in connection:ack). */
+export const pendingFriendRequestSchema = z.object({
+  requestId: z.string(),
+  fromUserId: z.string(),
+  fromUserName: z.string(),
+  fromAvatarId: z.string(),
+  createdAt: z.string().datetime()
+});
+export type PendingFriendRequest = z.infer<typeof pendingFriendRequestSchema>;
+
+/** Full payload emitted with the connection:ack event. */
+export const connectionAckPayloadSchema = z.object({
+  friends: z.array(friendPresenceSchema),
+  pendingRequests: z.array(pendingFriendRequestSchema)
+});
+export type ConnectionAckPayload = z.infer<typeof connectionAckPayloadSchema>;
+
+// Client→server socket payloads for friend/dm events
+export const friendRequestSendPayloadSchema = z.strictObject({
+  targetUserId: z.string().min(1)
+});
+export type FriendRequestSendPayload = z.infer<typeof friendRequestSendPayloadSchema>;
+
+export const friendRequestRespondPayloadSchema = z.strictObject({
+  requestId: z.string().min(1),
+  action: z.enum(['accept', 'reject'])
+});
+export type FriendRequestRespondPayload = z.infer<typeof friendRequestRespondPayloadSchema>;
+
+export const friendRemovePayloadSchema = z.strictObject({
+  targetUserId: z.string().min(1)
+});
+export type FriendRemovePayload = z.infer<typeof friendRemovePayloadSchema>;
