@@ -54,8 +54,8 @@ describe('UsersService', () => {
     }).compile();
 
     service = module.get(UsersService);
-    userRepo = module.get(UserRepository) as jest.Mocked<UserRepository>;
-    friendRequestRepo = module.get(FriendRequestRepository) as jest.Mocked<FriendRequestRepository>;
+    userRepo = module.get<jest.Mocked<UserRepository>>(UserRepository);
+    friendRequestRepo = module.get<jest.Mocked<FriendRequestRepository>>(FriendRequestRepository);
   });
 
   describe('getProfileByUserName', () => {
@@ -84,6 +84,7 @@ describe('UsersService', () => {
     it('calls searchByUsername with empty excludeIds when no friends or pending requests', async () => {
       userRepo.searchByUsername.mockResolvedValueOnce([]);
       await service.searchUsers(ALICE, 'car');
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(userRepo.searchByUsername).toHaveBeenCalledWith(ALICE, 'car', []);
     });
 
@@ -91,6 +92,7 @@ describe('UsersService', () => {
       userRepo.findFriendIds.mockResolvedValueOnce([BOB]);
       userRepo.searchByUsername.mockResolvedValueOnce([]);
       await service.searchUsers(ALICE, 'car');
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(userRepo.searchByUsername).toHaveBeenCalledWith(ALICE, 'car', [BOB]);
     });
 
@@ -101,6 +103,7 @@ describe('UsersService', () => {
       userRepo.searchByUsername.mockResolvedValueOnce([]);
       await service.searchUsers(ALICE, 'car');
       // CAROL (to) should be excluded since viewer is from
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(userRepo.searchByUsername).toHaveBeenCalledWith(ALICE, 'car', [CAROL]);
     });
 
@@ -111,6 +114,7 @@ describe('UsersService', () => {
       userRepo.searchByUsername.mockResolvedValueOnce([]);
       await service.searchUsers(ALICE, 'car');
       // CAROL (from) should be excluded since viewer is to
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(userRepo.searchByUsername).toHaveBeenCalledWith(ALICE, 'car', [CAROL]);
     });
 
@@ -123,7 +127,8 @@ describe('UsersService', () => {
       await service.searchUsers(ALICE, 'bob');
       const callArgs = userRepo.searchByUsername.mock.calls[0];
       expect(callArgs).toBeDefined();
-      const excludeIds = callArgs![2];
+      if (!callArgs) throw new Error('searchByUsername was not called');
+      const excludeIds = callArgs[2];
       expect(excludeIds.filter((id) => id === BOB)).toHaveLength(1);
     });
 

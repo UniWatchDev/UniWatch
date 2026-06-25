@@ -50,9 +50,9 @@ describe('FriendsService', () => {
     }).compile();
 
     service = module.get(FriendsService);
-    userRepo = module.get(UserRepository) as jest.Mocked<UserRepository>;
-    requestRepo = module.get(FriendRequestRepository) as jest.Mocked<FriendRequestRepository>;
-    broadcastPort = module.get(FRIEND_BROADCAST_PORT) as jest.Mocked<typeof broadcastPort>;
+    userRepo = module.get<jest.Mocked<UserRepository>>(UserRepository);
+    requestRepo = module.get<jest.Mocked<FriendRequestRepository>>(FriendRequestRepository);
+    broadcastPort = module.get(FRIEND_BROADCAST_PORT);
   });
 
   describe('sendRequest', () => {
@@ -88,6 +88,7 @@ describe('FriendsService', () => {
 
       const result = await service.sendRequest(ALICE, BOB);
       expect(result.requestId).toBe('req123');
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(requestRepo.create).toHaveBeenCalledWith(ALICE, BOB);
     });
 
@@ -104,6 +105,7 @@ describe('FriendsService', () => {
         .mockResolvedValueOnce(null);
 
       await expect(service.sendRequest(ALICE, BOB)).rejects.toBeInstanceOf(NotFoundException);
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(requestRepo.create).not.toHaveBeenCalled();
     });
   });
@@ -162,7 +164,9 @@ describe('FriendsService', () => {
   describe('unfriend', () => {
     it('removes each user from the other\'s friend list', async () => {
       await service.unfriend(ALICE, BOB);
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(userRepo.removeFriend).toHaveBeenCalledWith(ALICE, BOB);
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(userRepo.removeFriend).toHaveBeenCalledWith(BOB, ALICE);
     });
   });

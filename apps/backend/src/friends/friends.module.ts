@@ -1,5 +1,6 @@
 import { Injectable, Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
+import type { Server } from 'socket.io';
 
 import { AuthModule } from '@/auth/auth.module';
 import { FRIEND_BROADCAST_PORT, type FriendBroadcastPort } from '@/realtime/friend-broadcast.port';
@@ -16,8 +17,15 @@ import { FriendsService } from './friends.service';
  */
 @Injectable()
 class NullFriendBroadcastService implements FriendBroadcastPort {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  bind(_server: Server): void {}
   notifyFriendRequest(): void {}
   notifyRequestAccepted(): void {}
+  notifyFriendsOnline(): void {}
+  notifyFriendsOffline(): void {}
+  notifyFriendsJoinedRoom(): void {}
+  notifyFriendsLeftRoom(): void {}
+  notifyDmReceived(): void {}
 }
 
 @Module({

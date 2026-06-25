@@ -46,8 +46,8 @@ describe('DirectMessagesService', () => {
     }).compile();
 
     service = module.get(DirectMessagesService);
-    repo = module.get(DirectMessageRepository) as jest.Mocked<DirectMessageRepository>;
-    friendsService = module.get(FriendsService) as jest.Mocked<FriendsService>;
+    repo = module.get<jest.Mocked<DirectMessageRepository>>(DirectMessageRepository);
+    friendsService = module.get<jest.Mocked<FriendsService>>(FriendsService);
   });
 
   describe('friendship gate', () => {
@@ -67,6 +67,7 @@ describe('DirectMessagesService', () => {
 
       const result = await service.getHistory(ALICE, BOB);
       expect(result).toEqual([]);
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(repo.findConversation).toHaveBeenCalledWith(ALICE, BOB, 50);
     });
 
