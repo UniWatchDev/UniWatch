@@ -92,30 +92,35 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   }
 
   async handleConnection(socket: Socket): Promise<void> {
-    const user = await this.socketAuth.authenticate(socket);
-    if (!user) {
-      socket.emit(REALTIME_SERVER_EVENTS.error, { message: 'Unauthorized' });
-      socket.disconnect(true);
-      return;
-    }
-
-    this.registry.register(socket.id, user);
-
     try {
-      await this.friendHandler.onConnect({
-        userId: user.userId,
-        userName: user.userName,
-        avatarId: user.avatarId,
-        socketId: socket.id
-      });
-      const ackPayload = await this.friendHandler.buildConnectionAckPayload(user.userId);
-      socket.emit(REALTIME_SERVER_EVENTS.connectionAck, ackPayload);
-    } catch (err) {
-      this.logger.error(`friend/ack error for ${user.userId}: ${String(err)}`);
-      socket.emit(REALTIME_SERVER_EVENTS.connectionAck, { friends: [], pendingRequests: [] });
-    }
+      const user = await this.socketAuth.authenticate(socket);
+      if (!user) {
+        socket.emit(REALTIME_SERVER_EVENTS.error, { message: 'Unauthorized' });
+        socket.disconnect(true);
+        return;
+      }
 
-    this.logger.debug(`connect ${socket.id} user=${user.userId}`);
+      this.registry.register(socket.id, user);
+
+      try {
+        await this.friendHandler.onConnect({
+          userId: user.userId,
+          userName: user.userName,
+          avatarId: user.avatarId,
+          socketId: socket.id
+        });
+        const ackPayload = await this.friendHandler.buildConnectionAckPayload(user.userId);
+        socket.emit(REALTIME_SERVER_EVENTS.connectionAck, ackPayload);
+      } catch (err) {
+        this.logger.error(`friend/ack error for ${user.userId}: ${String(err)}`);
+        socket.emit(REALTIME_SERVER_EVENTS.connectionAck, { friends: [], pendingRequests: [] });
+      }
+
+      this.logger.debug(`connect ${socket.id} user=${user.userId}`);
+    } catch (err) {
+      this.logger.error(`handleConnection fatal error: ${String(err)}`);
+      socket.disconnect(true);
+    }
   }
 
   handleDisconnect(socket: Socket): void {
@@ -127,7 +132,9 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       this.removeSocketFromRoom(roomId, socket.id, user.userId);
     }
 
-    void this.friendHandler.onDisconnect(user.userId, socket.id);
+    this.friendHandler.onDisconnect(user.userId, socket.id).catch((err: unknown) => {
+      this.logger.error(`onDisconnect error for ${user.userId}: ${String(err)}`);
+    });
     this.logger.debug(`disconnect ${socket.id}`);
   }
 
@@ -166,12 +173,14 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
         isReady: joined.isReady,
         roomId
       });
-      void this.friendHandler.notifyFriendsJoinedRoom({
+      this.friendHandler.notifyFriendsJoinedRoom({
         userId: user.userId,
         userName: user.userName,
         avatarId: user.avatarId,
         roomId,
         roomName: room.name
+      }).catch((err: unknown) => {
+        this.logger.error(`notifyFriendsJoinedRoom error: ${String(err)}`);
       });
     }
 
@@ -192,7 +201,9 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
     if (result && !result.userStillConnected) {
       this.broadcast.emitUserLeft(roomId, user.userId);
-      void this.friendHandler.notifyFriendsLeftRoom(user.userId);
+      this.friendHandler.notifyFriendsLeftRoom(user.userId).catch((err: unknown) => {
+        this.logger.error(`notifyFriendsLeftRoom error: ${String(err)}`);
+      });
     }
     if (this.roomState.get(roomId)) {
       this.broadcast.emitRoomPresenceChanged(roomId);
@@ -362,15 +373,21 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     const result = this.roomState.removeSocket(roomId, socketId);
     if (result && !result.userStillConnected) {
       this.broadcast.emitUserLeft(roomId, userId);
-      void this.friendHandler.notifyFriendsLeftRoom(userId);
+      this.friendHandler.notifyFriendsLeftRoom(userId).catch((err: unknown) => {
+        this.logger.error(`notifyFriendsLeftRoom error: ${String(err)}`);
+      });
     }
     if (this.roomState.get(roomId)) {
       this.broadcast.emitRoomPresenceChanged(roomId);
-      void this.syncRoomStatus(roomId);
+      this.syncRoomStatus(roomId).catch((err: unknown) => {
+        this.logger.error(`syncRoomStatus error for room ${roomId}: ${String(err)}`);
+      });
       return;
     }
     this.countdown.cancel(roomId);
-    void this.finalizeRoomWhenEmpty(roomId);
+    this.finalizeRoomWhenEmpty(roomId).catch((err: unknown) => {
+      this.logger.error(`finalizeRoomWhenEmpty error for room ${roomId}: ${String(err)}`);
+    });
   }
 
   private async finalizeRoomWhenEmpty(roomId: string, creatorId: string | null = null): Promise<void> {
