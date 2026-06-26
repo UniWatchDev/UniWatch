@@ -48,7 +48,8 @@ function DmWindowContent({ targetUserId, friend, onClose }: DmWindowContentProps
 
     const socket = io(API_BASE_URL, {
       withCredentials: true,
-      transports: ['websocket', 'polling']
+      transports: ['websocket', 'polling'],
+      forceNew: true
     });
     socketRef.current = socket;
 
