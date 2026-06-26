@@ -7,13 +7,14 @@ interface CinemaChatProps {
   onSend: (text: string) => void;
   draftMessage: string;
   onDraftMessageChange: (value: string) => void;
+  friendUserIds?: ReadonlySet<string> | undefined;
 }
 
 function formatTime(date: Date): string {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-export function CinemaChat({ messages, onSend, draftMessage, onDraftMessageChange }: CinemaChatProps) {
+export function CinemaChat({ messages, onSend, draftMessage, onDraftMessageChange, friendUserIds }: CinemaChatProps) {
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -42,11 +43,16 @@ export function CinemaChat({ messages, onSend, draftMessage, onDraftMessageChang
             No messages yet. Say something!
           </p>
         ) : (
-          messages.map((msg) => (
+          messages.map((msg) => {
+            const isFriend = friendUserIds?.has(msg.userId) ?? false;
+            return (
             <div key={msg.id} className="group">
               <div className="flex items-baseline gap-2">
-                <span className="text-xs font-bold leading-none" style={{ color: msg.color }}>
-                  {msg.userName}
+                <span
+                  className={`text-xs font-bold leading-none${isFriend ? ' friend-sparkle' : ''}`}
+                  style={{ color: msg.color }}
+                >
+                  {msg.userName}{isFriend ? ' ✨' : ''}
                 </span>
                 <span
                   className="text-[10px] opacity-0 transition-opacity group-hover:opacity-100"
@@ -62,7 +68,8 @@ export function CinemaChat({ messages, onSend, draftMessage, onDraftMessageChang
                 {msg.content}
               </p>
             </div>
-          ))
+            );
+          })
         )}
         <div ref={endRef} />
       </div>

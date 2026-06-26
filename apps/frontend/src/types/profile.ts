@@ -7,6 +7,7 @@ export interface ProfilePerson {
   name: string;
   username: string;
   avatarColor: string;
+  avatarId?: string | undefined;
   status: FriendStatus;
 }
 

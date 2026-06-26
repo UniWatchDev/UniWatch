@@ -3,6 +3,9 @@ import { Route, Routes, useLocation } from 'react-router-dom';
 import { ThemeProvider } from '@/theme/theme-provider';
 
 import { CookieAuthProvider } from '@/auth/cookie-auth-provider';
+import { FriendProvider } from '@/friends/friend-context';
+import { FriendBanners } from '@/components/friend-banners';
+import { DmWindow } from '@/friends/dm-window';
 import { RequireAuth } from '@/auth/require-auth';
 import { NavBar } from '@/nav/nav-bar';
 import { SiteFooter } from '@/components/site-footer';
@@ -59,7 +62,11 @@ export default function App() {
   return (
     <ThemeProvider>
       <CookieAuthProvider>
-        <AppShell />
+        <FriendProvider>
+          <FriendBanners />
+          <DmWindow />
+          <AppShell />
+        </FriendProvider>
       </CookieAuthProvider>
     </ThemeProvider>
   );

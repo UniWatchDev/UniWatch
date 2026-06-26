@@ -1,5 +1,6 @@
 import { UserAvatar } from '@/components/user-avatar';
 import type { ProfileFriend } from '@/types/profile';
+import { useNavigate } from 'react-router-dom';
 
 export interface FriendCardProps {
   readonly friend: ProfileFriend;
@@ -20,6 +21,7 @@ function statusColor(status: ProfileFriend['status']): string {
 }
 
 export function FriendCard({ friend, canRemove, onRemove }: FriendCardProps) {
+  const navigate = useNavigate();
   return (
     <article
       className="card"
@@ -32,7 +34,19 @@ export function FriendCard({ friend, canRemove, onRemove }: FriendCardProps) {
         textAlign: 'center'
       }}
     >
-      <UserAvatar name={friend.name} avatarColor={friend.avatarColor} size={64} />
+      <button
+        type="button"
+        style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+        onClick={() => { void navigate(`/u/${encodeURIComponent(friend.username)}`); }}
+        aria-label={`View ${friend.name}'s profile`}
+      >
+        <UserAvatar
+          name={friend.name}
+          avatarColor={friend.avatarColor}
+          avatarId={friend.avatarId}
+          size={64}
+        />
+      </button>
       <div>
         <p className="display" style={{ margin: 0, fontSize: 17, color: 'var(--text-primary)' }}>
           {friend.name}

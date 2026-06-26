@@ -9,6 +9,7 @@ import { FeaturedRoomHero } from '@/components/featured-room-hero';
 import { CinemaRoomCard } from '@/components/cinema-room-card';
 import type { RoomResponse, RoomStatus } from '@/types/room';
 import { Search } from 'lucide-react';
+import { LobbyFriendSidebar } from '@/friends/lobby-friend-sidebar';
 
 const REFRESH_INTERVAL_MS = 2_000;
 
@@ -110,7 +111,8 @@ export function Lobby() {
     <div className="relative min-h-dvh" style={{ background: 'var(--bg-primary)' }}>
       <StarField />
 
-      <div className="lobby-content relative z-10 mx-auto max-w-[1200px] px-4 pb-16 pt-6 sm:px-6 sm:pt-8">
+      <div className="lobby-content relative z-10 flex gap-6 mx-auto max-w-[1440px] px-4 pb-16 pt-6 sm:px-6 sm:pt-8">
+      <div style={{ flex: 1, minWidth: 0 }}>
 
         {roomClosedMessage !== null && (
           <RoomClosedLobbyNotice
@@ -222,6 +224,8 @@ export function Lobby() {
           </>
         )}
       </div>
+      </div>
+      <LobbyFriendSidebar />
     </div>
   );
 }
