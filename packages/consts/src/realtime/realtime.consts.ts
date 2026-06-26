@@ -9,7 +9,12 @@ export const REALTIME_CLIENT_EVENTS = {
   playbackUpdate: 'room:playback-update',
   readyUpdate: 'room:ready-update',
   kickUser: 'room:kick-user',
-  blockUser: 'room:block-user'
+  blockUser: 'room:block-user',
+  // friend events
+  friendRequestSend: 'friend:request-send',
+  friendRequestRespond: 'friend:request-respond',
+  friendRemove: 'friend:remove',
+  dmSend: 'dm:send'
 } as const;
 
 export const REALTIME_SERVER_EVENTS = {
@@ -22,7 +27,15 @@ export const REALTIME_SERVER_EVENTS = {
   movieUpdated: 'room:movie-updated',
   playbackChanged: 'room:playback-changed',
   roomClosed: 'room:closed',
-  error: 'room:error'
+  error: 'room:error',
+  // friend events
+  friendRequestReceived: 'friend:request-received',
+  friendRequestAccepted: 'friend:request-accepted',
+  friendOnline: 'friend:online',
+  friendOffline: 'friend:offline',
+  friendJoinedRoom: 'friend:joined-room',
+  friendLeftRoom: 'friend:left-room',
+  dmReceived: 'dm:received'
 } as const;
 
 /** Default copy emitted on `room:closed` when the host deletes a room. */

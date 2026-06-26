@@ -18,7 +18,7 @@ type ActorSocket = {
   rooms: Set<string>;
   emit: jest.Mock;
   disconnect: jest.Mock;
-  data: { user: { userId: string; userName: string } };
+  data: { user: { userId: string; userName: string; avatarId: string } };
 };
 
 describe('RealtimeGateway', () => {
@@ -47,7 +47,7 @@ describe('RealtimeGateway', () => {
       rooms: new Set([roomId]),
       emit: jest.fn(),
       disconnect: jest.fn(),
-      data: { user: { userId, userName } }
+      data: { user: { userId, userName, avatarId: 'violet-reel' } }
     };
   }
 
@@ -66,6 +66,28 @@ describe('RealtimeGateway', () => {
     broadcast = new RealtimeBroadcastService(roomState, countdown, rooms as unknown as RoomRepository);
     movieChange = new RoomMovieChangeService(roomState, countdown, broadcast, rooms as unknown as RoomRepository);
     moderation = new RoomModerationService(rooms as unknown as RoomRepository, roomState, broadcast);
+    const friendBroadcastMock = {
+      bind: jest.fn(),
+      notifyFriendRequest: jest.fn(),
+      notifyRequestAccepted: jest.fn(),
+      notifyFriendsOnline: jest.fn(),
+      notifyFriendsOffline: jest.fn(),
+      notifyFriendsJoinedRoom: jest.fn(),
+      notifyFriendsLeftRoom: jest.fn(),
+      notifyDmReceived: jest.fn(),
+      emitToUser: jest.fn()
+    };
+    const friendHandlerMock = {
+      onConnect: jest.fn().mockResolvedValue(undefined),
+      onDisconnect: jest.fn().mockResolvedValue(undefined),
+      buildConnectionAckPayload: jest.fn().mockResolvedValue({ friends: [], pendingRequests: [] }),
+      notifyFriendsJoinedRoom: jest.fn().mockResolvedValue(undefined),
+      notifyFriendsLeftRoom: jest.fn().mockResolvedValue(undefined),
+      handleFriendRequestSend: jest.fn().mockResolvedValue(undefined),
+      handleFriendRequestRespond: jest.fn().mockResolvedValue(undefined),
+      handleFriendRemove: jest.fn().mockResolvedValue(undefined),
+      handleDmSend: jest.fn().mockResolvedValue(undefined)
+    };
     gateway = new RealtimeGateway(
       rooms as unknown as RoomRepository,
       roomState,
@@ -74,7 +96,9 @@ describe('RealtimeGateway', () => {
       countdown,
       broadcast,
       moderation,
-      movieChange
+      movieChange,
+      friendBroadcastMock as never,
+      friendHandlerMock as never
     );
 
     roomEmit = jest.fn();
@@ -84,7 +108,7 @@ describe('RealtimeGateway', () => {
       sockets: { sockets: socketRegistry }
     } as unknown as Server);
 
-    registry.register('socket-1', { userId: hostId, userName: 'Host' });
+    registry.register('socket-1', { userId: hostId, userName: 'Host', avatarId: 'violet-reel' });
     roomState.joinUser({ roomId, userId: hostId, userName: 'Host', socketId: 'socket-1' });
     roomState.setUserReady(roomId, hostId, true);
 
@@ -141,7 +165,7 @@ describe('RealtimeGateway', () => {
   });
 
   it('keeps the room member until the last socket for that user disconnects', () => {
-    registry.register('socket-2', { userId: hostId, userName: 'Host' });
+    registry.register('socket-2', { userId: hostId, userName: 'Host', avatarId: 'violet-reel' });
     roomState.joinUser({ roomId, userId: hostId, userName: 'Host', socketId: 'socket-2' });
 
     gateway.handleDisconnect({
@@ -169,8 +193,8 @@ describe('RealtimeGateway', () => {
     const viewerSocketThree = { emit: jest.fn(), disconnect: jest.fn() };
     mockHostRoom(initialMovieId);
 
-    registry.register('socket-2', { userId: viewerId, userName: 'Viewer' });
-    registry.register('socket-3', { userId: viewerId, userName: 'Viewer' });
+    registry.register('socket-2', { userId: viewerId, userName: 'Viewer', avatarId: 'violet-reel' });
+    registry.register('socket-3', { userId: viewerId, userName: 'Viewer', avatarId: 'violet-reel' });
     socketRegistry.set('socket-2', viewerSocketTwo);
     socketRegistry.set('socket-3', viewerSocketThree);
     roomState.joinUser({ roomId, userId: viewerId, userName: 'Viewer', socketId: 'socket-2' });
@@ -189,7 +213,7 @@ describe('RealtimeGateway', () => {
     const viewerSocket = { emit: jest.fn(), disconnect: jest.fn() };
     mockHostRoom(initialMovieId);
 
-    registry.register('socket-2', { userId: viewerId, userName: 'Viewer' });
+    registry.register('socket-2', { userId: viewerId, userName: 'Viewer', avatarId: 'violet-reel' });
     socketRegistry.set('socket-2', viewerSocket);
     roomState.joinUser({ roomId, userId: viewerId, userName: 'Viewer', socketId: 'socket-2' });
 
@@ -222,7 +246,7 @@ describe('RealtimeGateway', () => {
   it('adds the joining user and announces them to the room', async () => {
     const viewerId = new Types.ObjectId().toString();
     mockHostRoom(initialMovieId);
-    registry.register('socket-2', { userId: viewerId, userName: 'Viewer' });
+    registry.register('socket-2', { userId: viewerId, userName: 'Viewer', avatarId: 'violet-reel' });
     const viewer = actorSocket('socket-2', viewerId, 'Viewer');
     viewer.rooms = new Set();
     const joinFn = jest.fn((): Promise<void> => {
@@ -697,7 +721,7 @@ describe('RealtimeGateway', () => {
   it('emits presence-changed when a viewer toggles ready', async () => {
     const viewerId = new Types.ObjectId().toString();
     mockHostRoom(initialMovieId);
-    registry.register('socket-2', { userId: viewerId, userName: 'Viewer' });
+    registry.register('socket-2', { userId: viewerId, userName: 'Viewer', avatarId: 'violet-reel' });
     roomState.joinUser({ roomId, userId: viewerId, userName: 'Viewer', socketId: 'socket-2' });
     const viewer = actorSocket('socket-2', viewerId, 'Viewer');
     roomEmit.mockClear();
@@ -732,7 +756,7 @@ describe('RealtimeGateway', () => {
       rejoinSocket.rooms.add(roomId);
       return Promise.resolve();
     });
-    registry.register('socket-3', { userId: hostId, userName: 'Host' });
+    registry.register('socket-3', { userId: hostId, userName: 'Host', avatarId: 'violet-reel' });
 
     await gateway.handleJoin(rejoinSocket as never, { roomId });
 

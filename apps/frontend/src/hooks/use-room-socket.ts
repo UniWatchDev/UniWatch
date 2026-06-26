@@ -235,7 +235,8 @@ export function useRoomSocket({
 
     const socket = io(API_BASE_URL, {
       withCredentials: true,
-      transports: ['websocket']
+      transports: ['websocket'],
+      forceNew: true
     });
     socketRef.current = socket;
 

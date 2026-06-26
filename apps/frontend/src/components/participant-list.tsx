@@ -146,7 +146,7 @@ export function ParticipantList({
                 <button
                   type="button"
                   className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-white/5"
-                  style={{ color: 'var(--text-primary)' }}
+                  style={{ color: 'rgba(255,255,255,0.85)' }}
                   onClick={() => {
                     onAddFriend(member);
                     setOpenMenuId(null);
@@ -158,7 +158,7 @@ export function ParticipantList({
                 <button
                   type="button"
                   className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-white/5"
-                  style={{ color: 'var(--text-primary)' }}
+                  style={{ color: 'rgba(255,255,255,0.85)' }}
                   onClick={() => {
                     onTagUser(member);
                     setOpenMenuId(null);
@@ -172,7 +172,7 @@ export function ParticipantList({
                     <button
                       type="button"
                       className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-white/5"
-                      style={{ color: 'var(--text-primary)' }}
+                      style={{ color: 'rgba(255,255,255,0.85)' }}
                       onClick={() => {
                         onKickUser(member);
                         setOpenMenuId(null);

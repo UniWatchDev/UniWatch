@@ -29,7 +29,7 @@ export class SocketAuthService {
       const user = await this.users.findById(payload.sub);
       if (!user) return null;
 
-      return { userId: payload.sub, userName: user.userName };
+      return { userId: payload.sub, userName: user.userName, avatarId: user.avatarId };
     } catch {
       return null;
     }

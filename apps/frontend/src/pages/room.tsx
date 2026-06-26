@@ -23,7 +23,7 @@ import { RoomMovieChangeNotice } from '@/components/room-movie-change-notice';
 import { RoomClosedOverlay } from '@/components/room-closed-overlay';
 import { RoomPasswordGate } from '@/components/room-password-gate';
 import { Users, MessageSquare, Volume2, VolumeX } from 'lucide-react';
-import { MOCK_FRIENDS } from '@/data/mock-profile-data';
+import { useFriendContext } from '@/friends/use-friend-context';
 import type { Member } from '@/types/room';
 import {
   fetchCurrentUserId,
@@ -131,7 +131,7 @@ export function RoomPage() {
   );
   const [movieStreamRevision, setMovieStreamRevision] = useState(0);
   const [countdownDismissed, setCountdownDismissed] = useState(false);
-  const [friendIds, setFriendIds] = useState<string[]>(() => MOCK_FRIENDS.map((friend) => friend.id));
+  const { friendUserIds, sendFriendRequest: sendFriendReq } = useFriendContext();
   const videoRef = useRef<HTMLVideoElement>(null);
   const swapMovieIdRef = useRef<string | null>(null);
   const retriedStreamForSrcRef = useRef<string | null>(null);
@@ -328,7 +328,7 @@ export function RoomPage() {
 
   const displayMembers = members.map((member) => ({
     ...member,
-    isFriend: friendIds.includes(member.id)
+    isFriend: friendUserIds.has(member.id)
   }));
   const currentMember = displayMembers.find((member) => member.id === currentUserId) ?? null;
   const isSoloHost = isOwner && displayMembers.length === 1;
@@ -342,7 +342,7 @@ export function RoomPage() {
   const showCountdown = roomState.countdown.active && !countdownDismissed;
   const readinessMembers = displayMembers.filter((member) => !member.isHost);
   const handleAddFriend = (member: Member) => {
-    setFriendIds((prev) => (prev.includes(member.id) ? prev : [...prev, member.id]));
+    void sendFriendReq(member.id);
   };
   const handleTagUser = (member: Member) => {
     setActiveTab('chat');
@@ -1124,6 +1124,7 @@ export function RoomPage() {
                 onSend={socketSendMessage}
                 draftMessage={chatDraft}
                 onDraftMessageChange={setChatDraft}
+                friendUserIds={friendUserIds}
               />
             </TabsContent>
           </Tabs>

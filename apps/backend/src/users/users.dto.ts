@@ -2,9 +2,11 @@ import { createZodDto } from 'nestjs-zod';
 
 import {
   getUserProfileResponseSchema,
+  publicProfileSchema,
   updateProfileBodySchema,
   userNameParamsSchema,
-  userProfileSchema
+  userProfileSchema,
+  userSearchQuerySchema
 } from '@repo/schemas/profile';
 
 export type {
@@ -12,7 +14,9 @@ export type {
   PublicProfile,
   UpdateProfileBody,
   UserNameParams,
-  UserProfile
+  UserProfile,
+  UserSearchQuery,
+  UserSearchResponse
 } from '@repo/schemas/profile';
 
 export {
@@ -29,3 +33,7 @@ export class UserProfileDto extends createZodDto(userProfileSchema) {}
 export class UserNameParamsDto extends createZodDto(userNameParamsSchema) {}
 
 export class GetUserProfileResponseDto extends createZodDto(getUserProfileResponseSchema) {}
+
+export class PublicProfileDto extends createZodDto(publicProfileSchema) {}
+
+export class UserSearchQueryDto extends createZodDto(userSearchQuerySchema) {}

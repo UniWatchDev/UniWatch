@@ -12,7 +12,12 @@ import { WsException } from '@nestjs/websockets';
 import type { Server, Socket } from 'socket.io';
 
 import { REALTIME_CLIENT_EVENTS, REALTIME_SERVER_EVENTS } from '@repo/consts/realtime';
+import type { SendDmPayload } from '@repo/schemas/dm';
+import { sendDmPayloadSchema } from '@repo/schemas/dm';
 import {
+  friendRemovePayloadSchema,
+  friendRequestRespondPayloadSchema,
+  friendRequestSendPayloadSchema,
   joinRoomPayloadSchema,
   leaveRoomPayloadSchema,
   roomModerateUserPayloadSchema,
@@ -22,6 +27,9 @@ import {
   sendMessagePayloadSchema
 } from '@repo/schemas/realtime';
 import type {
+  FriendRemovePayload,
+  FriendRequestRespondPayload,
+  FriendRequestSendPayload,
   JoinRoomPayload,
   LeaveRoomPayload,
   RealtimeChatMessage,
@@ -34,7 +42,9 @@ import type {
 
 import { DEFAULT_USER_COLOR } from '@/realtime/realtime.consts';
 import type { SocketUserInfo } from '@/realtime/realtime.types';
+import { FriendGatewayHandler } from '@/realtime/handlers/friend-gateway.handler';
 import { ConnectionRegistryService } from '@/realtime/services/connection-registry.service';
+import { FriendBroadcastService } from '@/realtime/services/friend-broadcast.service';
 import { PlaybackCountdownService } from '@/realtime/services/playback-countdown.service';
 import { RealtimeBroadcastService } from '@/realtime/services/realtime-broadcast.service';
 import { RoomMovieChangeService } from '@/realtime/services/room-movie-change.service';
@@ -71,24 +81,46 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     private readonly countdown: PlaybackCountdownService,
     private readonly broadcast: RealtimeBroadcastService,
     private readonly moderation: RoomModerationService,
-    private readonly movieChange: RoomMovieChangeService
+    private readonly movieChange: RoomMovieChangeService,
+    private readonly friendBroadcast: FriendBroadcastService,
+    private readonly friendHandler: FriendGatewayHandler
   ) {}
 
   afterInit(server: Server): void {
     this.broadcast.bind(server);
+    this.friendBroadcast.bind(server);
   }
 
   async handleConnection(socket: Socket): Promise<void> {
-    const user = await this.socketAuth.authenticate(socket);
-    if (!user) {
-      socket.emit(REALTIME_SERVER_EVENTS.error, { message: 'Unauthorized' });
-      socket.disconnect(true);
-      return;
-    }
+    try {
+      const user = await this.socketAuth.authenticate(socket);
+      if (!user) {
+        socket.emit(REALTIME_SERVER_EVENTS.error, { message: 'Unauthorized' });
+        socket.disconnect(true);
+        return;
+      }
 
-    this.registry.register(socket.id, user);
-    this.logger.debug(`connect ${socket.id} user=${user.userId}`);
-    socket.emit(REALTIME_SERVER_EVENTS.connectionAck);
+      this.registry.register(socket.id, user);
+
+      try {
+        await this.friendHandler.onConnect({
+          userId: user.userId,
+          userName: user.userName,
+          avatarId: user.avatarId,
+          socketId: socket.id
+        });
+        const ackPayload = await this.friendHandler.buildConnectionAckPayload(user.userId);
+        socket.emit(REALTIME_SERVER_EVENTS.connectionAck, ackPayload);
+      } catch (err) {
+        this.logger.error(`friend/ack error for ${user.userId}: ${String(err)}`);
+        socket.emit(REALTIME_SERVER_EVENTS.connectionAck, { friends: [], pendingRequests: [] });
+      }
+
+      this.logger.debug(`connect ${socket.id} user=${user.userId}`);
+    } catch (err) {
+      this.logger.error(`handleConnection fatal error: ${String(err)}`);
+      socket.disconnect(true);
+    }
   }
 
   handleDisconnect(socket: Socket): void {
@@ -100,6 +132,9 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       this.removeSocketFromRoom(roomId, socket.id, user.userId);
     }
 
+    this.friendHandler.onDisconnect(user.userId, socket.id).catch((err: unknown) => {
+      this.logger.error(`onDisconnect error for ${user.userId}: ${String(err)}`);
+    });
     this.logger.debug(`disconnect ${socket.id}`);
   }
 
@@ -138,6 +173,15 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
         isReady: joined.isReady,
         roomId
       });
+      this.friendHandler.notifyFriendsJoinedRoom({
+        userId: user.userId,
+        userName: user.userName,
+        avatarId: user.avatarId,
+        roomId,
+        roomName: room.name
+      }).catch((err: unknown) => {
+        this.logger.error(`notifyFriendsJoinedRoom error: ${String(err)}`);
+      });
     }
 
     this.logger.debug(`${user.userId} joined room ${roomId}`);
@@ -157,6 +201,9 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
     if (result && !result.userStillConnected) {
       this.broadcast.emitUserLeft(roomId, user.userId);
+      this.friendHandler.notifyFriendsLeftRoom(user.userId).catch((err: unknown) => {
+        this.logger.error(`notifyFriendsLeftRoom error: ${String(err)}`);
+      });
     }
     if (this.roomState.get(roomId)) {
       this.broadcast.emitRoomPresenceChanged(roomId);
@@ -326,14 +373,21 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     const result = this.roomState.removeSocket(roomId, socketId);
     if (result && !result.userStillConnected) {
       this.broadcast.emitUserLeft(roomId, userId);
+      this.friendHandler.notifyFriendsLeftRoom(userId).catch((err: unknown) => {
+        this.logger.error(`notifyFriendsLeftRoom error: ${String(err)}`);
+      });
     }
     if (this.roomState.get(roomId)) {
       this.broadcast.emitRoomPresenceChanged(roomId);
-      void this.syncRoomStatus(roomId);
+      this.syncRoomStatus(roomId).catch((err: unknown) => {
+        this.logger.error(`syncRoomStatus error for room ${roomId}: ${String(err)}`);
+      });
       return;
     }
     this.countdown.cancel(roomId);
-    void this.finalizeRoomWhenEmpty(roomId);
+    this.finalizeRoomWhenEmpty(roomId).catch((err: unknown) => {
+      this.logger.error(`finalizeRoomWhenEmpty error for room ${roomId}: ${String(err)}`);
+    });
   }
 
   private async finalizeRoomWhenEmpty(roomId: string, creatorId: string | null = null): Promise<void> {
@@ -425,5 +479,45 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   private async syncRoomStatus(roomId: string, creatorId: string | null = null): Promise<void> {
     const status = this.roomState.syncStatus(roomId, creatorId);
     await this.rooms.setStatus(roomId, status);
+  }
+
+  @SubscribeMessage(REALTIME_CLIENT_EVENTS.friendRequestSend)
+  async handleFriendRequestSend(
+    @ConnectedSocket() socket: Socket,
+    @MessageBody(new ZodWsValidationPipe(friendRequestSendPayloadSchema))
+    payload: FriendRequestSendPayload
+  ): Promise<void> {
+    const user = getAuthenticatedUser(socket);
+    await this.friendHandler.handleFriendRequestSend(socket, user.userId, payload);
+  }
+
+  @SubscribeMessage(REALTIME_CLIENT_EVENTS.friendRequestRespond)
+  async handleFriendRequestRespond(
+    @ConnectedSocket() socket: Socket,
+    @MessageBody(new ZodWsValidationPipe(friendRequestRespondPayloadSchema))
+    payload: FriendRequestRespondPayload
+  ): Promise<void> {
+    const user = getAuthenticatedUser(socket);
+    await this.friendHandler.handleFriendRequestRespond(socket, user.userId, payload);
+  }
+
+  @SubscribeMessage(REALTIME_CLIENT_EVENTS.friendRemove)
+  async handleFriendRemove(
+    @ConnectedSocket() socket: Socket,
+    @MessageBody(new ZodWsValidationPipe(friendRemovePayloadSchema))
+    payload: FriendRemovePayload
+  ): Promise<void> {
+    const user = getAuthenticatedUser(socket);
+    await this.friendHandler.handleFriendRemove(socket, user.userId, payload);
+  }
+
+  @SubscribeMessage(REALTIME_CLIENT_EVENTS.dmSend)
+  async handleDmSend(
+    @ConnectedSocket() socket: Socket,
+    @MessageBody(new ZodWsValidationPipe(sendDmPayloadSchema))
+    payload: SendDmPayload
+  ): Promise<void> {
+    const user = getAuthenticatedUser(socket);
+    await this.friendHandler.handleDmSend(socket, user.userId, payload);
   }
 }

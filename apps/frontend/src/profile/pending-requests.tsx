@@ -54,7 +54,12 @@ export function PendingRequests({ requests, onAccept, onDecline }: PendingReques
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-              <UserAvatar name={request.name} avatarColor={request.avatarColor} size={40} />
+              <UserAvatar
+                name={request.name}
+                avatarColor={request.avatarColor}
+                avatarId={request.avatarId}
+                size={40}
+              />
               <div style={{ minWidth: 0 }}>
                 <p style={{ margin: 0, fontWeight: 600, color: 'var(--text-primary)' }}>{request.name}</p>
                 <p style={{ margin: '2px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>

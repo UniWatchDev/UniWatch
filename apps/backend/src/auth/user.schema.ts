@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import type { HydratedDocument } from 'mongoose';
+import { Types } from 'mongoose';
 
 @Schema({ timestamps: true, collection: 'users' })
 export class UserRecord {
@@ -46,6 +47,9 @@ export class UserRecord {
 
   @Prop({ type: Date, required: false })
   passwordResetExpiresAt?: Date;
+
+  @Prop({ type: [{ type: Types.ObjectId, ref: 'UserRecord' }], default: [] })
+  friends!: Types.ObjectId[];
 }
 
 export type UserDocument = HydratedDocument<UserRecord> & {
