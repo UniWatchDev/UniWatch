@@ -100,15 +100,21 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     }
 
     this.registry.register(socket.id, user);
-    await this.friendHandler.onConnect({
-      userId: user.userId,
-      userName: user.userName,
-      avatarId: user.avatarId,
-      socketId: socket.id
-    });
 
-    const ackPayload = await this.friendHandler.buildConnectionAckPayload(user.userId);
-    socket.emit(REALTIME_SERVER_EVENTS.connectionAck, ackPayload);
+    try {
+      await this.friendHandler.onConnect({
+        userId: user.userId,
+        userName: user.userName,
+        avatarId: user.avatarId,
+        socketId: socket.id
+      });
+      const ackPayload = await this.friendHandler.buildConnectionAckPayload(user.userId);
+      socket.emit(REALTIME_SERVER_EVENTS.connectionAck, ackPayload);
+    } catch (err) {
+      this.logger.error(`friend/ack error for ${user.userId}: ${String(err)}`);
+      socket.emit(REALTIME_SERVER_EVENTS.connectionAck, { friends: [], pendingRequests: [] });
+    }
+
     this.logger.debug(`connect ${socket.id} user=${user.userId}`);
   }
 
