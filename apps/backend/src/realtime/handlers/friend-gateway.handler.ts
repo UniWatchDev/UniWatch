@@ -17,6 +17,7 @@ import { FriendsService } from '@/friends/friends.service';
 
 import { FriendBroadcastService } from '../services/friend-broadcast.service';
 import { GlobalPresenceService } from '../services/global-presence.service';
+import { getAuthenticatedUser } from '../ws-auth.guard';
 
 @Injectable()
 export class FriendGatewayHandler {
@@ -68,16 +69,18 @@ export class FriendGatewayHandler {
   }
 
   async handleDmSend(
-    _socket: Socket,
+    socket: Socket,
     userId: string,
     payload: SendDmPayload
   ): Promise<void> {
     try {
+      const { userName } = getAuthenticatedUser(socket);
       const message = await this.dm.send(userId, payload.targetUserId, payload.content);
       this.friendBroadcast.notifyDmReceived({
         targetUserId: payload.targetUserId,
         messageId: message.messageId,
         fromUserId: message.fromUserId,
+        fromUserName: userName,
         content: message.content,
         createdAt: message.createdAt
       });

@@ -17,7 +17,7 @@ UniWatch is a monorepo (NestJS backend, React/Vite frontend, Next.js web). The a
 | Question | Decision |
 |---|---|
 | Architecture | Separate `FriendsModule` + `DirectMessagesModule`, matching how `rooms/` is split from `realtime/` |
-| DM history | Persisted in MongoDB, API caps at last 50 per conversation |
+| DM history | Persisted in MongoDB, API caps at last 100 per conversation |
 | Room join notification | Banner + persistent "currently in room X" indicator on friend list |
 | Mutual requests | Auto-accept (if Bob already sent Alice a request, Alice sending one back auto-friends them) |
 | Banners in fullscreen | Suppressed — no banners during fullscreen/focus mode (client-side gate via `document.fullscreenElement`) |

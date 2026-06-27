@@ -3,7 +3,8 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
-  NotFoundException
+  NotFoundException,
+  forwardRef
 } from '@nestjs/common';
 
 import { avatarPresetIdSchema, type PublicProfile } from '@repo/schemas/profile';
@@ -12,6 +13,7 @@ import type { FriendRequestResponse, SendFriendRequestResponse } from '@repo/sch
 import { UserRepository } from '@/auth/user.repository';
 import type { UserDocument } from '@/auth/user.schema';
 import { FRIEND_BROADCAST_PORT, type FriendBroadcastPort } from '@/realtime/friend-broadcast.port';
+import { GlobalPresenceService } from '@/realtime/services/global-presence.service';
 import { FriendRequestRepository } from './friend-request.repository';
 import type { FriendRequestDocument } from './friend-request.schema';
 
@@ -40,7 +42,8 @@ export class FriendsService {
   constructor(
     private readonly users: UserRepository,
     private readonly requests: FriendRequestRepository,
-    @Inject(FRIEND_BROADCAST_PORT) private readonly broadcast: FriendBroadcastPort
+    @Inject(FRIEND_BROADCAST_PORT) private readonly broadcast: FriendBroadcastPort,
+    @Inject(forwardRef(() => GlobalPresenceService)) private readonly presence: GlobalPresenceService
   ) {}
 
   async sendRequest(
@@ -166,6 +169,32 @@ export class FriendsService {
         targetUserId: toId,
         requestId,
         friend: docToPublicProfile(fromDoc)
+      });
+    }
+
+    // Immediately sync presence so each new friend sees the other as
+    // online/in-room without waiting for the next socket reconnect.
+    if (fromDoc && this.presence.isOnline(fromId)) {
+      const fromPresence = this.presence.getUserPresence(fromId);
+      this.broadcast.notifyFriendsOnline({
+        userId: fromId,
+        userName: fromDoc.userName,
+        avatarId: avatarPresetIdSchema.parse(fromDoc.avatarId),
+        friendIds: [toId],
+        ...(fromPresence.currentRoomId !== undefined ? { currentRoomId: fromPresence.currentRoomId } : {}),
+        ...(fromPresence.currentRoomName !== undefined ? { currentRoomName: fromPresence.currentRoomName } : {})
+      });
+    }
+
+    if (toDoc && this.presence.isOnline(toId)) {
+      const toPresence = this.presence.getUserPresence(toId);
+      this.broadcast.notifyFriendsOnline({
+        userId: toId,
+        userName: toDoc.userName,
+        avatarId: avatarPresetIdSchema.parse(toDoc.avatarId),
+        friendIds: [fromId],
+        ...(toPresence.currentRoomId !== undefined ? { currentRoomId: toPresence.currentRoomId } : {}),
+        ...(toPresence.currentRoomName !== undefined ? { currentRoomName: toPresence.currentRoomName } : {})
       });
     }
   }

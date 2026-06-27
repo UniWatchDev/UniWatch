@@ -24,7 +24,6 @@ export class DirectMessagesService {
   ) {}
 
   async getHistory(viewerUserId: string, targetUserId: string): Promise<DirectMessage[]> {
-    await this.assertFriends(viewerUserId, targetUserId);
     const docs = await this.repo.findConversation(viewerUserId, targetUserId, 50);
     return docs.map(docToDto);
   }

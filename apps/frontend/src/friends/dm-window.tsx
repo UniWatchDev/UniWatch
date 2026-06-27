@@ -18,10 +18,12 @@ function formatTime(iso: string): string {
 interface DmWindowContentProps {
   targetUserId: string;
   friend: FriendPresence | undefined;
+  displayName: string | null;
+  isFriend: boolean;
   onClose: () => void;
 }
 
-function DmWindowContent({ targetUserId, friend, onClose }: DmWindowContentProps) {
+function DmWindowContent({ targetUserId, friend, displayName, isFriend, onClose }: DmWindowContentProps) {
   const { sessionUser } = useCookieAuth();
   const [messages, setMessages] = useState<DirectMessage[]>([]);
   const [draft, setDraft] = useState('');
@@ -133,7 +135,7 @@ function DmWindowContent({ targetUserId, friend, onClose }: DmWindowContentProps
         {friend !== undefined && <PresetAvatar avatarId={friend.avatarId} size={32} />}
         <div style={{ flex: 1, minWidth: 0 }}>
           <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
-            {friend?.userName ?? 'Direct Message'}
+            {friend?.userName ?? displayName ?? 'Direct Message'}
           </p>
         </div>
         <button
@@ -207,53 +209,71 @@ function DmWindowContent({ targetUserId, friend, onClose }: DmWindowContentProps
         <div ref={endRef} />
       </div>
 
-      <div
-        style={{
-          display: 'flex',
-          gap: 8,
-          padding: '10px 12px',
-          borderTop: '1px solid var(--border-subtle)',
-          flexShrink: 0
-        }}
-      >
-        <input
-          className="input"
-          style={{ flex: 1, padding: '7px 12px', fontSize: 13 }}
-          placeholder="Message…"
-          value={draft}
-          onChange={(e) => { setDraft(e.target.value); }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              sendMessage();
-            }
+      {isFriend ? (
+        <div
+          style={{
+            display: 'flex',
+            gap: 8,
+            padding: '10px 12px',
+            borderTop: '1px solid var(--border-subtle)',
+            flexShrink: 0
           }}
-        />
-        <button
-          type="button"
-          className="btn-primary"
-          style={{ padding: '7px 14px', fontSize: 13 }}
-          onClick={sendMessage}
         >
-          Send
-        </button>
-      </div>
+          <input
+            className="input"
+            style={{ flex: 1, padding: '7px 12px', fontSize: 13 }}
+            placeholder="Message…"
+            value={draft}
+            onChange={(e) => { setDraft(e.target.value); }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+              }
+            }}
+          />
+          <button
+            type="button"
+            className="btn-primary"
+            style={{ padding: '7px 14px', fontSize: 13 }}
+            onClick={sendMessage}
+          >
+            Send
+          </button>
+        </div>
+      ) : (
+        <div
+          style={{
+            padding: '10px 14px',
+            borderTop: '1px solid var(--border-subtle)',
+            flexShrink: 0,
+            textAlign: 'center',
+            fontSize: 12,
+            color: 'var(--text-muted)'
+          }}
+        >
+          Add as a friend to send messages
+        </div>
+      )}
     </div>
   );
 }
 
 export function DmWindow() {
-  const { dmOpenForUserId, closeDm, friends } = useFriendContext();
+  const { dmOpenForUserId, dmTargetName, closeDm, friends, friendUserIds } = useFriendContext();
 
   if (dmOpenForUserId === null) return null;
 
   const friend = friends.find((f) => f.userId === dmOpenForUserId);
+  const isFriend = friendUserIds.has(dmOpenForUserId);
 
   return (
     <DmWindowContent
       key={dmOpenForUserId}
       targetUserId={dmOpenForUserId}
       friend={friend}
+      displayName={dmTargetName}
+      isFriend={isFriend}
       onClose={closeDm}
     />
   );

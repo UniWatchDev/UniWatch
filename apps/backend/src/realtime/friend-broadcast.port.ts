@@ -41,6 +41,7 @@ export interface FriendBroadcastPort {
     targetUserId: string;
     messageId: string;
     fromUserId: string;
+    fromUserName: string;
     content: string;
     createdAt: string;
   }): void;

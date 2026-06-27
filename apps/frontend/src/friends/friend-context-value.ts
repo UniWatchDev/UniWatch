@@ -23,7 +23,8 @@ export type FriendContextValue = {
   banner: FriendBanner | null;
   dismissBanner: () => void;
   dmOpenForUserId: string | null;
-  openDm: (targetUserId: string) => void;
+  dmTargetName: string | null;
+  openDm: (targetUserId: string, targetName?: string) => void;
   closeDm: () => void;
   sendFriendRequest: (targetUserId: string) => Promise<void>;
   respondToRequest: (requestId: string, action: 'accept' | 'reject') => Promise<void>;

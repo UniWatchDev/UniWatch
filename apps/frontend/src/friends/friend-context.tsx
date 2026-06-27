@@ -33,6 +33,7 @@ export function FriendProvider({ children }: { children: React.ReactNode }) {
   const [pendingRequests, setPendingRequests] = useState<PendingFriendRequest[]>([]);
   const [banner, setBanner] = useState<FriendBanner | null>(null);
   const [dmOpenForUserId, setDmOpenForUserId] = useState<string | null>(null);
+  const [dmTargetName, setDmTargetName] = useState<string | null>(null);
 
   const friendUserIds: Set<string> = new Set(friends.map((f) => f.userId));
 
@@ -264,12 +265,14 @@ export function FriendProvider({ children }: { children: React.ReactNode }) {
     setFriends((prev) => prev.filter((f) => f.userId !== targetUserId));
   }, []);
 
-  const openDm = useCallback((targetUserId: string): void => {
+  const openDm = useCallback((targetUserId: string, targetName?: string): void => {
     setDmOpenForUserId(targetUserId);
+    setDmTargetName(targetName ?? null);
   }, []);
 
   const closeDm = useCallback((): void => {
     setDmOpenForUserId(null);
+    setDmTargetName(null);
   }, []);
 
   return (
@@ -281,6 +284,7 @@ export function FriendProvider({ children }: { children: React.ReactNode }) {
         banner,
         dismissBanner,
         dmOpenForUserId,
+        dmTargetName,
         openDm,
         closeDm,
         sendFriendRequest,

@@ -315,7 +315,7 @@ export function ProfilePage() {
                   type="button"
                   className="btn-primary"
                   style={{ padding: '8px 16px', fontSize: 13 }}
-                  onClick={() => { openDm(targetId); }}
+                  onClick={() => { openDm(targetId, identitySource.userName); }}
                 >
                   Message
                 </button>
@@ -329,18 +329,30 @@ export function ProfilePage() {
                   Remove friend
                 </button>
               </>
-            ) : friendActionState === 'done' ? (
-              <span style={{ fontSize: 13, color: '#4ade80' }}>{friendActionMsg}</span>
             ) : (
-              <button
-                type="button"
-                className="btn-primary"
-                style={{ padding: '8px 16px', fontSize: 13 }}
-                disabled={friendActionState === 'loading'}
-                onClick={() => { void handleSendRequest(); }}
-              >
-                {friendActionState === 'loading' ? 'Sending…' : 'Add friend'}
-              </button>
+              <>
+                {friendActionState === 'done' ? (
+                  <span style={{ fontSize: 13, color: '#4ade80' }}>{friendActionMsg}</span>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    style={{ padding: '8px 16px', fontSize: 13 }}
+                    disabled={friendActionState === 'loading'}
+                    onClick={() => { void handleSendRequest(); }}
+                  >
+                    {friendActionState === 'loading' ? 'Sending…' : 'Add friend'}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  style={{ padding: '8px 16px', fontSize: 13 }}
+                  onClick={() => { openDm(targetId, identitySource.userName); }}
+                >
+                  View messages
+                </button>
+              </>
             )}
             {friendActionState === 'error' && friendActionMsg !== null && (
               <span style={{ fontSize: 12, color: 'var(--coral)' }}>{friendActionMsg}</span>

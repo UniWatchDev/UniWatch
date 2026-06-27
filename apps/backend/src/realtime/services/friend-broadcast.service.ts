@@ -94,12 +94,14 @@ export class FriendBroadcastService implements FriendBroadcastPort {
     targetUserId: string;
     messageId: string;
     fromUserId: string;
+    fromUserName: string;
     content: string;
     createdAt: string;
   }): void {
     this.emitToUser(opts.targetUserId, REALTIME_SERVER_EVENTS.dmReceived, {
       messageId: opts.messageId,
       fromUserId: opts.fromUserId,
+      fromUserName: opts.fromUserName,
       content: opts.content,
       createdAt: opts.createdAt
     });

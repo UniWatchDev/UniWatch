@@ -106,7 +106,7 @@ function FriendRow({ friend, onDm }: { friend: FriendPresence; onDm: (id: string
 }
 
 function SearchResult({ profile, onSent }: { profile: PublicProfile; onSent: () => void }) {
-  const { friends, sendFriendRequest, addFriendLocally } = useFriendContext();
+  const { friends, sendFriendRequest } = useFriendContext();
   const [state, setState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const isFriend = friends.some((f) => f.userId === profile.userId);
 
@@ -114,13 +114,12 @@ function SearchResult({ profile, onSent }: { profile: PublicProfile; onSent: () 
     setState('sending');
     try {
       await sendFriendRequest(profile.userId);
-      addFriendLocally(profile);
       setState('sent');
       onSent();
     } catch {
       setState('error');
     }
-  }, [addFriendLocally, onSent, profile, sendFriendRequest]);
+  }, [onSent, profile.userId, sendFriendRequest]);
 
   return (
     <div
