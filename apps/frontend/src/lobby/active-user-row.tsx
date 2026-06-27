@@ -18,9 +18,11 @@ export function ActiveUserRow({ user }: Props) {
   const handleAdd = useCallback(() => {
     if (addState !== 'idle') return;
     setAddState('sending');
-    sendFriendRequest(user.userId).catch(() => {
-      setAddState('error');
-    });
+    sendFriendRequest(user.userId)
+      .then(() => undefined)
+      .catch(() => {
+        setAddState('error');
+      });
   }, [addState, sendFriendRequest, user.userId]);
 
   const handleJoin = useCallback(() => {
@@ -81,7 +83,7 @@ export function ActiveUserRow({ user }: Props) {
           {user.currentRoom !== null && (
             <button
               type="button"
-              onClick={() => { void navigate(`/room/${user.currentRoom?.roomId}`); }}
+              onClick={handleJoin}
               style={{
                 background: 'none',
                 border: 'none',
