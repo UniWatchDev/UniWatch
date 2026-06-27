@@ -141,6 +141,30 @@ export const userSearchQuerySchema = z.strictObject({
 });
 export type UserSearchQuery = z.infer<typeof userSearchQuerySchema>;
 
-/** GET /api/users/search response — array of public profiles. */
-export const userSearchResponseSchema = z.array(publicProfileSchema);
+export const friendshipStatusSchema = z.enum(['friend', 'pending_sent', 'none']);
+export type FriendshipStatus = z.infer<typeof friendshipStatusSchema>;
+
+const activeUserRoomSchema = z.strictObject({
+  roomId: z.string(),
+  roomName: z.string(),
+  roomType: z.enum(['public', 'private'])
+});
+
+export const activeUserSchema = z.strictObject({
+  userId: mongoObjectIdStringSchema,
+  userName: z.string(),
+  firstName: z.string(),
+  avatarId: avatarPresetIdSchema,
+  friendshipStatus: friendshipStatusSchema,
+  mutualFriendsCount: z.number().int().nonnegative(),
+  currentRoom: activeUserRoomSchema.nullable()
+});
+
+export type ActiveUser = z.infer<typeof activeUserSchema>;
+
+export const getActiveUsersResponseSchema = z.array(activeUserSchema);
+export type GetActiveUsersResponse = z.infer<typeof getActiveUsersResponseSchema>;
+
+/** GET /api/users/search response — array of enriched active users. */
+export const userSearchResponseSchema = z.array(activeUserSchema);
 export type UserSearchResponse = z.infer<typeof userSearchResponseSchema>;
