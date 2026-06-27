@@ -201,7 +201,8 @@ export class UserRepository {
   async findFriendIds(userId: string): Promise<string[]> {
     const doc = await this.model.findById(userId).select('friends').lean();
     if (!doc) return [];
-    return (doc as { friends: Types.ObjectId[] }).friends.map((id) => id.toString());
+    const friends = (doc as { friends?: Types.ObjectId[] | null }).friends;
+    return (friends ?? []).map((id) => id.toString());
   }
 
   /** Fetch multiple users by id in one query. */
