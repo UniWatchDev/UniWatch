@@ -8,6 +8,7 @@ import type { Request } from 'express';
 import type { Note } from '@repo/schemas/notes';
 import { Types } from 'mongoose';
 import { randomUUID } from 'node:crypto';
+import { JwtAuthGuard } from '@/auth/jwt-auth.guard';
 import { NotesController } from '@/notes/notes.controller';
 import { NotesService } from '@/notes/notes.service';
 import { NoteRepository } from '@/notes/note.repository';
@@ -51,7 +52,10 @@ describe('NotesController', () => {
         NotesService,
         { provide: NoteRepository, useValue: mockRepo as unknown as NoteRepository }
       ]
-    }).compile();
+    })
+      .overrideGuard(JwtAuthGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
 
     controller = module.get(NotesController);
   });
