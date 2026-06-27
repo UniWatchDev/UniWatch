@@ -111,13 +111,20 @@ export class UsersService {
         : 'none';
 
       const presence = this.presence.getUserPresence(id);
+      const roomType =
+        presence.currentRoomId !== undefined
+          ? (roomTypes.get(presence.currentRoomId) ?? ('private' as const))
+          : undefined;
+      // Only expose room metadata for public rooms; private room names/ids are
+      // not visible to non-members.
       const currentRoom =
         presence.currentRoomId !== undefined &&
-        presence.currentRoomName !== undefined
+        presence.currentRoomName !== undefined &&
+        roomType === 'public'
           ? {
               roomId: presence.currentRoomId,
               roomName: presence.currentRoomName,
-              roomType: roomTypes.get(presence.currentRoomId) ?? ('private' as const)
+              roomType: 'public' as const
             }
           : null;
 
