@@ -12,6 +12,8 @@ import type { PlaybackRate } from '@/movies/room-playback';
 import { useRoomPlaybackSync } from '@/movies/use-room-playback-sync';
 import { useRoomMovie } from '@/movies/use-room-movie';
 import { prepareMovieForRoom } from '@/movies/prepare-movie-for-room';
+import { clearRoomUpload } from '@/movies/room-upload-tracker';
+import { useRoomUploadProgress } from '@/movies/use-room-upload-progress';
 import { validateMovieFile } from '@/movies/upload-movie-file';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ParticipantList } from '@/components/participant-list';
@@ -274,13 +276,32 @@ export function RoomPage() {
     onRoomClosed: handleRoomClosed
   });
 
+  const roomUpload = useRoomUploadProgress(id);
+  const trackerIsUploading = roomUpload?.phase === 'uploading';
+  const trackerUploadPercent = trackerIsUploading ? roomUpload.percent : null;
+  const activeUploadPercent = ownerUploadPercent ?? trackerUploadPercent;
+
   const authoritativeMovieId = resolveActiveRoomMovieId(
     roomState.playback.movieId,
     swapMovieId,
     room?.movie ?? null
   );
   const roomMovieId = canCurrentUserAccessRoomMovie(currentUserId, room) ? authoritativeMovieId : null;
-  const ownerIsUploading = ownerMovieSaving || ownerUploadPercent !== null;
+  const ownerIsUploading =
+    ownerMovieSaving || ownerUploadPercent !== null || trackerIsUploading;
+
+  useEffect(() => {
+    if (roomUpload?.phase === 'complete' && id !== undefined) {
+      clearRoomUpload(id);
+      setMovieStreamRevision((revision) => revision + 1);
+    }
+  }, [roomUpload?.phase, id]);
+
+  useEffect(() => {
+    if (roomUpload?.phase === 'failed' && roomUpload.error !== undefined) {
+      setOwnerUploadError(roomUpload.error);
+    }
+  }, [roomUpload?.phase, roomUpload?.error]);
 
   useEffect(() => {
     swapMovieIdRef.current = swapMovieId;
@@ -756,9 +777,10 @@ export function RoomPage() {
     broadcastPlaybackState();
   };
 
-  const playbackStatusText = movieUploading
-    ? 'UPLOADING'
-    : roomStatusShortLabel(liveRoomStatus);
+  const playbackStatusText =
+    ownerIsUploading || movieUploading
+      ? 'UPLOADING'
+      : roomStatusShortLabel(liveRoomStatus);
   const ownerPlaceholderText = isOwner
     ? 'Choose one of your recent videos or upload a new one to start this room.'
     : 'Ask the owner to upload a movie.';
@@ -884,8 +906,8 @@ export function RoomPage() {
               isLive={moviePlayable && isPlaying}
               loading={movieLoading && !ownerIsUploading}
               error={ownerIsUploading ? null : movieError}
-              isUploading={movieUploading}
-              isFailed={movieFailed}
+              isUploading={movieUploading || trackerIsUploading}
+              isFailed={movieFailed || roomUpload?.phase === 'failed'}
               mediaSrc={mediaSrc}
               videoKey={roomMovieId}
               videoRef={videoRef}
@@ -937,6 +959,34 @@ export function RoomPage() {
               ownerActions={ownerMovieActions}
               placeholderText={ownerPlaceholderText}
             />
+            {isOwner && trackerIsUploading && activeUploadPercent !== null && (
+              <div
+                className="room-upload-overlay"
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  zIndex: 20,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: 24,
+                  background: 'rgba(0, 0, 0, 0.55)',
+                  pointerEvents: 'none',
+                }}
+              >
+                <div
+                  style={{
+                    width: 'min(100%, 360px)',
+                    padding: '20px 24px',
+                    borderRadius: 12,
+                    background: 'rgba(18, 12, 6, 0.95)',
+                    border: '1px solid var(--border-medium)',
+                  }}
+                >
+                  <MovieUploadProgress percent={activeUploadPercent} label="Uploading your video" />
+                </div>
+              </div>
+            )}
             {showCountdown && (
               <CountdownOverlay
                 key={roomState.countdown.endsAt ?? 'countdown'}
