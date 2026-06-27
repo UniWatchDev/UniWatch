@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 import { PresetAvatar } from '@/components/preset-avatar';
 import { useFriendContext } from '@/friends/use-friend-context';
@@ -6,6 +6,7 @@ import { useFriendContext } from '@/friends/use-friend-context';
 export function FriendBanners() {
   const { banner, dismissBanner, openDm, respondToRequest } = useFriendContext();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
 
   if (banner === null) return null;
 
@@ -38,6 +39,9 @@ export function FriendBanners() {
             <PresetAvatar avatarId={banner.fromAvatarId} size={40} />
           )}
           {banner.kind === 'request-accepted' && (
+            <PresetAvatar avatarId={banner.friendAvatarId} size={40} />
+          )}
+          {banner.kind === 'friend-online' && (
             <PresetAvatar avatarId={banner.friendAvatarId} size={40} />
           )}
           {banner.kind === 'joined-room' && (
@@ -96,6 +100,27 @@ export function FriendBanners() {
             </>
           )}
 
+          {banner.kind === 'friend-online' && (
+            <>
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
+                {banner.friendUserName} is online
+              </p>
+              <div style={{ marginTop: 8 }}>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  style={{ padding: '5px 12px', fontSize: 12 }}
+                  onClick={() => {
+                    openDm(banner.friendUserId, banner.friendUserName);
+                    dismissBanner();
+                  }}
+                >
+                  Message
+                </button>
+              </div>
+            </>
+          )}
+
           {banner.kind === 'joined-room' && (
             <>
               <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
@@ -104,17 +129,19 @@ export function FriendBanners() {
               <p style={{ margin: '2px 0 10px', fontSize: 12, color: 'var(--text-muted)' }}>
                 Watching in <em>{banner.roomName}</em>
               </p>
-              <button
-                type="button"
-                className="btn-primary"
-                style={{ padding: '5px 12px', fontSize: 12 }}
-                onClick={() => {
-                  void navigate(`/room/${banner.roomId}`);
-                  dismissBanner();
-                }}
-              >
-                Join them
-              </button>
+              {pathname !== `/room/${banner.roomId}` && (
+                <button
+                  type="button"
+                  className="btn-primary"
+                  style={{ padding: '5px 12px', fontSize: 12 }}
+                  onClick={() => {
+                    void navigate(`/room/${banner.roomId}`);
+                    dismissBanner();
+                  }}
+                >
+                  Join them
+                </button>
+              )}
             </>
           )}
 

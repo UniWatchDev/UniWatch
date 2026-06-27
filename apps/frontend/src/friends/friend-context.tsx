@@ -112,6 +112,12 @@ export function FriendProvider({ children }: { children: React.ReactNode }) {
         if (idx === -1) return [...prev, updated];
         return prev.map((f, i) => (i === idx ? updated : f));
       });
+      enqueueBanner({
+        kind: 'friend-online',
+        friendUserId: p.userId,
+        friendUserName: p.userName,
+        friendAvatarId: p.avatarId
+      });
     });
 
     socket.on(REALTIME_SERVER_EVENTS.friendOffline, (raw: unknown) => {

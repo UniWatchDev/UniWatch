@@ -6,6 +6,7 @@ import type { FriendPresence, PendingFriendRequest } from '@repo/schemas/realtim
 export type FriendBanner =
   | { kind: 'request-received'; requestId: string; fromUserName: string; fromAvatarId: string }
   | { kind: 'request-accepted'; friendUserName: string; friendAvatarId: string }
+  | { kind: 'friend-online'; friendUserId: string; friendUserName: string; friendAvatarId: string }
   | { kind: 'joined-room'; friendUserName: string; roomName: string; roomId: string }
   | { kind: 'dm'; fromUserId: string; fromUserName: string; content: string };
 
