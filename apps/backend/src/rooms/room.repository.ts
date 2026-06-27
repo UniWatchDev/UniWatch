@@ -42,6 +42,22 @@ export class RoomRepository {
     });
   }
 
+  async findTypesByIds(ids: string[]): Promise<Map<string, 'public' | 'private'>> {
+    const objectIds = ids
+      .filter((id) => Types.ObjectId.isValid(id))
+      .map((id) => new Types.ObjectId(id));
+    const docs = await this.model
+      .find({ _id: { $in: objectIds } })
+      .select('room_type')
+      .lean();
+    return new Map(
+      docs.map((d) => [
+        (d._id as Types.ObjectId).toString(),
+        d.room_type as 'public' | 'private'
+      ])
+    );
+  }
+
   create(data: {
     name: string;
     creator: Types.ObjectId;

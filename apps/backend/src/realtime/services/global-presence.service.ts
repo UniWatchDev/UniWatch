@@ -76,4 +76,8 @@ export class GlobalPresenceService {
       ...this.getUserPresence(userId)
     }));
   }
+
+  getOnlineUserIds(): string[] {
+    return Array.from(this.users.keys());
+  }
 }
