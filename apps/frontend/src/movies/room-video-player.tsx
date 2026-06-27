@@ -1,24 +1,29 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Play } from 'lucide-react';
 
 import { MovieAwaitingHostOverlay } from '@/components/movie-awaiting-host-overlay';
 import { MovieUploadProgress } from '@/movies/movie-upload-progress';
 import type { PlaybackRate } from '@/movies/room-playback';
 import { RoomVideoPlayerControls } from '@/movies/room-video-player-controls';
+import type { PlayerToolbarStatusTone } from '@/rooms/room-status-display';
 import { useFullscreenOverlayControls } from '@/movies/use-fullscreen-overlay-controls';
 
-function CenterPlayIcon() {
-  return (
-    <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <polygon points="5,3 19,12 5,21" />
-    </svg>
-  );
+function readBufferedEnd(video: HTMLVideoElement | null, duration: number): number {
+  if (video === null || duration <= 0) return 0;
+  const ranges = video.buffered;
+  if (ranges.length === 0) return 0;
+  let maxEnd = 0;
+  for (let index = 0; index < ranges.length; index += 1) {
+    maxEnd = Math.max(maxEnd, ranges.end(index));
+  }
+  return Math.min(1, maxEnd / duration);
 }
 
 export function RoomVideoPlayer({
   roomName,
   movieName,
   statusText,
-  isLive,
+  statusTone,
   loading,
   error,
   isUploading,
@@ -60,7 +65,7 @@ export function RoomVideoPlayer({
   roomName: string;
   movieName: string | null | undefined;
   statusText: string;
-  isLive: boolean;
+  statusTone: PlayerToolbarStatusTone;
   loading: boolean;
   error: string | null;
   isUploading: boolean;
@@ -101,6 +106,7 @@ export function RoomVideoPlayer({
 }) {
   const shellRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [bufferedEnd, setBufferedEnd] = useState(0);
   const { overlayVisible, revealControls } = useFullscreenOverlayControls(isFullscreen, isPlaying);
   const showPlaceholder = mediaSrc === null;
   const showCenterPlay =
@@ -110,6 +116,12 @@ export function RoomVideoPlayer({
     mediaSrc !== null &&
     !videoError &&
     !showAwaitingHostOverlay;
+  const showControls = mediaSrc !== null && videoError === null;
+  const controlsVisible = !isFullscreen || !isPlaying || overlayVisible;
+
+  const syncBufferedEnd = useCallback(() => {
+    setBufferedEnd(readBufferedEnd(videoRef.current, duration));
+  }, [duration, videoRef]);
 
   useEffect(() => {
     const onNativeFullscreenChange = () => {
@@ -118,6 +130,10 @@ export function RoomVideoPlayer({
     document.addEventListener('fullscreenchange', onNativeFullscreenChange);
     return () => { document.removeEventListener('fullscreenchange', onNativeFullscreenChange); };
   }, []);
+
+  useEffect(() => {
+    syncBufferedEnd();
+  }, [currentTime, duration, mediaSrc, syncBufferedEnd]);
 
   const handleShellFullscreen = () => {
     const shell = shellRef.current;
@@ -134,19 +150,31 @@ export function RoomVideoPlayer({
     if (canControl) onTogglePlay();
   };
 
+  const handleTimeUpdate = () => {
+    syncBufferedEnd();
+    onTimeUpdate();
+  };
+
+  const handleProgress = () => {
+    syncBufferedEnd();
+  };
+
   const controls = (
     <RoomVideoPlayerControls
       canControl={canControl}
       showHostControls={showHostControls}
+      isPlaying={isPlaying}
       currentTime={currentTime}
       duration={duration}
+      bufferedEnd={bufferedEnd}
       playbackRate={playbackRate}
       muted={muted}
       volume={volume}
       isFullscreen={isFullscreen}
       movieName={movieName}
       statusText={statusText}
-      isLive={isLive}
+      statusTone={statusTone}
+      onTogglePlay={onTogglePlay}
       onScrub={onScrub}
       onSeekBy={onSeekBy}
       onPlaybackRateChange={onPlaybackRateChange}
@@ -172,7 +200,8 @@ export function RoomVideoPlayer({
               className="room-video-player__video"
               src={mediaSrc}
               onClick={handleStageClick}
-              onTimeUpdate={onTimeUpdate}
+              onTimeUpdate={handleTimeUpdate}
+              onProgress={handleProgress}
               onLoadedMetadata={onLoadedMetadata}
               onLoadedData={onLoadedData}
               onPlay={onPlay}
@@ -257,36 +286,32 @@ export function RoomVideoPlayer({
             <button
               type="button"
               className="room-video-player__center-play"
-              onClick={(e) => {
-                e.stopPropagation();
+              onClick={(event) => {
+                event.stopPropagation();
                 revealControls();
                 onTogglePlay();
               }}
               aria-label="Play"
             >
-              <CenterPlayIcon />
+              <Play size={36} strokeWidth={1.75} fill="currentColor" aria-hidden="true" />
             </button>
           )}
 
-          {isFullscreen && (
+          {showControls && (
             <div
-              className={`room-video-player__controls room-video-player__controls--overlay${overlayVisible ? ' is-visible' : ''}`}
+              className={`room-video-player__controls room-video-player__controls--overlay${controlsVisible ? ' is-visible' : ''}`}
             >
-              <div className="room-video-player__overlay-title">
-                <span>{roomName}</span>
-                {movieName && <span className="room-video-player__overlay-title-sep">·</span>}
-                {movieName && <span>{movieName}</span>}
-              </div>
+              {isFullscreen && controlsVisible && (
+                <div className="room-video-player__overlay-title">
+                  <span>{roomName}</span>
+                  {movieName && <span className="room-video-player__overlay-title-sep">·</span>}
+                  {movieName && <span>{movieName}</span>}
+                </div>
+              )}
               {controls}
             </div>
           )}
         </div>
-
-        {!isFullscreen && (
-          <div className="room-video-player__controls room-video-player__controls--docked">
-            {controls}
-          </div>
-        )}
       </div>
     </div>
   );

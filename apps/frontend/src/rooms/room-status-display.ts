@@ -19,6 +19,16 @@ export const ROOM_STATUS_DISPLAY: Record<RoomStatus, { label: string; className:
   },
 };
 
+export type PlayerToolbarStatusTone = RoomStatus | 'uploading';
+
+export function playerToolbarStatusTone(options: {
+  isUploading: boolean;
+  status: RoomStatus;
+}): PlayerToolbarStatusTone {
+  if (options.isUploading) return 'uploading';
+  return options.status;
+}
+
 /** Short label for compact surfaces (e.g. video player chrome). */
 export function roomStatusShortLabel(status: RoomStatus): string {
   switch (status) {

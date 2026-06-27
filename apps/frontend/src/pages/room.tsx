@@ -41,7 +41,7 @@ import {
   unblockUser as unblockRoomUser
 } from '@/pages/room-api';
 import { RoomStatusBadge } from '@/rooms/room-status-badge';
-import { roomStatusShortLabel } from '@/rooms/room-status-display';
+import { playerToolbarStatusTone, roomStatusShortLabel } from '@/rooms/room-status-display';
 import { ThemeToggleButton } from '@/theme/theme-toggle-button';
 
 const ROOM_CLOSED_REDIRECT_MS = 1_800;
@@ -910,10 +910,14 @@ export function RoomPage() {
     broadcastPlaybackState();
   };
 
-  const playbackStatusText =
-    ownerIsUploading || movieUploading
-      ? 'UPLOADING'
-      : roomStatusShortLabel(liveRoomStatus);
+  const playerStatusUploading = ownerIsUploading || movieUploading;
+  const playbackStatusText = playerStatusUploading
+    ? 'UPLOADING'
+    : roomStatusShortLabel(liveRoomStatus);
+  const playerStatusTone = playerToolbarStatusTone({
+    isUploading: playerStatusUploading,
+    status: liveRoomStatus,
+  });
   const ownerPlaceholderText = isOwner
     ? 'Choose one of your recent videos or upload a new one to start this room.'
     : 'Ask the owner to upload a movie.';
@@ -1033,7 +1037,7 @@ export function RoomPage() {
               roomName={room.name}
               movieName={room.movie_name}
               statusText={playbackStatusText}
-              isLive={moviePlayable && isPlaying}
+              statusTone={playerStatusTone}
               loading={movieLoading && !ownerIsUploading}
               error={ownerIsUploading ? null : movieError}
               isUploading={movieUploading || trackerIsUploading}
