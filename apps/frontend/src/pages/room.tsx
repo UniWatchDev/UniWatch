@@ -26,6 +26,7 @@ import { RoomMovieChangeNotice } from '@/components/room-movie-change-notice';
 import { RoomClosedOverlay } from '@/components/room-closed-overlay';
 import type { RoomExitTone } from '@/components/room-exit-notice';
 import { RoomPasswordGate } from '@/components/room-password-gate';
+import { AppUtilityBar } from '@/components/app-utility-bar';
 import { Users, MessageSquare, Volume2, VolumeX } from 'lucide-react';
 import { useFriendContext } from '@/friends/use-friend-context';
 import type { Member } from '@/types/room';
@@ -41,6 +42,7 @@ import {
 } from '@/pages/room-api';
 import { RoomStatusBadge } from '@/rooms/room-status-badge';
 import { roomStatusShortLabel } from '@/rooms/room-status-display';
+import { ThemeToggleButton } from '@/theme/theme-toggle-button';
 
 const ROOM_CLOSED_REDIRECT_MS = 1_800;
 
@@ -651,15 +653,20 @@ export function RoomPage() {
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100dvh' }}>
-        <p style={{ color: 'var(--text-muted)' }}>Loading room…</p>
+      <div className="flex min-h-dvh flex-col" style={{ background: 'var(--bg-primary)' }}>
+        <AppUtilityBar />
+        <div className="flex flex-1 items-center justify-center">
+          <p style={{ color: 'var(--text-muted)' }}>Loading room…</p>
+        </div>
       </div>
     );
   }
 
   if (passwordRequired && roomPreview !== null) {
     return (
-      <RoomPasswordGate
+      <div className="flex min-h-dvh flex-col" style={{ background: 'var(--bg-primary)' }}>
+        <AppUtilityBar />
+        <RoomPasswordGate
         preview={roomPreview}
         passwordInput={passwordInput}
         passwordError={passwordError}
@@ -675,14 +682,18 @@ export function RoomPage() {
           void navigate('/rooms');
         }}
       />
+      </div>
     );
   }
 
   if (loadError || !room) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100dvh', gap: 16 }}>
-        <p style={{ color: 'var(--text-secondary)', fontSize: 18 }}>{loadError ?? 'Room not found.'}</p>
-        <button className="btn-primary" onClick={() => { void navigate('/rooms'); }}>Back to Lobby</button>
+      <div className="flex min-h-dvh flex-col" style={{ background: 'var(--bg-primary)' }}>
+        <AppUtilityBar />
+        <div className="flex flex-1 flex-col items-center justify-center gap-4">
+          <p style={{ color: 'var(--text-secondary)', fontSize: 18 }}>{loadError ?? 'Room not found.'}</p>
+          <button className="btn-primary" onClick={() => { void navigate('/rooms'); }}>Back to Lobby</button>
+        </div>
       </div>
     );
   }
@@ -968,24 +979,14 @@ export function RoomPage() {
       )}
 
       {/* Top bar */}
-      <header
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '10px 20px',
-          borderBottom: '1px solid var(--border-subtle)',
-          flexShrink: 0,
-          gap: 12,
-        }}
-      >
+      <header className="room-page-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span className="display" style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>
             {room.name}
           </span>
           <RoomStatusBadge status={liveRoomStatus} />
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div className="app-header-actions">
           {isOwner && (
             <button
               type="button"
@@ -1011,6 +1012,7 @@ export function RoomPage() {
           >
             Leave room
           </button>
+          <ThemeToggleButton />
         </div>
       </header>
 

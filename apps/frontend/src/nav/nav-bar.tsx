@@ -6,7 +6,7 @@ import { NavGuestActions } from '@/nav/nav-guest-actions';
 import { NavPrimaryLinks } from '@/nav/nav-primary-links';
 import { isAuthPath, shouldHideNav } from '@/nav/nav-paths';
 import { NavUserMenu } from '@/nav/nav-user-menu';
-import { ThemeToggle } from '@/theme/theme-toggle';
+import { ThemeToggleButton } from '@/theme/theme-toggle-button';
 
 export function NavBar() {
   const { pathname } = useLocation();
@@ -32,8 +32,10 @@ export function NavBar() {
         </div>
 
         <div className="navbar-zone navbar-zone--end">
-          <ThemeToggle />
-          {isSignedIn ? <NavUserMenu user={sessionUser} /> : <NavGuestActions onAuthPage={onAuthPage} />}
+          <div className="app-header-actions">
+            {isSignedIn ? <NavUserMenu user={sessionUser} /> : <NavGuestActions onAuthPage={onAuthPage} />}
+            <ThemeToggleButton />
+          </div>
         </div>
       </div>
     </header>
