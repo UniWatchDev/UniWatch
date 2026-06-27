@@ -7,8 +7,8 @@ import { USERS_CONTROLLER_PATH } from '@repo/consts/profile';
 
 import { JwtAuthGuard } from '@/auth/jwt-auth.guard';
 import {
+  ActiveUserDto,
   GetUserProfileResponseDto,
-  PublicProfileDto,
   UserNameParamsDto,
   UserSearchQueryDto,
   type GetUserProfileResponse,
@@ -26,7 +26,7 @@ export class UsersController {
   @ZodResponse({
     status: 200,
     description: 'Search users by username (login required)',
-    type: [PublicProfileDto]
+    type: [ActiveUserDto]
   })
   searchUsers(
     @Req() req: Request,
