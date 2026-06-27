@@ -9,7 +9,7 @@ import { FeaturedRoomHero } from '@/components/featured-room-hero';
 import { CinemaRoomCard } from '@/components/cinema-room-card';
 import type { RoomResponse, RoomStatus } from '@/types/room';
 import { Search } from 'lucide-react';
-import { LobbyFriendSidebar } from '@/friends/lobby-friend-sidebar';
+import { ActiveUsersSidebar } from '@/lobby/active-users-sidebar';
 
 const REFRESH_INTERVAL_MS = 2_000;
 
@@ -225,7 +225,7 @@ export function Lobby() {
         )}
       </div>
       </div>
-      <LobbyFriendSidebar />
+      <ActiveUsersSidebar />
     </div>
   );
 }
