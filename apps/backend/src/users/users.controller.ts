@@ -11,6 +11,7 @@ import {
   GetUserProfileResponseDto,
   UserNameParamsDto,
   UserSearchQueryDto,
+  type GetActiveUsersResponse,
   type GetUserProfileResponse,
   type UserSearchResponse
 } from '@/users/users.dto';
@@ -20,6 +21,21 @@ import { UsersService } from '@/users/users.service';
 @Controller(USERS_CONTROLLER_PATH)
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
+
+  @Get('active')
+  @UseGuards(JwtAuthGuard)
+  @ZodResponse({
+    status: 200,
+    description: 'All currently online platform users enriched with friendship status',
+    type: [ActiveUserDto]
+  })
+  getActiveUsers(@Req() req: Request): Promise<GetActiveUsersResponse> {
+    const payload = req.authPayload;
+    if (payload === undefined) {
+      throw new UnauthorizedException('Missing or invalid access token');
+    }
+    return this.usersService.getActiveUsers(payload.sub);
+  }
 
   @Get('search')
   @UseGuards(JwtAuthGuard)
