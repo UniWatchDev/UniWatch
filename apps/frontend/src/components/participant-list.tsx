@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import type { Member } from '@/types/room';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -33,6 +33,21 @@ export function ParticipantList({
 }: ParticipantListProps) {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (openMenuId === null) return undefined;
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest('[data-member-menu]') !== null) {
+        return;
+      }
+      setOpenMenuId(null);
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+    };
+  }, [openMenuId]);
+
   if (members.length === 0) {
     return (
       <p
@@ -49,9 +64,11 @@ export function ParticipantList({
       {members.map((member) => {
         const isYou = member.id === currentUserId;
         const isMenuOpen = openMenuId === member.id;
+        const showModeration = canModerate && !isYou;
         return (
           <li
             key={member.id}
+            data-member-menu
             className="relative flex items-center gap-3 rounded-lg px-2 py-2"
             style={{
               background: isYou ? 'rgba(245,158,11,0.07)' : 'transparent',
@@ -121,22 +138,24 @@ export function ParticipantList({
               </p>
             </div>
 
-            <button
-              type="button"
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-white/10"
-              style={{ color: 'var(--text-muted)' }}
-              onClick={() => {
-                setOpenMenuId((current) => (current === member.id ? null : member.id));
-              }}
-              aria-label={`${member.name} options`}
-              aria-expanded={isMenuOpen}
-            >
-              <MoreVertical size={14} />
-            </button>
+            {!isYou && (
+              <button
+                type="button"
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-white/10"
+                style={{ color: 'var(--text-muted)' }}
+                onClick={() => {
+                  setOpenMenuId((current) => (current === member.id ? null : member.id));
+                }}
+                aria-label={`${member.name} options`}
+                aria-expanded={isMenuOpen}
+              >
+                <MoreVertical size={14} />
+              </button>
+            )}
 
-            {isMenuOpen && (
+            {isMenuOpen && !isYou && (
               <div
-                className="absolute right-2 top-10 z-20 w-44 overflow-hidden rounded-xl border"
+                className="participant-menu absolute right-2 top-10 z-20 w-48 overflow-hidden rounded-xl border"
                 style={{
                   borderColor: 'var(--border-medium)',
                   background: 'rgba(18, 12, 6, 0.98)',
@@ -145,7 +164,7 @@ export function ParticipantList({
               >
                 <button
                   type="button"
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-white/5"
+                  className="participant-menu__item flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-white/5"
                   style={{ color: 'rgba(255,255,255,0.85)' }}
                   onClick={() => {
                     onAddFriend(member);
@@ -157,7 +176,7 @@ export function ParticipantList({
                 </button>
                 <button
                   type="button"
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-white/5"
+                  className="participant-menu__item flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-white/5"
                   style={{ color: 'rgba(255,255,255,0.85)' }}
                   onClick={() => {
                     onTagUser(member);
@@ -167,11 +186,16 @@ export function ParticipantList({
                   <AtSign size={13} />
                   Tag in chat
                 </button>
-                {canModerate && member.id !== currentUserId && (
+                {showModeration && (
                   <>
+                    <div
+                      className="my-1 border-t"
+                      style={{ borderColor: 'var(--border-subtle)' }}
+                      role="separator"
+                    />
                     <button
                       type="button"
-                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-white/5"
+                      className="participant-menu__item flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-white/5"
                       style={{ color: 'rgba(255,255,255,0.85)' }}
                       onClick={() => {
                         onKickUser(member);
@@ -183,7 +207,7 @@ export function ParticipantList({
                     </button>
                     <button
                       type="button"
-                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-white/5"
+                      className="participant-menu__item flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-white/5"
                       style={{ color: '#fca5a5' }}
                       onClick={() => {
                         onBlockUser(member);
@@ -191,7 +215,7 @@ export function ParticipantList({
                       }}
                     >
                       <Ban size={13} />
-                      Block user
+                      Ban from room
                     </button>
                   </>
                 )}

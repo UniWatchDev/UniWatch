@@ -11,7 +11,7 @@ import {
 import { WsException } from '@nestjs/websockets';
 import type { Server, Socket } from 'socket.io';
 
-import { REALTIME_CLIENT_EVENTS, REALTIME_SERVER_EVENTS } from '@repo/consts/realtime';
+import { REALTIME_CLIENT_EVENTS, REALTIME_SERVER_EVENTS, ROOM_BANNED_MESSAGE, ROOM_KICKED_MESSAGE } from '@repo/consts/realtime';
 import type { SendDmPayload } from '@repo/schemas/dm';
 import { sendDmPayloadSchema } from '@repo/schemas/dm';
 import {
@@ -144,6 +144,14 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     @MessageBody(new ZodWsValidationPipe(joinRoomPayloadSchema)) { roomId }: JoinRoomPayload
   ): Promise<void> {
     const user = getAuthenticatedUser(socket);
+    const raw = await this.rooms.findRawById(roomId);
+    if (!raw || raw.deleted_at) {
+      throw new WsException('Room not found');
+    }
+    if (this.isUserBanned(raw, user.userId)) {
+      throw new WsException(ROOM_BANNED_MESSAGE);
+    }
+
     const room = await this.rooms.findOneAccessibleById(roomId, user.userId);
     if (!room) {
       throw new WsException('Forbidden');
@@ -344,7 +352,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       actorUserId: user.userId,
       roomId,
       targetUserId,
-      errorMessage: 'kicked from the room',
+      errorMessage: ROOM_KICKED_MESSAGE,
       shouldBan: false
     });
   }
@@ -361,9 +369,13 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       actorUserId: user.userId,
       roomId,
       targetUserId,
-      errorMessage: 'blocked from the room',
+      errorMessage: ROOM_BANNED_MESSAGE,
       shouldBan: true
     });
+  }
+
+  private isUserBanned(room: RoomDocument, userId: string): boolean {
+    return room.banned_users.some((bannedId) => bannedId.toString() === userId);
   }
 
   private removeSocketFromRoom(roomId: string, socketId: string, userId: string): void {

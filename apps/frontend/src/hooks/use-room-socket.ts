@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { io, type Socket } from 'socket.io-client';
 
 import { API_BASE_URL } from '@repo/consts/api';
-import { REALTIME_CLIENT_EVENTS, REALTIME_SERVER_EVENTS } from '@repo/consts/realtime';
+import { REALTIME_CLIENT_EVENTS, REALTIME_SERVER_EVENTS, ROOM_BANNED_MESSAGE } from '@repo/consts/realtime';
 import type { PlaybackState, CountdownState } from '@repo/schemas/realtime';
 import {
   joinRoomPayloadSchema,
@@ -11,6 +11,8 @@ import {
   realtimeChatMessageSchema,
   roomClosedEventSchema,
   roomErrorEventSchema,
+  roomKickedEventSchema,
+  roomBannedEventSchema,
   roomMovieUpdatedEventSchema,
   roomMovieUpdatedPayloadSchema,
   roomPlaybackChangedEventSchema,
@@ -42,6 +44,8 @@ interface UseRoomSocketOptions {
   onMovieUpdated?: (movieId: string, movieName?: string) => void;
   onPlaybackChanged?: (event: PlaybackChangeEvent) => void;
   onRoomClosed?: (message: string) => void;
+  onKicked?: (message: string) => void;
+  onBanned?: (message: string) => void;
 }
 
 interface UseRoomSocketReturn {
@@ -114,7 +118,9 @@ export function useRoomSocket({
   initialMemberIds,
   onMovieUpdated,
   onPlaybackChanged,
-  onRoomClosed
+  onRoomClosed,
+  onKicked,
+  onBanned
 }: UseRoomSocketOptions): UseRoomSocketReturn {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [members, setMembers] = useState<Member[]>(() =>
@@ -138,10 +144,20 @@ export function useRoomSocket({
   }));
   const socketRef = useRef<Socket | null>(null);
   const onRoomClosedRef = useRef(onRoomClosed);
+  const onKickedRef = useRef(onKicked);
+  const onBannedRef = useRef(onBanned);
 
   useEffect(() => {
     onRoomClosedRef.current = onRoomClosed;
   }, [onRoomClosed]);
+
+  useEffect(() => {
+    onKickedRef.current = onKicked;
+  }, [onKicked]);
+
+  useEffect(() => {
+    onBannedRef.current = onBanned;
+  }, [onBanned]);
 
   const sendMessage = useCallback(
     (content: string) => {
@@ -210,6 +226,8 @@ export function useRoomSocket({
     // server signals a meaningful playback change (countdown end, isPlaying flip, drift).
     let hasInitialSnapshot = false;
     let roomClosed = false;
+    let roomKicked = false;
+    let roomBanned = false;
 
     const mapConnectedUsers = (
       users: Array<{ userId: string; userName: string; color: string; isReady: boolean }>
@@ -257,7 +275,7 @@ export function useRoomSocket({
     // gateway re-runs handleConnection per connection. Re-emitting room:join here
     // is what restores room membership after a dropped socket reconnects.
     socket.on(REALTIME_SERVER_EVENTS.connectionAck, () => {
-      if (roomClosed) {
+      if (roomClosed || roomKicked || roomBanned) {
         return;
       }
       setConnectionGeneration((gen) => gen + 1);
@@ -391,6 +409,12 @@ export function useRoomSocket({
 
       setRoomError(parsed.data.message);
       console.error('[room:socket]', parsed.data.message);
+
+      if (parsed.data.message === ROOM_BANNED_MESSAGE) {
+        roomBanned = true;
+        socket.disconnect();
+        onBannedRef.current?.(parsed.data.message);
+      }
     });
 
     socket.on(REALTIME_SERVER_EVENTS.movieUpdated, (data: unknown) => {
@@ -421,6 +445,36 @@ export function useRoomSocket({
       pushPlaybackChange({ actorUserId: parsed.data.actorUserId, playback: parsed.data.playback });
     });
 
+    socket.on(REALTIME_SERVER_EVENTS.roomBanned, (data: unknown) => {
+      const parsed = roomBannedEventSchema.safeParse(data);
+      if (!parsed.success) {
+        console.error('[room:socket]', 'Invalid room:banned payload');
+        return;
+      }
+      if (parsed.data.roomId !== roomId) {
+        return;
+      }
+
+      roomBanned = true;
+      socket.disconnect();
+      onBannedRef.current?.(parsed.data.message);
+    });
+
+    socket.on(REALTIME_SERVER_EVENTS.roomKicked, (data: unknown) => {
+      const parsed = roomKickedEventSchema.safeParse(data);
+      if (!parsed.success) {
+        console.error('[room:socket]', 'Invalid room:kicked payload');
+        return;
+      }
+      if (parsed.data.roomId !== roomId) {
+        return;
+      }
+
+      roomKicked = true;
+      socket.disconnect();
+      onKickedRef.current?.(parsed.data.message);
+    });
+
     socket.on(REALTIME_SERVER_EVENTS.roomClosed, (data: unknown) => {
       const parsed = roomClosedEventSchema.safeParse(data);
       if (!parsed.success) {
@@ -437,7 +491,7 @@ export function useRoomSocket({
     });
 
     return () => {
-      if (!roomClosed) {
+      if (!roomClosed && !roomKicked && !roomBanned) {
         socket.emit(REALTIME_CLIENT_EVENTS.leave, leaveRoomPayloadSchema.parse({ roomId }));
       }
       socket.disconnect();

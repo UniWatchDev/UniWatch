@@ -193,6 +193,20 @@ export const roomClosedEventSchema = z.strictObject({
 
 export type RoomClosedEvent = z.infer<typeof roomClosedEventSchema>;
 
+export const roomKickedEventSchema = z.strictObject({
+  roomId: z.string(),
+  message: z.string()
+});
+
+export type RoomKickedEvent = z.infer<typeof roomKickedEventSchema>;
+
+export const roomBannedEventSchema = z.strictObject({
+  roomId: z.string(),
+  message: z.string()
+});
+
+export type RoomBannedEvent = z.infer<typeof roomBannedEventSchema>;
+
 // ---------------------------------------------------------------------------
 // Constant
 // ---------------------------------------------------------------------------

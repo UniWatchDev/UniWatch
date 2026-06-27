@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
 import { ROOM_CLOSED_MESSAGE } from '@repo/consts/realtime';
-import type { RoomPreview, RoomResponse, RoomStatus } from '@repo/schemas/rooms';
+import type { BlockedUser, RoomPreview, RoomResponse, RoomStatus } from '@repo/schemas/rooms';
 import { useRoomSocket, type PlaybackChangeEvent } from '@/hooks/use-room-socket';
 import { attachMovieToRoom } from '@/movies/attach-room-movie';
 import { MovieUploadField } from '@/movies/movie-upload-field';
@@ -20,19 +20,24 @@ import { ParticipantList } from '@/components/participant-list';
 import { CinemaChat } from '@/components/cinema-chat';
 import { CountdownOverlay } from '@/components/countdown-overlay';
 import { ForcePlayConfirmationModal } from '@/components/force-play-confirmation-modal';
+import { RoomModerationModal, type RoomModerationAction } from '@/components/room-moderation-modal';
 import { InviteFriends } from '@/components/invite-friends';
 import { RoomMovieChangeNotice } from '@/components/room-movie-change-notice';
 import { RoomClosedOverlay } from '@/components/room-closed-overlay';
+import type { RoomExitTone } from '@/components/room-exit-notice';
 import { RoomPasswordGate } from '@/components/room-password-gate';
 import { Users, MessageSquare, Volume2, VolumeX } from 'lucide-react';
 import { useFriendContext } from '@/friends/use-friend-context';
 import type { Member } from '@/types/room';
 import {
+  fetchBlockedUsers,
   fetchCurrentUserId,
   fetchRoom,
   fetchRoomPreview,
+  isRoomBanMessage,
   joinRoom,
-  leaveRoom
+  leaveRoom,
+  unblockUser as unblockRoomUser
 } from '@/pages/room-api';
 import { RoomStatusBadge } from '@/rooms/room-status-badge';
 import { roomStatusShortLabel } from '@/rooms/room-status-display';
@@ -126,6 +131,15 @@ export function RoomPage() {
   const [ownerUploadPercent, setOwnerUploadPercent] = useState<number | null>(null);
   const [showRoomPassword, setShowRoomPassword] = useState(false);
   const [forcePlayModalOpen, setForcePlayModalOpen] = useState(false);
+  const [moderationTarget, setModerationTarget] = useState<{
+    member: Member;
+    action: RoomModerationAction;
+  } | null>(null);
+  const [showBlockedUsers, setShowBlockedUsers] = useState(false);
+  const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
+  const [blockedLoading, setBlockedLoading] = useState(false);
+  const [blockedError, setBlockedError] = useState<string | null>(null);
+  const [unblockingId, setUnblockingId] = useState<string | null>(null);
   const [remotePlaybackEvent, setRemotePlaybackEvent] = useState<PlaybackChangeEvent | null>(null);
   const [swapMovieId, setSwapMovieId] = useState<string | null>(null);
   const [movieChangePending, setMovieChangePending] = useState<{ movieName: string | null } | null>(
@@ -144,7 +158,11 @@ export function RoomPage() {
   const roomClosedPendingRef = useRef(false);
   const roomClosedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const PROGRESS_UI_MS = 250;
-  const [roomClosedNotice, setRoomClosedNotice] = useState<string | null>(null);
+  const [roomExitNotice, setRoomExitNotice] = useState<{
+    message: string;
+    title: string;
+    tone: RoomExitTone;
+  } | null>(null);
 
   useEffect(() => {
     return () => {
@@ -154,19 +172,27 @@ export function RoomPage() {
     };
   }, []);
 
-  const redirectToLobbyClosed = useCallback(
-    (message: string) => {
+  const redirectToLobby = useCallback(
+    (
+      message: string,
+      options?: { title?: string; tone?: RoomExitTone }
+    ) => {
       if (roomClosedRedirectRef.current || roomClosedPendingRef.current) {
         return;
       }
+      const tone = options?.tone ?? 'closed';
+      const title = options?.title ?? (tone === 'kicked' ? 'Removed from room' : tone === 'banned' ? 'Banned from room' : 'Room closed');
       roomClosedPendingRef.current = true;
-      setRoomClosedNotice(message);
+      setRoomExitNotice({ message, title, tone });
       if (roomClosedTimerRef.current !== null) {
         clearTimeout(roomClosedTimerRef.current);
       }
       roomClosedTimerRef.current = setTimeout(() => {
         roomClosedRedirectRef.current = true;
-        void navigate('/rooms', { replace: true, state: { roomClosedMessage: message } });
+        void navigate('/rooms', {
+          replace: true,
+          state: { lobbyNoticeMessage: message, lobbyNoticeTitle: title, lobbyNoticeTone: tone }
+        });
       }, ROOM_CLOSED_REDIRECT_MS);
     },
     [navigate]
@@ -191,12 +217,12 @@ export function RoomPage() {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : '';
       if (msg.includes('404')) {
-        redirectToLobbyClosed(ROOM_CLOSED_MESSAGE);
+      redirectToLobby(ROOM_CLOSED_MESSAGE, { tone: 'closed' });
         return;
       }
       console.error('[room]', msg || 'Failed to refresh room');
     }
-  }, [id, redirectToLobbyClosed]);
+  }, [id, redirectToLobby]);
 
   const handleMovieUpdated = useCallback((movieId: string, movieName?: string) => {
     if (movieId.length === 0) return;
@@ -248,9 +274,23 @@ export function RoomPage() {
 
   const handleRoomClosed = useCallback(
     (message: string) => {
-      redirectToLobbyClosed(message);
+      redirectToLobby(message, { tone: 'closed' });
     },
-    [redirectToLobbyClosed]
+    [redirectToLobby]
+  );
+
+  const handleRoomKicked = useCallback(
+    (message: string) => {
+      redirectToLobby(message, { title: 'Removed from room', tone: 'kicked' });
+    },
+    [redirectToLobby]
+  );
+
+  const handleRoomBanned = useCallback(
+    (message: string) => {
+      redirectToLobby(message, { title: 'Banned from room', tone: 'banned' });
+    },
+    [redirectToLobby]
   );
 
   const {
@@ -273,7 +313,9 @@ export function RoomPage() {
     initialMemberIds: room?.allowed_users ?? [],
     onMovieUpdated: handleMovieUpdated,
     onPlaybackChanged: handlePlaybackChanged,
-    onRoomClosed: handleRoomClosed
+    onRoomClosed: handleRoomClosed,
+    onKicked: handleRoomKicked,
+    onBanned: handleRoomBanned
   });
 
   const roomUpload = useRoomUploadProgress(id);
@@ -374,11 +416,68 @@ export function RoomPage() {
   };
   const handleKickUser = (member: Member) => {
     if (!isOwner) return;
-    sendKickUser(member.id);
+    setModerationTarget({ member, action: 'kick' });
   };
   const handleBlockUser = (member: Member) => {
     if (!isOwner) return;
-    sendBlockUser(member.id);
+    setModerationTarget({ member, action: 'block' });
+  };
+  const cancelModeration = () => {
+    setModerationTarget(null);
+  };
+  const confirmModeration = () => {
+    if (moderationTarget === null || !isOwner) return;
+    const { member, action } = moderationTarget;
+    if (action === 'kick') {
+      sendKickUser(member.id);
+    } else {
+      sendBlockUser(member.id);
+      setBlockedUsers((current) => {
+        if (current.some((user) => user.id === member.id)) {
+          return current;
+        }
+        return [...current, { id: member.id, name: member.name }];
+      });
+      setShowBlockedUsers(true);
+    }
+    setModerationTarget(null);
+  };
+  const loadBlockedUsers = useCallback(async () => {
+    if (id === undefined) return;
+    setBlockedLoading(true);
+    setBlockedError(null);
+    try {
+      const users = await fetchBlockedUsers(id);
+      setBlockedUsers(users);
+    } catch (err: unknown) {
+      setBlockedError(err instanceof Error ? err.message : 'Failed to load blocked users');
+    } finally {
+      setBlockedLoading(false);
+    }
+  }, [id]);
+  const toggleBlockedUsersPanel = () => {
+    setShowBlockedUsers((open) => {
+      const next = !open;
+      if (next && blockedUsers.length === 0 && !blockedLoading) {
+        void loadBlockedUsers();
+      }
+      return next;
+    });
+  };
+  const handleUnblockUser = (userId: string) => {
+    if (id === undefined || !isOwner) return;
+    setUnblockingId(userId);
+    setBlockedError(null);
+    void unblockRoomUser(id, userId)
+      .then((users) => {
+        setBlockedUsers(users);
+      })
+      .catch((err: unknown) => {
+        setBlockedError(err instanceof Error ? err.message : 'Failed to unblock user');
+      })
+      .finally(() => {
+        setUnblockingId(null);
+      });
   };
 
   const loadRoom = (roomId: string, cancelled: { current: boolean }) => {
@@ -397,21 +496,39 @@ export function RoomPage() {
           try {
             const preview = await fetchRoomPreview(roomId);
             if (preview.room_type === 'public' && !preview.has_password) {
-              await joinRoom(roomId, undefined);
-              if (!cancelled.current) {
-                autoJoining = true;
-                loadRoom(roomId, cancelled);
+              try {
+                await joinRoom(roomId, undefined);
+                if (!cancelled.current) {
+                  autoJoining = true;
+                  loadRoom(roomId, cancelled);
+                }
+              } catch (joinErr: unknown) {
+                const joinMsg = joinErr instanceof Error ? joinErr.message : '';
+                if (isRoomBanMessage(joinMsg)) {
+                  if (!cancelled.current) {
+                    redirectToLobby(joinMsg, { title: 'Banned from room', tone: 'banned' });
+                  }
+                } else if (!cancelled.current) {
+                  setLoadError('You do not have access to this room.');
+                }
               }
             } else if (!cancelled.current) {
               setRoomPreview(preview);
               setPasswordRequired(true);
             }
-          } catch {
-            if (!cancelled.current) setLoadError('You do not have access to this room.');
+          } catch (joinPreviewErr: unknown) {
+            const previewMsg = joinPreviewErr instanceof Error ? joinPreviewErr.message : '';
+            if (isRoomBanMessage(previewMsg)) {
+              if (!cancelled.current) {
+                redirectToLobby(previewMsg, { title: 'Banned from room', tone: 'banned' });
+              }
+            } else if (!cancelled.current) {
+              setLoadError('You do not have access to this room.');
+            }
           }
         } else if (msg.includes('404')) {
           if (!cancelled.current) {
-            redirectToLobbyClosed(ROOM_CLOSED_MESSAGE);
+          redirectToLobby(ROOM_CLOSED_MESSAGE, { tone: 'closed' });
           }
         } else if (!cancelled.current) {
           setLoadError(msg || 'Failed to load room');
@@ -521,7 +638,12 @@ export function RoomPage() {
       const cancelled: { current: boolean } = { current: false };
       loadRoom(id, cancelled);
     } catch (err: unknown) {
-      setPasswordError(err instanceof Error ? err.message : 'Incorrect password');
+      const msg = err instanceof Error ? err.message : 'Incorrect password';
+      if (isRoomBanMessage(msg)) {
+        redirectToLobby(msg, { title: 'Banned from room', tone: 'banned' });
+        return;
+      }
+      setPasswordError(msg);
     } finally {
       setJoiningRoom(false);
     }
@@ -837,7 +959,13 @@ export function RoomPage() {
         overflow: 'hidden',
       }}
     >
-      {roomClosedNotice !== null && <RoomClosedOverlay message={roomClosedNotice} />}
+      {roomExitNotice !== null && (
+        <RoomClosedOverlay
+          message={roomExitNotice.message}
+          title={roomExitNotice.title}
+          tone={roomExitNotice.tone}
+        />
+      )}
 
       {/* Top bar */}
       <header
@@ -1002,6 +1130,13 @@ export function RoomPage() {
               onCancel={cancelForcePlay}
               onConfirm={confirmForcePlay}
             />
+            <RoomModerationModal
+              open={moderationTarget !== null}
+              action={moderationTarget?.action ?? 'kick'}
+              memberName={moderationTarget?.member.name ?? ''}
+              onCancel={cancelModeration}
+              onConfirm={confirmModeration}
+            />
           </div>
         </div>
 
@@ -1154,6 +1289,94 @@ export function RoomPage() {
               className="soft-scroll mt-1 min-h-0 flex-1 overflow-y-auto"
             >
               <InviteFriends members={displayMembers} />
+              {isOwner && (
+                <div style={{ padding: '4px 12px 8px' }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: showBlockedUsers ? 8 : 0
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 700,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.08em',
+                        color: 'var(--text-muted)'
+                      }}
+                    >
+                      Blocked users
+                    </span>
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      style={{ fontSize: 11, padding: '4px 8px', minHeight: 0 }}
+                      onClick={toggleBlockedUsersPanel}
+                    >
+                      {showBlockedUsers ? 'Hide' : 'Manage'}
+                    </button>
+                  </div>
+                  {showBlockedUsers && (
+                    <div
+                      style={{
+                        border: '1px solid var(--border-subtle)',
+                        borderRadius: 10,
+                        background: 'var(--bg-elevated)',
+                        padding: '8px 10px'
+                      }}
+                    >
+                      {blockedLoading && (
+                        <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
+                          Loading…
+                        </p>
+                      )}
+                      {!blockedLoading && blockedError !== null && (
+                        <p style={{ margin: 0, fontSize: 12, color: 'var(--danger)' }}>
+                          {blockedError}
+                        </p>
+                      )}
+                      {!blockedLoading && blockedError === null && blockedUsers.length === 0 && (
+                        <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
+                          No blocked users.
+                        </p>
+                      )}
+                      {!blockedLoading && blockedUsers.length > 0 && (
+                        <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: 6 }}>
+                          {blockedUsers.map((user) => (
+                            <li
+                              key={user.id}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: 8
+                              }}
+                            >
+                              <span style={{ fontSize: 13, color: 'var(--text-primary)' }}>
+                                {user.name}
+                              </span>
+                              <button
+                                type="button"
+                                className="btn-ghost"
+                                style={{ fontSize: 11, padding: '4px 8px', minHeight: 0 }}
+                                disabled={unblockingId === user.id}
+                                onClick={() => {
+                                  handleUnblockUser(user.id);
+                                }}
+                              >
+                                {unblockingId === user.id ? 'Unblocking…' : 'Unblock'}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
               <ParticipantList
                 members={displayMembers}
                 currentUserId={currentUserId}
