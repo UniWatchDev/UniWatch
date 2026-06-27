@@ -52,7 +52,7 @@ export class RoomRepository {
       .lean();
     return new Map(
       docs.map((d) => [
-        (d._id as Types.ObjectId).toString(),
+        String(d._id),
         d.room_type as 'public' | 'private'
       ])
     );

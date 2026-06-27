@@ -1,3 +1,4 @@
+import { NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 
 import { UserRepository } from '@/auth/user.repository';
@@ -193,6 +194,28 @@ describe('UsersService', () => {
 
       const results = await service.searchUsers(ALICE, 'c');
       expect(results[0]?.mutualFriendsCount).toBe(3);
+    });
+  });
+
+  describe('getProfileByUserName', () => {
+    it('throws NotFoundException when user does not exist', async () => {
+      userRepo.findByUserName.mockResolvedValueOnce(null);
+      await expect(service.getProfileByUserName(ALICE, 'unknown')).rejects.toBeInstanceOf(
+        NotFoundException
+      );
+    });
+
+    it('returns profile with viewerIsOwner=true when viewer is the profile owner', async () => {
+      userRepo.findByUserName.mockResolvedValueOnce(makeUserDoc({ id: ALICE, userName: 'alice' }) as never);
+      const result = await service.getProfileByUserName(ALICE, 'alice');
+      expect(result.viewerIsOwner).toBe(true);
+      expect(result.profile.userName).toBe('alice');
+    });
+
+    it('returns profile with viewerIsOwner=false when viewer is not the profile owner', async () => {
+      userRepo.findByUserName.mockResolvedValueOnce(makeUserDoc({ id: BOB, userName: 'bob' }) as never);
+      const result = await service.getProfileByUserName(ALICE, 'bob');
+      expect(result.viewerIsOwner).toBe(false);
     });
   });
 });
