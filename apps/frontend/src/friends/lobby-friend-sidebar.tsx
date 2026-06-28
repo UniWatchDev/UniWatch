@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import type { PublicProfile } from '@repo/schemas/profile';
+import type { ActiveUser } from '@repo/schemas/profile';
 import type { FriendPresence } from '@repo/schemas/realtime';
 
 import { PresetAvatar } from '@/components/preset-avatar';
@@ -105,7 +105,7 @@ function FriendRow({ friend, onDm }: { friend: FriendPresence; onDm: (id: string
   );
 }
 
-function SearchResult({ profile, onSent }: { profile: PublicProfile; onSent: () => void }) {
+function SearchResult({ profile, onSent }: { profile: ActiveUser; onSent: () => void }) {
   const { friends, sendFriendRequest } = useFriendContext();
   const [state, setState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const isFriend = friends.some((f) => f.userId === profile.userId);
@@ -164,7 +164,7 @@ function SearchResult({ profile, onSent }: { profile: PublicProfile; onSent: () 
 export function LobbyFriendSidebar() {
   const { friends, pendingRequests, openDm, respondToRequest } = useFriendContext();
   const [searchQ, setSearchQ] = useState('');
-  const [searchResults, setSearchResults] = useState<PublicProfile[]>([]);
+  const [searchResults, setSearchResults] = useState<ActiveUser[]>([]);
   const [searching, setSearching] = useState(false);
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
