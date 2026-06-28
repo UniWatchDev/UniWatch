@@ -5,6 +5,8 @@ import {
   realtimeChatMessageSchema,
   roomClosedEventSchema,
   roomErrorEventSchema,
+  roomKickedEventSchema,
+  roomBannedEventSchema,
   roomModerateUserPayloadSchema,
   roomMovieUpdatedEventSchema,
   roomMovieUpdatedPayloadSchema,
@@ -21,6 +23,8 @@ import {
   type RealtimeChatMessage,
   type RoomClosedEvent,
   type RoomErrorEvent,
+  type RoomKickedEvent,
+  type RoomBannedEvent,
   type RoomModerateUserPayload,
   type RoomMovieUpdatedEvent,
   type RoomMovieUpdatedPayload,
@@ -159,4 +163,16 @@ export const roomClosedContract: SocketEventContract<RoomClosedEvent> = {
   event: REALTIME_SERVER_EVENTS.roomClosed,
   direction: 'server-to-client',
   payloadSchema: roomClosedEventSchema
+};
+
+export const roomKickedContract: SocketEventContract<RoomKickedEvent> = {
+  event: REALTIME_SERVER_EVENTS.roomKicked,
+  direction: 'server-to-client',
+  payloadSchema: roomKickedEventSchema
+};
+
+export const roomBannedContract: SocketEventContract<RoomBannedEvent> = {
+  event: REALTIME_SERVER_EVENTS.roomBanned,
+  direction: 'server-to-client',
+  payloadSchema: roomBannedEventSchema
 };

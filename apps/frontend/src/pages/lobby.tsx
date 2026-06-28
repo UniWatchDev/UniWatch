@@ -4,12 +4,15 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { listRoomsContract } from '@repo/contracts/rooms';
 import { API_BASE_URL } from '@repo/consts/api';
 import { RoomClosedLobbyNotice } from '@/components/room-closed-lobby-notice';
+import type { RoomExitTone } from '@/components/room-exit-notice';
 import { StarField } from '@/components/star-field';
 import { FeaturedRoomHero } from '@/components/featured-room-hero';
 import { CinemaRoomCard } from '@/components/cinema-room-card';
 import type { RoomResponse, RoomStatus } from '@/types/room';
 import { Search } from 'lucide-react';
 import { LobbyFriendSidebar } from '@/friends/lobby-friend-sidebar';
+import { AdminCatalogPanel } from '@/admin/admin-catalog-panel';
+import { useCookieAuth } from '@/auth/use-cookie-auth';
 
 const REFRESH_INTERVAL_MS = 2_000;
 
@@ -29,16 +32,30 @@ const FILTER_BUTTONS: { label: string; value: FilterStatus }[] = [
 ];
 
 type LobbyLocationState = {
-  roomClosedMessage?: string;
+  lobbyNoticeMessage?: string;
+  lobbyNoticeTitle?: string;
+  lobbyNoticeTone?: RoomExitTone;
 };
 
 export function Lobby() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { sessionUser } = useCookieAuth();
   const locationState = location.state as LobbyLocationState | null;
-  const [roomClosedMessage, setRoomClosedMessage] = useState<string | null>(
-    () => locationState?.roomClosedMessage ?? null
-  );
+  const [lobbyNotice, setLobbyNotice] = useState<{
+    title: string;
+    message: string;
+    tone: RoomExitTone;
+  } | null>(() => {
+    const message = locationState?.lobbyNoticeMessage ?? null;
+    if (message === null) return null;
+    const tone = locationState?.lobbyNoticeTone ?? 'closed';
+    return {
+      title: locationState?.lobbyNoticeTitle ?? 'Room closed',
+      message,
+      tone
+    };
+  });
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<FilterStatus>('all');
   const [rooms, setRooms] = useState<RoomResponse[]>([]);
@@ -46,8 +63,8 @@ export function Lobby() {
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  const dismissRoomClosedNotice = () => {
-    setRoomClosedMessage(null);
+  const dismissLobbyNotice = () => {
+    setLobbyNotice(null);
     void navigate('.', { replace: true, state: {} });
   };
 
@@ -114,15 +131,19 @@ export function Lobby() {
       <div className="lobby-content relative z-10 flex gap-6 mx-auto max-w-[1440px] px-4 pb-16 pt-6 sm:px-6 sm:pt-8">
       <div style={{ flex: 1, minWidth: 0 }}>
 
-        {roomClosedMessage !== null && (
+        {lobbyNotice !== null && (
           <RoomClosedLobbyNotice
-            message={roomClosedMessage}
-            onDismiss={dismissRoomClosedNotice}
+            title={lobbyNotice.title}
+            message={lobbyNotice.message}
+            tone={lobbyNotice.tone}
+            onDismiss={dismissLobbyNotice}
           />
         )}
 
         {/* Hero */}
         <FeaturedRoomHero onCreateRoom={() => { void navigate('/rooms/new'); }} />
+
+        {sessionUser?.isAdmin ? <AdminCatalogPanel /> : null}
 
         {/* Toolbar */}
         <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">

@@ -23,6 +23,7 @@ import { RequestIdMiddleware } from '@/middleware/request-id.middleware';
 import { JwtModule } from '@nestjs/jwt';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AuthModule } from '@/auth/auth.module';
+import { AdminModule } from '@/admin/admin.module';
 import { MoviesModule } from '@/movies/movies.module';
 import { RoomsModule } from '@/rooms/rooms.module';
 import { UsersModule } from '@/users/users.module';
@@ -92,6 +93,7 @@ const envFilePath = [join(backendRoot, `.env.${nodeEnv}`)];
     NotesModule,
     RealtimeModule,
     AuthModule,
+    AdminModule,
     MoviesModule,
     RoomsModule,
     UsersModule,

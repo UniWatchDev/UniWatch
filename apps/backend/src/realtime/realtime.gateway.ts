@@ -11,7 +11,7 @@ import {
 import { WsException } from '@nestjs/websockets';
 import type { Server, Socket } from 'socket.io';
 
-import { REALTIME_CLIENT_EVENTS, REALTIME_SERVER_EVENTS } from '@repo/consts/realtime';
+import { REALTIME_CLIENT_EVENTS, REALTIME_SERVER_EVENTS, ROOM_BANNED_MESSAGE, ROOM_KICKED_MESSAGE } from '@repo/consts/realtime';
 import type { SendDmPayload } from '@repo/schemas/dm';
 import { sendDmPayloadSchema } from '@repo/schemas/dm';
 import {
@@ -52,6 +52,7 @@ import { RoomModerationService } from '@/realtime/services/room-moderation.servi
 import { RoomStateService } from '@/realtime/services/room-state.service';
 import { SocketAuthService } from '@/realtime/services/socket-auth.service';
 import { creatorRefToId, type CreatorRefLike } from '@/realtime/utils/creator-ref';
+import { buildSystemChatMessage } from '@/realtime/utils/build-system-chat-message';
 import { getAuthenticatedUser, WsAuthGuard } from '@/realtime/ws-auth.guard';
 import { WsExceptionFilter } from '@/realtime/ws-exception.filter';
 import { ZodWsValidationPipe } from '@/realtime/zod-ws-validation.pipe';
@@ -144,6 +145,14 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     @MessageBody(new ZodWsValidationPipe(joinRoomPayloadSchema)) { roomId }: JoinRoomPayload
   ): Promise<void> {
     const user = getAuthenticatedUser(socket);
+    const raw = await this.rooms.findRawById(roomId);
+    if (!raw || raw.deleted_at) {
+      throw new WsException('Room not found');
+    }
+    if (this.isUserBanned(raw, user.userId)) {
+      throw new WsException(ROOM_BANNED_MESSAGE);
+    }
+
     const room = await this.rooms.findOneAccessibleById(roomId, user.userId);
     if (!room) {
       throw new WsException('Forbidden');
@@ -166,6 +175,9 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     socket.emit(REALTIME_SERVER_EVENTS.roomState, this.broadcast.buildRoomState(roomId));
 
     if (!wasAlreadyConnected) {
+      const joinMessage = buildSystemChatMessage(roomId, `${user.userName} joined the room`);
+      this.roomState.addMessage(roomId, joinMessage);
+      this.broadcast.emitMessage(roomId, joinMessage);
       this.broadcast.emitUserJoined(roomId, {
         userId: user.userId,
         userName: user.userName,
@@ -199,7 +211,13 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     const result = this.roomState.removeSocket(roomId, socket.id);
     await socket.leave(roomId);
 
-    if (result && !result.userStillConnected) {
+    if (result && !result.userStillConnected && result.removed != null) {
+      const leaveMessage = buildSystemChatMessage(
+        roomId,
+        `${result.removed.userName} left the room`
+      );
+      this.roomState.addMessage(roomId, leaveMessage);
+      this.broadcast.emitMessage(roomId, leaveMessage);
       this.broadcast.emitUserLeft(roomId, user.userId);
       this.friendHandler.notifyFriendsLeftRoom(user.userId).catch((err: unknown) => {
         this.logger.error(`notifyFriendsLeftRoom error: ${String(err)}`);
@@ -344,7 +362,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       actorUserId: user.userId,
       roomId,
       targetUserId,
-      errorMessage: 'kicked from the room',
+      errorMessage: ROOM_KICKED_MESSAGE,
       shouldBan: false
     });
   }
@@ -361,9 +379,13 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       actorUserId: user.userId,
       roomId,
       targetUserId,
-      errorMessage: 'blocked from the room',
+      errorMessage: ROOM_BANNED_MESSAGE,
       shouldBan: true
     });
+  }
+
+  private isUserBanned(room: RoomDocument, userId: string): boolean {
+    return room.banned_users.some((bannedId) => bannedId.toString() === userId);
   }
 
   private removeSocketFromRoom(roomId: string, socketId: string, userId: string): void {
@@ -428,7 +450,8 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       userName: user.userName,
       color: sender?.color ?? DEFAULT_USER_COLOR,
       content,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      kind: 'chat'
     };
   }
 

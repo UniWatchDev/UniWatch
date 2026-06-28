@@ -1,17 +1,21 @@
-import { ROOMS_ENDPOINT, ROOM_ENDPOINT, ROOM_PREVIEW_ENDPOINT, ROOM_JOIN_ENDPOINT, ROOM_LEAVE_ENDPOINT } from '@repo/consts/rooms';
+import { ROOMS_ENDPOINT, ROOM_ENDPOINT, ROOM_PREVIEW_ENDPOINT, ROOM_JOIN_ENDPOINT, ROOM_LEAVE_ENDPOINT, ROOM_BLOCKED_USERS_ENDPOINT, ROOM_BLOCKED_USER_ENDPOINT } from '@repo/consts/rooms';
 import {
+  blockedUsersResponseSchema,
   createRoomSchema,
   deleteRoomResponseSchema,
   joinRoomBodySchema,
   joinRoomResponseSchema,
+  roomBlockedUserParamsSchema,
   roomIdParamsSchema,
   roomPreviewSchema,
   roomResponseSchema,
   updateRoomSchema,
+  type BlockedUsersResponse,
   type CreateRoomInput,
   type DeleteRoomResponse,
   type JoinRoomBody,
   type JoinRoomResponse,
+  type RoomBlockedUserParams,
   type RoomIdParams,
   type RoomPreview,
   type RoomResponse,
@@ -74,4 +78,26 @@ export const leaveRoomContract: EndpointContract<JoinRoomResponse, void, RoomIdP
   path: ROOM_LEAVE_ENDPOINT,
   responseSchema: joinRoomResponseSchema,
   paramsSchema: roomIdParamsSchema
+};
+
+export const listBlockedUsersContract: EndpointContract<
+  BlockedUsersResponse,
+  void,
+  RoomIdParams
+> = {
+  method: 'GET',
+  path: ROOM_BLOCKED_USERS_ENDPOINT,
+  responseSchema: blockedUsersResponseSchema,
+  paramsSchema: roomIdParamsSchema
+};
+
+export const unblockUserContract: EndpointContract<
+  BlockedUsersResponse,
+  void,
+  RoomBlockedUserParams
+> = {
+  method: 'DELETE',
+  path: ROOM_BLOCKED_USER_ENDPOINT,
+  responseSchema: blockedUsersResponseSchema,
+  paramsSchema: roomBlockedUserParamsSchema
 };

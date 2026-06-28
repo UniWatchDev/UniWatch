@@ -1,24 +1,29 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { AlertTriangle, Clapperboard, Loader2, Play, Upload } from 'lucide-react';
 
 import { MovieAwaitingHostOverlay } from '@/components/movie-awaiting-host-overlay';
-import { MovieUploadProgress } from '@/movies/movie-upload-progress';
+import { RoomVideoStageOverlay } from '@/components/room-video-stage-overlay';
 import type { PlaybackRate } from '@/movies/room-playback';
 import { RoomVideoPlayerControls } from '@/movies/room-video-player-controls';
+import type { PlayerToolbarStatusTone } from '@/rooms/room-status-display';
 import { useFullscreenOverlayControls } from '@/movies/use-fullscreen-overlay-controls';
 
-function CenterPlayIcon() {
-  return (
-    <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <polygon points="5,3 19,12 5,21" />
-    </svg>
-  );
+function readBufferedEnd(video: HTMLVideoElement | null, duration: number): number {
+  if (video === null || duration <= 0) return 0;
+  const ranges = video.buffered;
+  if (ranges.length === 0) return 0;
+  let maxEnd = 0;
+  for (let index = 0; index < ranges.length; index += 1) {
+    maxEnd = Math.max(maxEnd, ranges.end(index));
+  }
+  return Math.min(1, maxEnd / duration);
 }
 
 export function RoomVideoPlayer({
   roomName,
   movieName,
   statusText,
-  isLive,
+  statusTone,
   loading,
   error,
   isUploading,
@@ -60,7 +65,7 @@ export function RoomVideoPlayer({
   roomName: string;
   movieName: string | null | undefined;
   statusText: string;
-  isLive: boolean;
+  statusTone: PlayerToolbarStatusTone;
   loading: boolean;
   error: string | null;
   isUploading: boolean;
@@ -101,6 +106,7 @@ export function RoomVideoPlayer({
 }) {
   const shellRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [bufferedEnd, setBufferedEnd] = useState(0);
   const { overlayVisible, revealControls } = useFullscreenOverlayControls(isFullscreen, isPlaying);
   const showPlaceholder = mediaSrc === null;
   const showCenterPlay =
@@ -110,6 +116,14 @@ export function RoomVideoPlayer({
     mediaSrc !== null &&
     !videoError &&
     !showAwaitingHostOverlay;
+  const showControls = mediaSrc !== null && videoError === null;
+  const controlsVisible = !isFullscreen || !isPlaying || overlayVisible;
+  const trimmedMovieName = movieName?.trim();
+  const hasMovieName = trimmedMovieName !== undefined && trimmedMovieName.length > 0;
+
+  const syncBufferedEnd = useCallback(() => {
+    setBufferedEnd(readBufferedEnd(videoRef.current, duration));
+  }, [duration, videoRef]);
 
   useEffect(() => {
     const onNativeFullscreenChange = () => {
@@ -118,6 +132,10 @@ export function RoomVideoPlayer({
     document.addEventListener('fullscreenchange', onNativeFullscreenChange);
     return () => { document.removeEventListener('fullscreenchange', onNativeFullscreenChange); };
   }, []);
+
+  useEffect(() => {
+    syncBufferedEnd();
+  }, [currentTime, duration, mediaSrc, syncBufferedEnd]);
 
   const handleShellFullscreen = () => {
     const shell = shellRef.current;
@@ -134,19 +152,36 @@ export function RoomVideoPlayer({
     if (canControl) onTogglePlay();
   };
 
+  const handleTimeUpdate = () => {
+    syncBufferedEnd();
+    onTimeUpdate();
+  };
+
+  const handleProgress = () => {
+    syncBufferedEnd();
+  };
+
+  const handleLoadedMetadata = () => {
+    syncBufferedEnd();
+    onLoadedMetadata();
+  };
+
   const controls = (
     <RoomVideoPlayerControls
       canControl={canControl}
       showHostControls={showHostControls}
+      isPlaying={isPlaying}
       currentTime={currentTime}
       duration={duration}
+      bufferedEnd={bufferedEnd}
       playbackRate={playbackRate}
       muted={muted}
       volume={volume}
       isFullscreen={isFullscreen}
       movieName={movieName}
       statusText={statusText}
-      isLive={isLive}
+      statusTone={statusTone}
+      onTogglePlay={onTogglePlay}
       onScrub={onScrub}
       onSeekBy={onSeekBy}
       onPlaybackRateChange={onPlaybackRateChange}
@@ -156,6 +191,105 @@ export function RoomVideoPlayer({
       onInteract={revealControls}
     />
   );
+
+  const preparingOverlay = (
+    <RoomVideoStageOverlay
+      icon={Loader2}
+      loading
+      eyebrow="Preparing video"
+      title={hasMovieName ? trimmedMovieName : 'Loading movie…'}
+      description="Hang tight — the stream is getting ready for everyone."
+    />
+  );
+
+  const stageOverlay = (() => {
+    if (showAwaitingHostOverlay) {
+      return (
+        <MovieAwaitingHostOverlay
+          movieName={awaitingHostMovieName}
+          loading={awaitingHostLoading}
+          isHost={isHostViewer}
+        />
+      );
+    }
+
+    if (videoError !== null && mediaSrc !== null) {
+      return (
+        <RoomVideoStageOverlay
+          icon={AlertTriangle}
+          eyebrow="Playback error"
+          title="Video failed to play"
+          description={videoError}
+          ariaLive="assertive"
+        />
+      );
+    }
+
+    if (showPlaceholder) {
+      if (loading) {
+        return (
+          <RoomVideoStageOverlay
+            icon={Loader2}
+            loading
+            eyebrow="Loading"
+            title="Fetching video…"
+            description="Hang tight while this room's movie loads."
+          />
+        );
+      }
+
+      if (isUploading) {
+        return (
+          <RoomVideoStageOverlay
+            icon={Upload}
+            loading
+            eyebrow="Uploading"
+            title={hasMovieName ? trimmedMovieName : 'Video uploading…'}
+            description="Keep this tab open until the upload finishes."
+          />
+        );
+      }
+
+      if (isFailed) {
+        return (
+          <RoomVideoStageOverlay
+            icon={AlertTriangle}
+            eyebrow="Upload failed"
+            title="Video could not be uploaded"
+            description="Edit the room to choose another file and try again."
+          />
+        );
+      }
+
+      if (error != null) {
+        return (
+          <RoomVideoStageOverlay
+            icon={AlertTriangle}
+            eyebrow="Unable to load"
+            title="Something went wrong"
+            description={error}
+          />
+        );
+      }
+
+      return (
+        <RoomVideoStageOverlay
+          icon={Clapperboard}
+          eyebrow={showHostControls ? 'Your room' : 'Waiting for host'}
+          title={showHostControls ? 'Add a video to start' : 'No video yet'}
+          description={placeholderText ?? 'Waiting for the host to upload a video…'}
+          footer={ownerActions}
+          interactiveFooter={ownerActions != null}
+        />
+      );
+    }
+
+    if (!videoReady && currentTime === 0) {
+      return preparingOverlay;
+    }
+
+    return null;
+  })();
 
   return (
     <div
@@ -172,8 +306,9 @@ export function RoomVideoPlayer({
               className="room-video-player__video"
               src={mediaSrc}
               onClick={handleStageClick}
-              onTimeUpdate={onTimeUpdate}
-              onLoadedMetadata={onLoadedMetadata}
+              onTimeUpdate={handleTimeUpdate}
+              onProgress={handleProgress}
+              onLoadedMetadata={handleLoadedMetadata}
               onLoadedData={onLoadedData}
               onPlay={onPlay}
               onPause={onPause}
@@ -185,108 +320,38 @@ export function RoomVideoPlayer({
             />
           )}
 
-          {showPlaceholder && (
-            <div className="room-video-player__overlay room-video-player__overlay--placeholder">
-              <div className="room-video-player__placeholder-stack">
-                {loading ? (
-                  <>
-                    <p className="room-video-player__placeholder-icon">⏳</p>
-                    <p className="room-video-player__placeholder-text">Loading video…</p>
-                  </>
-                ) : isUploading ? (
-                  <>
-                    <p className="room-video-player__placeholder-icon">📤</p>
-                    <p className="room-video-player__placeholder-text">
-                      {movieName ? `"${movieName}" is still uploading…` : 'Video is still uploading…'}
-                    </p>
-                    <div className="room-video-player__upload-progress">
-                      <MovieUploadProgress percent={0} indeterminate label="Preparing video for playback" />
-                    </div>
-                  </>
-                ) : isFailed ? (
-                  <>
-                    <p className="room-video-player__placeholder-icon">⚠️</p>
-                    <p className="room-video-player__placeholder-text">Video upload failed. Edit the room to try again.</p>
-                  </>
-                ) : error ? (
-                  <>
-                    <p className="room-video-player__placeholder-icon">⚠️</p>
-                    <p className="room-video-player__placeholder-text">{error}</p>
-                  </>
-                ) : (
-                  <>
-                    <p className="room-video-player__placeholder-icon">⏳</p>
-                    <p className="room-video-player__placeholder-text">
-                      {placeholderText ?? 'Waiting for the host to upload a video…'}
-                    </p>
-                  </>
-                )}
-
-                {ownerActions && (
-                  <div className="room-video-player__owner-actions room-video-player__overlay--interactive">
-                    {ownerActions}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {showAwaitingHostOverlay && (
-            <MovieAwaitingHostOverlay
-              movieName={awaitingHostMovieName}
-              loading={awaitingHostLoading}
-              isHost={isHostViewer}
-            />
-          )}
-
-          {mediaSrc !== null &&
-            !videoReady &&
-            !videoError &&
-            currentTime === 0 &&
-            !showAwaitingHostOverlay && (
-            <div className="room-video-player__overlay room-video-player__overlay--loading">Loading video…</div>
-          )}
-
-          {videoError !== null && (
-            <div className="room-video-player__overlay room-video-player__overlay--error room-video-player__overlay--interactive">
-              {videoError}
-            </div>
-          )}
+          {stageOverlay}
 
           {showCenterPlay && (
             <button
               type="button"
               className="room-video-player__center-play"
-              onClick={(e) => {
-                e.stopPropagation();
+              onClick={(event) => {
+                event.stopPropagation();
                 revealControls();
                 onTogglePlay();
               }}
               aria-label="Play"
             >
-              <CenterPlayIcon />
+              <Play size={36} strokeWidth={1.75} fill="currentColor" aria-hidden="true" />
             </button>
           )}
 
-          {isFullscreen && (
+          {showControls && (
             <div
-              className={`room-video-player__controls room-video-player__controls--overlay${overlayVisible ? ' is-visible' : ''}`}
+              className={`room-video-player__controls room-video-player__controls--overlay${controlsVisible ? ' is-visible' : ''}`}
             >
-              <div className="room-video-player__overlay-title">
-                <span>{roomName}</span>
-                {movieName && <span className="room-video-player__overlay-title-sep">·</span>}
-                {movieName && <span>{movieName}</span>}
-              </div>
+              {isFullscreen && controlsVisible && (
+                <div className="room-video-player__overlay-title">
+                  <span>{roomName}</span>
+                  {movieName && <span className="room-video-player__overlay-title-sep">·</span>}
+                  {movieName && <span>{movieName}</span>}
+                </div>
+              )}
               {controls}
             </div>
           )}
         </div>
-
-        {!isFullscreen && (
-          <div className="room-video-player__controls room-video-player__controls--docked">
-            {controls}
-          </div>
-        )}
       </div>
     </div>
   );

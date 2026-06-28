@@ -20,4 +20,5 @@ export interface ChatMessage {
   color: string;
   content: string;
   timestamp: Date;
+  kind?: 'chat' | 'system';
 }

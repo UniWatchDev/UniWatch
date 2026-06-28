@@ -3,14 +3,16 @@ import { Check, Link, UserPlus } from 'lucide-react';
 
 import { MOCK_FRIENDS } from '@/data/mock-profile-data';
 import type { Member } from '@/types/room';
+import { buildRoomShareUrl } from '@/rooms/room-share-url';
 import { initials } from '@/utils/initials';
 
-export function InviteFriends({ members }: { members: Member[] }) {
+export function InviteFriends({ members, roomId }: { members: Member[]; roomId: string }) {
   const [copied, setCopied] = useState<string | null>(null);
   const memberUsernames = new Set(members.map((m) => m.username));
+  const roomShareUrl = buildRoomShareUrl(roomId);
 
   const copyInvite = (friendId: string) => {
-    void navigator.clipboard.writeText(window.location.href).then(() => {
+    void navigator.clipboard.writeText(roomShareUrl).then(() => {
       setCopied(friendId);
       setTimeout(() => {
         setCopied(null);

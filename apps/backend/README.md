@@ -45,6 +45,31 @@ Both `.env.*` filenames are gitignored. The `env.*.template` files are committed
 - Auth verification/reset responses always include the code/token in JSON; set `AUTH_USE_REAL_EMAILS=true` to also send mail via Resend
 - Keep backend modules generic until the starter is renamed for a real product
 
+## Curated movie catalog
+
+Room create/edit pickers list **`GET /api/movies/catalog`** — ready movies with `in_catalog: true`. Personal uploads from `GET /api/movies` are not shown in the catalog tab.
+
+To add a catalog title manually:
+
+1. Upload the source file (and optional thumbnail) to R2 under keys such as `movies/{ownerId}/{movieId}/source.mp4`.
+2. Seed a Mongo record (sets `upload_status: ready`, `in_catalog: true`):
+
+```sh
+pnpm --filter backend seed:catalog-movie -- \
+  --mongodb-uri "$MONGODB_URI" \
+  --owner-id "<app-owner-user-id>" \
+  --name "Example title" \
+  --language english \
+  --storage-key "movies/<ownerId>/<movieId>/source.mp4" \
+  --thumbnail-key "movies/<ownerId>/<movieId>/thumb.svg" \
+  --mime-type video/mp4 \
+  --size-bytes 12345678
+```
+
+Add `--dry-run` to print the document without writing. Catalog movies are streamable by any logged-in user when attached to a room.
+
+Admins (emails in `ADMIN_EMAILS`, synced to `users.isAdmin` on startup/login) can also publish via **`POST /api/admin/catalog/movies`**, list via **`GET /api/admin/catalog/movies`**, and unpublish or edit metadata via **`PATCH /api/admin/catalog/movies/:id`**. `/api/auth/me` includes `isAdmin: true` for admin sessions.
+
 ## When to edit this app
 
 Change this app when the starter needs:

@@ -91,6 +91,13 @@ export class MovieRecord {
 
   @Prop({ type: Date, default: null })
   deleted_at?: Date | null;
+
+  @Prop({ type: Boolean, default: false })
+  in_catalog!: boolean;
+
+  /** True for titles managed via admin catalog tools (including hidden entries). */
+  @Prop({ type: Boolean, default: false })
+  is_catalog_entry!: boolean;
 }
 
 export type MovieDocument = HydratedDocument<MovieRecord> & {
@@ -105,3 +112,4 @@ MovieSchema.index(
   { unique: true, partialFilterExpression: { deleted_at: null } }
 );
 MovieSchema.index({ file_purge_at: 1, file_deleted_at: 1 });
+MovieSchema.index({ in_catalog: 1, upload_status: 1, deleted_at: 1 });

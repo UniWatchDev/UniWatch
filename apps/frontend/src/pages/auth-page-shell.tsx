@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 
 import { StarField } from '@/components/star-field';
+import { AppUtilityBar } from '@/components/app-utility-bar';
 
 function AuthBrand() {
   return (
@@ -64,6 +65,7 @@ export function AuthPageShell({
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <StarField titleVisible={false} />
       </div>
+      <AppUtilityBar />
       <main
         className="relative z-10 flex flex-1 flex-col items-center justify-center px-4 py-10 sm:px-6"
         style={{ minHeight: 'min(100%, 560px)' }}

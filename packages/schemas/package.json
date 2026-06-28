@@ -13,7 +13,8 @@
     "./realtime": "./dist/realtime/realtime.schemas.js",
     "./realtime/playback-sync": "./dist/realtime/playback-sync.js",
     "./friends": "./dist/friends/friend-request.schemas.js",
-    "./dm": "./dist/dm/direct-message.schemas.js"
+    "./dm": "./dist/dm/direct-message.schemas.js",
+    "./admin": "./dist/admin/catalog.schemas.js"
   },
   "scripts": {
     "dev": "tsc --watch --preserveWatchOutput",
