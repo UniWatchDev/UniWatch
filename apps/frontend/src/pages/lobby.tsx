@@ -11,6 +11,8 @@ import { CinemaRoomCard } from '@/components/cinema-room-card';
 import type { RoomResponse, RoomStatus } from '@/types/room';
 import { Search } from 'lucide-react';
 import { LobbyFriendSidebar } from '@/friends/lobby-friend-sidebar';
+import { AdminCatalogPanel } from '@/admin/admin-catalog-panel';
+import { useCookieAuth } from '@/auth/use-cookie-auth';
 
 const REFRESH_INTERVAL_MS = 2_000;
 
@@ -38,6 +40,7 @@ type LobbyLocationState = {
 export function Lobby() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { sessionUser } = useCookieAuth();
   const locationState = location.state as LobbyLocationState | null;
   const [lobbyNotice, setLobbyNotice] = useState<{
     title: string;
@@ -139,6 +142,8 @@ export function Lobby() {
 
         {/* Hero */}
         <FeaturedRoomHero onCreateRoom={() => { void navigate('/rooms/new'); }} />
+
+        {sessionUser?.isAdmin ? <AdminCatalogPanel /> : null}
 
         {/* Toolbar */}
         <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">

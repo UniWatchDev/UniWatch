@@ -31,6 +31,10 @@ export class UserRecord {
   @Prop({ default: false })
   isProfilePrivate!: boolean;
 
+  /** App operator with access to admin-only routes (e.g. catalog publishing). */
+  @Prop({ default: false })
+  isAdmin!: boolean;
+
   @Prop({ default: 'violet-reel' })
   avatarId!: string;
 

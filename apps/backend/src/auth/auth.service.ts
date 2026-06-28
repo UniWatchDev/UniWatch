@@ -31,6 +31,7 @@ import type {
 } from '@/auth/auth.dto';
 import type { JwtAccessPayload } from '@/auth/auth.types';
 import { RefreshSessionRepository } from '@/auth/refresh-session.repository';
+import { AdminRoleService } from '@/auth/admin-role.service';
 import { UserRepository } from '@/auth/user.repository';
 import type { UserDocument } from '@/auth/user.schema';
 import { MailService } from '@/mail/mail.service';
@@ -95,6 +96,7 @@ function userToLoginResponse(doc: UserDocument): LoginResponse {
     emailVerified: doc.emailVerified,
     isProfilePrivate: doc.isProfilePrivate,
     avatarId: avatarPresetIdSchema.parse(doc.avatarId),
+    isAdmin: doc.isAdmin,
     createdAt: doc.createdAt.toISOString()
   };
 }
@@ -108,7 +110,8 @@ export class AuthService {
     private readonly refreshSessions: RefreshSessionRepository,
     private readonly jwtService: JwtService,
     private readonly config: ConfigService<Env, true>,
-    private readonly mail: MailService
+    private readonly mail: MailService,
+    private readonly adminRoles: AdminRoleService
   ) {}
 
   private useRealEmails(): boolean {
@@ -123,12 +126,13 @@ export class AuthService {
   }
 
   private async issueNewSession(doc: UserDocument): Promise<LoginWithTokens> {
-    const userId = doc._id.toString();
+    const synced = await this.adminRoles.syncUser(doc);
+    const userId = synced._id.toString();
     const accessToken = await this.jwtService.signAsync(
       {
         sub: userId,
-        email: doc.email,
-        pv: doc.passwordVersion
+        email: synced.email,
+        pv: synced.passwordVersion
       },
       {
         expiresIn: this.config.get('JWT_ACCESS_EXPIRES_IN', { infer: true })
@@ -145,7 +149,7 @@ export class AuthService {
     return {
       accessToken,
       refreshToken,
-      user: userToLoginResponse(doc)
+      user: userToLoginResponse(synced)
     };
   }
 
@@ -478,7 +482,8 @@ export class AuthService {
     if (!user.emailVerified) {
       throw new UnauthorizedException('Email not verified');
     }
-    return userToLoginResponse(user);
+    const synced = await this.adminRoles.syncUser(user);
+    return userToLoginResponse(synced);
   }
 
   async updateMe(payload: JwtAccessPayload, body: UpdateProfileBody): Promise<LoginResponse> {
@@ -496,6 +501,7 @@ export class AuthService {
     if (!updated.emailVerified) {
       throw new UnauthorizedException('Email not verified');
     }
-    return userToLoginResponse(updated);
+    const synced = await this.adminRoles.syncUser(updated);
+    return userToLoginResponse(synced);
   }
 }

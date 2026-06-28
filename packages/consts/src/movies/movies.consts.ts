@@ -1,4 +1,5 @@
 export const MOVIES_ENDPOINT = '/api/movies' as const;
+export const MOVIES_CATALOG_ENDPOINT = '/api/movies/catalog' as const;
 export const MOVIE_RESOLVE_ENDPOINT = '/api/movies/resolve' as const;
 export const MOVIE_ENDPOINT = '/api/movies/:id' as const;
 export const MOVIE_UPLOAD_ENDPOINT = '/api/movies/:id/upload' as const;

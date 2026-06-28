@@ -84,6 +84,19 @@ const baseEnvSchema = z.object({
   /** Max requests per client IP per TTL window on throttled `/api/auth/*` routes. */
   AUTH_THROTTLE_LIMIT: z.coerce.number().int().positive().default(60),
   /**
+   * Comma-separated emails granted admin access (catalog publishing, etc.).
+   * Synced to `users.isAdmin` on startup and on login/me.
+   */
+  ADMIN_EMAILS: z
+    .string()
+    .default('')
+    .transform((value) =>
+      value
+        .split(',')
+        .map((part) => part.trim().toLowerCase())
+        .filter((part) => part.length > 0)
+    ),
+  /**
    * Object storage backend. Defaults to in-memory in development/test and S3 in production.
    * Set to `s3` locally for Cloudflare R2 movie uploads (see `env.development.template`).
    */

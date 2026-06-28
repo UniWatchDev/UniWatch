@@ -5,18 +5,24 @@ import { MOVIE_ALLOWED_FORMATS_LABEL } from '@repo/consts/movies';
 import { createMovieContract, updateMovieContract } from '@repo/contracts/movies';
 import { getRoomContract, updateRoomContract, deleteRoomContract } from '@repo/contracts/rooms';
 import { getAuthMeContract } from '@repo/contracts/auth';
-import type { MovieResponse } from '@repo/schemas/movies';
 import type { RoomResponse } from '@repo/schemas/rooms';
 
 import { MovieUploadField } from '@/movies/movie-upload-field';
 import { MovieUploadProgress } from '@/movies/movie-upload-progress';
+import { MovieLibraryGrid } from '@/movies/movie-library-grid';
+import { MovieLibrarySummary } from '@/movies/movie-library-summary';
 import { attachMovieToRoom } from '@/movies/attach-room-movie';
-import { formatMovieUploadAge } from '@/movies/format-movie-upload-age';
-import { fetchOwnedMovies } from '@/movies/fetch-owned-movies';
 import { prepareMovieForRoom } from '@/movies/prepare-movie-for-room';
+import { isMovieLibraryReady } from '@/movies/selectable-owned-movies';
+import { useCatalogMovies } from '@/movies/use-catalog-movies';
 import { validateMovieFile } from '@/movies/upload-movie-file';
 import { formatFetchError } from '@/auth/auth-fetch-helpers';
 import { useRoomSession } from '@/rooms/room-session-context';
+import { RoomFormAlert } from '@/rooms/room-form-alert';
+import { RoomFormBackLink } from '@/rooms/room-form-back-link';
+import { RoomFormSection } from '@/rooms/room-form-section';
+import { RoomFormShell } from '@/rooms/room-form-shell';
+import { RoomVisibilityToggle } from '@/rooms/room-visibility-toggle';
 
 function PencilIcon() {
   return (
@@ -109,9 +115,6 @@ export function EditRoom() {
   const [movieFileError, setMovieFileError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [ownedMovies, setOwnedMovies] = useState<MovieResponse[]>([]);
-  const [ownedMoviesLoading, setOwnedMoviesLoading] = useState(false);
-  const [ownedMoviesError, setOwnedMoviesError] = useState<string | null>(null);
   const [selectedMovieId, setSelectedMovieId] = useState('');
 
   const [drafts, setDrafts] = useState<DraftState>({
@@ -132,6 +135,8 @@ export function EditRoom() {
     isPrivate: false,
   });
   const isOwner = currentUserId !== null && currentUserId === room?.creator;
+  const catalogMoviesState = useCatalogMovies(isOwner);
+  const { movies: catalogMovies, loading: catalogMoviesLoading, error: catalogMoviesError, reload: reloadCatalogMovies } = catalogMoviesState;
 
   useEffect(() => {
     if (!id) return;
@@ -170,46 +175,13 @@ export function EditRoom() {
   }, [loading, room, currentUserId, navigate]);
 
   useEffect(() => {
-    if (!isOwner) {
-      setOwnedMovies([]);
-      setOwnedMoviesError(null);
-      setOwnedMoviesLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    setOwnedMoviesLoading(true);
-    setOwnedMoviesError(null);
-    void fetchOwnedMovies()
-      .then((movies) => {
-        if (!cancelled) {
-          setOwnedMovies(movies);
-        }
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          setOwnedMoviesError(formatFetchError(err));
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setOwnedMoviesLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isOwner]);
-
-  useEffect(() => {
     if (!isOwner || !isRoomLoaded(room)) return;
-    const readyMovies = ownedMovies.filter((movie) => movie.has_file && movie.upload_status === 'ready');
+    const readyMovies = catalogMovies.filter((movie) => isMovieLibraryReady(movie));
     const fallbackMovieId = room.movie ?? readyMovies[0]?.id ?? '';
     if (selectedMovieId.length === 0 || !readyMovies.some((movie) => movie.id === selectedMovieId)) {
       setSelectedMovieId(fallbackMovieId);
     }
-  }, [isOwner, ownedMovies, room, selectedMovieId]);
+  }, [isOwner, catalogMovies, room, selectedMovieId]);
 
   if (loading) {
     return (
@@ -244,7 +216,7 @@ export function EditRoom() {
       password: '',
     }));
     if (field === 'movieSelection') {
-      const readyMovies = ownedMovies.filter((movie) => movie.has_file && movie.upload_status === 'ready');
+      const readyMovies = catalogMovies.filter((movie) => isMovieLibraryReady(movie));
       setSelectedMovieId(room.movie ?? readyMovies[0]?.id ?? '');
     }
   };
@@ -337,9 +309,9 @@ export function EditRoom() {
           setSaving(false);
           return;
         }
-        const selectedMovie = ownedMovies.find((movie) => movie.id === selectedMovieId);
+        const selectedMovie = catalogMovies.find((movie) => movie.id === selectedMovieId);
         if (!selectedMovie) {
-          setApiError('Choose one of your owned movies.');
+          setApiError('Choose a title from the catalog.');
           setSaving(false);
           return;
         }
@@ -422,94 +394,31 @@ export function EditRoom() {
     : room.movie
       ? 'Ready to replace the current file'
       : 'No video file uploaded yet';
-  const readyOwnedMovies = ownedMovies.filter((movie) => movie.has_file && movie.upload_status === 'ready');
-  const selectedOwnedMovieAge = formatMovieUploadAge(ownedMovies.find((movie) => movie.id === selectedMovieId)?.file_uploaded_at);
+  const attachedMovie = catalogMovies.find((movie) => movie.id === room.movie) ?? null;
   const roomTitleSummary = room.name;
   const movieTitleSummary = room.movie_name ?? 'No movie attached';
   const videoStateSummary = room.movie ? 'Video file attached' : 'No video file uploaded yet';
 
   return (
-    <div
-      style={{
-        minHeight: '100dvh',
-        background: 'var(--bg-primary)',
-        display: 'flex',
-        alignItems: 'flex-start',
-        justifyContent: 'center',
-        padding: '48px 16px',
-      }}
+    <RoomFormShell
+      backLink={(
+        <RoomFormBackLink onClick={() => { void navigate(`/room/${room.id}`); }}>
+          Back to Room
+        </RoomFormBackLink>
+      )}
+      title="Edit Room"
+      description={
+        isOwner
+          ? 'Update room details, switch catalog titles, or upload a replacement file.'
+          : 'You can view this room\'s settings, but only the owner can edit them.'
+      }
     >
-      <div className="card fade-up" style={{ width: '100%', maxWidth: 720, padding: '32px' }}>
-        {/* Header */}
-        <div style={{ marginBottom: 28 }}>
-          <button
-            onClick={() => { void navigate(`/room/${room.id}`); }}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              marginBottom: 20,
-              background: 'none',
-              border: 'none',
-              color: 'var(--text-muted)',
-              fontSize: 13,
-              cursor: 'pointer',
-              padding: 0,
-              fontFamily: 'var(--font-body)',
-            }}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <path d="M19 12H5M12 5l-7 7 7 7" />
-            </svg>
-            Back to Room
-          </button>
-          <h1 className="display" style={{ fontSize: 24, fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>
-            Edit Room
-          </h1>
-          <p style={{ marginTop: 6, fontSize: 14, color: 'var(--text-muted)' }}>
-            {isOwner
-              ? 'Update room details and movie settings in clean, separate sections.'
-              : 'You can view this room\'s settings, but only the owner can edit them.'}
-          </p>
-        </div>
+      {apiError != null && <RoomFormAlert message={apiError} />}
 
-        {apiError && (
-          <div
-            style={{
-              marginBottom: 16,
-              padding: '10px 14px',
-              borderRadius: 8,
-              background: 'rgba(239,68,68,0.1)',
-              border: '1px solid rgba(239,68,68,0.3)',
-              fontSize: 13,
-              color: '#f87171',
-            }}
-          >
-            {apiError}
-          </div>
-        )}
-
-        <div
-          style={{
-            marginBottom: 16,
-            padding: '12px 14px',
-            borderRadius: 12,
-            border: '1px solid var(--border-subtle)',
-            background: 'var(--bg-primary)',
-          }}
-        >
-          <p
-            style={{
-              margin: '0 0 8px',
-              fontSize: 11,
-              fontWeight: 700,
-              letterSpacing: '0.06em',
-              color: 'var(--text-muted)',
-            }}
-          >
-            Room summary
-          </p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+      <div className="room-form-card card fade-up">
+        <div className="room-settings-summary">
+          <p className="room-settings-summary__label">Room summary</p>
+          <div className="room-settings-summary__grid">
             <SummaryItem label="Room title" value={roomTitleSummary} />
             <SummaryItem label="Movie title" value={movieTitleSummary} />
             <SummaryItem label="Video file" value={videoStateSummary} />
@@ -517,12 +426,12 @@ export function EditRoom() {
           </div>
         </div>
 
-        <div style={{ display: 'grid', gap: 24 }}>
-          <SettingsSection
+        <div className="room-settings-sections">
+          <RoomFormSection
             title="Room details"
             description="Update the room title, visibility, and password."
           >
-            <div style={{ display: 'grid', gap: 14 }}>
+            <div className="room-settings-rows">
               <EditRow
                 label="Room title"
                 isEditing={editing.name}
@@ -546,41 +455,19 @@ export function EditRoom() {
               <EditRow
                 label="Visibility"
                 isEditing={editing.isPrivate}
-                displayValue={room.room_type === 'private' ? '🔒 Private' : '🌐 Public'}
+                displayValue={room.room_type === 'private' ? 'Private' : 'Public'}
                 canEdit={isOwner}
                 saving={saving}
                 onEdit={() => { startEdit('isPrivate'); }}
                 onSave={() => { void saveField('isPrivate'); }}
                 onCancel={() => { cancelEdit('isPrivate'); }}
               >
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    {(['public', 'private'] as const).map((v) => {
-                      const isActive = v === 'private' ? drafts.isPrivate : !drafts.isPrivate;
-                      return (
-                        <button
-                          key={v}
-                          type="button"
-                          onClick={() => { setDrafts((p) => ({ ...p, isPrivate: v === 'private' })); }}
-                          style={{
-                            flex: 1,
-                            padding: '9px 12px',
-                            border: isActive ? '2px solid var(--accent)' : '1px solid var(--border-medium)',
-                            borderRadius: 8,
-                            background: isActive ? 'var(--accent-dim)' : 'var(--bg-input)',
-                            color: isActive ? 'var(--text-primary)' : 'var(--text-muted)',
-                            fontFamily: 'var(--font-body)',
-                            fontSize: 13,
-                            fontWeight: 600,
-                            cursor: 'pointer',
-                            transition: 'all 200ms ease',
-                          }}
-                        >
-                          {v === 'public' ? '🌐 Public' : '🔒 Private'}
-                        </button>
-                      );
-                    })}
-                  </div>
+                <div className="room-form-fields">
+                  <RoomVisibilityToggle
+                    isPrivate={drafts.isPrivate}
+                    onChange={(isPrivate) => { setDrafts((p) => ({ ...p, isPrivate })); }}
+                    disabled={saving}
+                  />
                   {drafts.isPrivate && !room.password && (
                     <input
                       className="input"
@@ -595,84 +482,67 @@ export function EditRoom() {
                 </div>
               </EditRow>
 
-              {room.room_type === 'private' && <EditRow
-                label="Password"
-                isEditing={editing.password}
-                displayValue={room.password != null ? 'Password set' : 'No password'}
-                canEdit={isOwner}
-                saving={saving}
-                onEdit={() => { startEdit('password'); }}
-                onSave={() => { void saveField('password'); }}
-                onCancel={() => { cancelEdit('password'); }}
-              >
-                <input
-                  className="input"
-                  type="password"
-                  placeholder="Enter a new password"
-                  value={drafts.password}
-                  onChange={(e) => { setDrafts((p) => ({ ...p, password: e.target.value })); }}
-                  maxLength={64}
-                  autoComplete="new-password"
-                  autoFocus
-                />
-              </EditRow>}
+              {room.room_type === 'private' && (
+                <EditRow
+                  label="Password"
+                  isEditing={editing.password}
+                  displayValue={room.password != null ? 'Password set' : 'No password'}
+                  canEdit={isOwner}
+                  saving={saving}
+                  onEdit={() => { startEdit('password'); }}
+                  onSave={() => { void saveField('password'); }}
+                  onCancel={() => { cancelEdit('password'); }}
+                >
+                  <input
+                    className="input"
+                    type="password"
+                    placeholder="Enter a new password"
+                    value={drafts.password}
+                    onChange={(e) => { setDrafts((p) => ({ ...p, password: e.target.value })); }}
+                    maxLength={64}
+                    autoComplete="new-password"
+                    autoFocus
+                  />
+                </EditRow>
+              )}
             </div>
-          </SettingsSection>
+          </RoomFormSection>
 
-          <SettingsSection
-            title="Movie management"
-            description="Choose the current movie, replace the file, and edit metadata."
+          <RoomFormSection
+            title="Video"
+            description="Pick a catalog title, upload a replacement, or edit metadata."
           >
-            <div style={{ display: 'grid', gap: 14 }}>
+            <div className="room-settings-rows">
               <EditRow
                 label="Current movie"
                 isEditing={editing.movieSelection}
                 displayValue={room.movie_name ?? 'No movie attached'}
+                displayContent={
+                  <MovieLibrarySummary
+                    movie={attachedMovie}
+                    fallbackTitle={room.movie_name ?? 'No movie attached'}
+                  />
+                }
                 canEdit={isOwner}
-                saving={saving || ownedMoviesLoading}
+                saving={saving || catalogMoviesLoading}
                 onEdit={() => { startEdit('movieSelection'); }}
                 onSave={() => { void saveField('movieSelection'); }}
                 onCancel={() => { cancelEdit('movieSelection'); }}
               >
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
-                    Current room movie: <span style={{ color: 'var(--text-primary)' }}>{room.movie_name ?? 'No movie attached'}</span>
-                    {' '}
-                    Update the room title and movie title if you switch it.
+                <div className="room-form-fields">
+                  <p className="room-form-field__hint">
+                    Pick a ready title from the shared catalog. Playback starts immediately — no re-upload.
                   </p>
-                  {ownedMoviesError && (
-                    <p style={{ margin: 0, fontSize: 12, color: '#f87171' }}>{ownedMoviesError}</p>
-                  )}
-                  {ownedMoviesLoading ? (
-                    <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>Loading your videos…</p>
-                  ) : readyOwnedMovies.length > 0 ? (
-                    <select
-                      className="input"
-                      value={selectedMovieId}
-                      onChange={(e) => { setSelectedMovieId(e.target.value); }}
-                      disabled={saving}
-                    >
-                      <option value="">Choose one of your videos</option>
-                      {readyOwnedMovies.map((movie) => (
-                        <option key={movie.id} value={movie.id}>
-                          {movie.name}
-                          {movie.file_uploaded_at ? ` · ${formatMovieUploadAge(movie.file_uploaded_at) ?? 'uploaded recently'}` : ''}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
-                      You do not have any ready videos yet.
-                    </p>
-                  )}
-                  {selectedOwnedMovieAge && (
-                    <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
-                      {selectedOwnedMovieAge}
-                    </p>
-                  )}
-                  <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
-                    Only your own ready videos are shown here. You can switch to another one or upload a new file below.
-                  </p>
+                  <MovieLibraryGrid
+                    movies={catalogMovies}
+                    loading={catalogMoviesLoading}
+                    error={catalogMoviesError}
+                    selectedMovieId={selectedMovieId || null}
+                    onSelectedMovieIdChange={(movieId) => { setSelectedMovieId(movieId ?? ''); }}
+                    onRetry={reloadCatalogMovies}
+                    disabled={saving}
+                    emptyHint="No catalog titles yet. Upload a new file below or ask an admin to publish titles."
+                  />
                 </div>
               </EditRow>
 
@@ -690,17 +560,12 @@ export function EditRoom() {
                   setMovieFileError(null);
                 }}
               >
-                <div style={{ display: 'grid', gap: 12 }}>
-                  <div style={{ display: 'grid', gap: 4 }}>
-                    <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                      Drop a new video file here or browse to replace the room movie. The file starts uploading only after you press the upload button below.
-                    </p>
-                    <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
-                      {room.movie
-                        ? `Current movie: ${room.movie_name ?? 'Untitled movie'}`
-                        : 'No movie is attached yet. Uploading a file will attach it to this room.'}
-                    </p>
-                  </div>
+                <div className="room-form-fields">
+                  <p className="room-form-field__hint">
+                    {room.movie
+                      ? `Current movie: ${room.movie_name ?? 'Untitled movie'}. Upload starts only after you press the button below.`
+                      : 'No movie is attached yet. Uploading a file will attach it to this room.'}
+                  </p>
 
                   <MovieUploadField
                     label="Video file"
@@ -721,13 +586,12 @@ export function EditRoom() {
                     }}
                   />
 
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  <div className="room-form-inline-actions">
                     <button
                       type="button"
-                      className="btn-primary"
+                      className="btn-primary room-form-inline-actions__primary"
                       disabled={saving || drafts.movieFile === null}
                       onClick={() => { void saveField('movieFile'); }}
-                      style={{ flex: 1, minWidth: 180, opacity: saving || drafts.movieFile === null ? 0.7 : 1 }}
                     >
                       {saving
                         ? uploadPercent !== null
@@ -745,13 +609,12 @@ export function EditRoom() {
                         setDrafts((prev) => ({ ...prev, movieFile: null }));
                         setMovieFileError(null);
                       }}
-                      style={{ minWidth: 120 }}
                     >
                       Clear file
                     </button>
                   </div>
 
-                  <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                  <p className="room-form-field__hint">
                     {drafts.movieFile
                       ? 'The selected file will replace the current room movie after upload finishes.'
                       : `Supported formats: ${MOVIE_ALLOWED_FORMATS_LABEL}. Maximum size: 1 GB.`}
@@ -803,39 +666,28 @@ export function EditRoom() {
                 />
               </EditRow>
             </div>
-          </SettingsSection>
+          </RoomFormSection>
 
           {isOwner && (
-            <div
-              style={{
-                padding: '20px',
-                border: '1px solid rgba(239,68,68,0.2)',
-                borderRadius: 12,
-                background: 'rgba(239,68,68,0.04)',
-              }}
-            >
-              <h4 style={{ margin: '0 0 6px', fontSize: 14, fontWeight: 700, color: '#f87171' }}>
-                Danger zone
-              </h4>
-              <p style={{ margin: '0 0 14px', fontSize: 13, color: 'var(--text-muted)' }}>
+            <div className="room-settings-danger">
+              <h4 className="room-settings-danger__title">Danger zone</h4>
+              <p className="room-settings-danger__copy">
                 Permanently delete this room and remove all participants. This cannot be undone.
               </p>
               {showDeleteConfirm ? (
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div className="room-form-inline-actions">
                   <button
-                    className="btn-danger"
+                    className="btn-danger room-form-inline-actions__primary"
                     onClick={() => { void handleDeleteConfirmed(); }}
                     disabled={deleting}
-                    style={{ flex: 1, opacity: deleting ? 0.7 : 1 }}
                   >
                     <TrashIcon />
                     {deleting ? 'Deleting…' : 'Yes, delete room'}
                   </button>
                   <button
-                    className="btn-ghost"
+                    className="btn-ghost room-form-inline-actions__primary"
                     onClick={() => { setShowDeleteConfirm(false); }}
                     disabled={deleting}
-                    style={{ flex: 1 }}
                   >
                     Cancel
                   </button>
@@ -850,7 +702,7 @@ export function EditRoom() {
           )}
         </div>
       </div>
-    </div>
+    </RoomFormShell>
   );
 }
 
@@ -862,41 +714,10 @@ function SummaryItem({
   value: string;
 }) {
   return (
-    <div
-      style={{
-        padding: '10px 12px',
-        borderRadius: 10,
-        border: '1px solid var(--border-subtle)',
-        background: 'var(--bg-primary)',
-      }}
-    >
-      <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>
-        {label}
-      </p>
-      <p style={{ margin: 0, fontSize: 14, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {value}
-      </p>
+    <div className="room-settings-summary__item">
+      <p className="room-settings-summary__item-label">{label}</p>
+      <p className="room-settings-summary__item-value">{value}</p>
     </div>
-  );
-}
-
-function SettingsSection({
-  title,
-  description,
-  children,
-}: {
-  title: string;
-  description: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section style={{ display: 'grid', gap: 12 }}>
-      <div style={{ display: 'grid', gap: 4 }}>
-        <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>{title}</h2>
-        <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.5 }}>{description}</p>
-      </div>
-      <div style={{ display: 'grid', gap: 16 }}>{children}</div>
-    </section>
   );
 }
 
@@ -904,6 +725,7 @@ function EditRow({
   label,
   isEditing,
   displayValue,
+  displayContent,
   canEdit,
   saving,
   onEdit,
@@ -914,6 +736,7 @@ function EditRow({
   label: string;
   isEditing: boolean;
   displayValue: string;
+  displayContent?: React.ReactNode;
   canEdit: boolean;
   saving: boolean;
   onEdit: () => void;
@@ -922,79 +745,47 @@ function EditRow({
   children: React.ReactNode;
 }) {
   return (
-    <div
-      style={{
-        padding: '14px 16px',
-        borderRadius: 10,
-        border: isEditing ? '1px solid var(--accent)' : '1px solid var(--border-subtle)',
-        background: isEditing ? 'rgba(124,58,237,0.04)' : 'var(--bg-elevated)',
-        transition: 'border-color 200ms ease, background 200ms ease',
-      }}
-    >
-      <div
-        style={{
-          display: 'flex',
-          alignItems: isEditing ? 'flex-start' : 'center',
-          justifyContent: 'space-between',
-          gap: 12,
-        }}
-      >
-        <div style={{ flex: 1, minWidth: 0 }}>
+    <div className={`room-settings-row${isEditing ? ' is-editing' : ''}`}>
+      <div className="room-settings-row__main">
+        <p className="room-settings-row__label">{label}</p>
+        {isEditing ? (
+          <div className="room-settings-row__editor">{children}</div>
+        ) : displayContent != null ? (
+          <div className="room-settings-row__display">{displayContent}</div>
+        ) : (
           <p
-            style={{
-              margin: '0 0 4px',
-              fontSize: 11,
-              fontWeight: 700,
-              textTransform: 'uppercase',
-              letterSpacing: '0.08em',
-              color: 'var(--text-muted)',
-            }}
+            className={`room-settings-row__value${
+              displayValue === 'No description' ||
+              displayValue === 'Not set' ||
+              displayValue === 'No file uploaded' ||
+              displayValue === 'No movie set'
+                ? ' is-muted'
+                : ''
+            }`}
           >
-            {label}
+            {displayValue}
           </p>
-          {isEditing ? (
-            <div style={{ marginTop: 8 }}>{children}</div>
-          ) : (
-            <p
-              style={{
-                margin: 0,
-                fontSize: 14,
-                color:
-                  displayValue === 'No description' ||
-                  displayValue === 'Not set' ||
-                  displayValue === 'No file uploaded' ||
-                  displayValue === 'No movie set'
-                    ? 'var(--text-muted)'
-                    : 'var(--text-primary)',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {displayValue}
-            </p>
-          )}
-        </div>
-
-        {canEdit && (
-          <div style={{ display: 'flex', gap: 6, flexShrink: 0, marginTop: isEditing ? 2 : 0 }}>
-            {isEditing ? (
-              <>
-                <IconButton onClick={onSave} title="Save" color="var(--accent-hover)" hoverBg="var(--accent-dim)" disabled={saving}>
-                  <CheckIcon />
-                </IconButton>
-                <IconButton onClick={onCancel} title="Cancel" color="var(--text-muted)" hoverBg="var(--border-subtle)" disabled={saving}>
-                  <XIcon />
-                </IconButton>
-              </>
-            ) : (
-              <IconButton onClick={onEdit} title={`Edit ${label}`} color="var(--text-muted)" hoverBg="var(--border-subtle)">
-                <PencilIcon />
-              </IconButton>
-            )}
-          </div>
         )}
       </div>
+
+      {canEdit && (
+        <div className="room-settings-row__actions">
+          {isEditing ? (
+            <>
+              <IconButton onClick={onSave} title="Save" disabled={saving}>
+                <CheckIcon />
+              </IconButton>
+              <IconButton onClick={onCancel} title="Cancel" disabled={saving}>
+                <XIcon />
+              </IconButton>
+            </>
+          ) : (
+            <IconButton onClick={onEdit} title={`Edit ${label}`}>
+              <PencilIcon />
+            </IconButton>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -1002,42 +793,21 @@ function EditRow({
 function IconButton({
   onClick,
   title,
-  color,
-  hoverBg,
   disabled,
   children,
 }: {
   onClick: () => void;
   title: string;
-  color: string;
-  hoverBg: string;
   disabled?: boolean;
   children: React.ReactNode;
 }) {
-  const [hovered, setHovered] = useState(false);
   return (
     <button
       type="button"
+      className="room-settings-icon-button"
       title={title}
       onClick={onClick}
       disabled={disabled}
-      onMouseEnter={() => { setHovered(true); }}
-      onMouseLeave={() => { setHovered(false); }}
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        width: 30,
-        height: 30,
-        borderRadius: 7,
-        border: '1px solid var(--border-medium)',
-        background: hovered ? hoverBg : 'transparent',
-        color,
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        opacity: disabled ? 0.6 : 1,
-        transition: 'all 150ms ease',
-        padding: 0,
-      }}
     >
       {children}
     </button>

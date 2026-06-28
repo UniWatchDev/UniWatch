@@ -13,7 +13,8 @@
     "./movies": "./dist/movies/movies.consts.js",
     "./realtime": "./dist/realtime/realtime.consts.js",
     "./friends": "./dist/friends/friends.consts.js",
-    "./dm": "./dist/dm/dm.consts.js"
+    "./dm": "./dist/dm/dm.consts.js",
+    "./admin": "./dist/admin/admin.consts.js"
   },
   "scripts": {
     "dev": "tsc --watch --preserveWatchOutput",

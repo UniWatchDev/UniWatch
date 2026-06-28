@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import type { Model } from 'mongoose';
 import { Types } from 'mongoose';
 import type { CreateMovieInput, MovieGenre, MovieLanguage } from '@repo/schemas/movies';
+import type { CreateCatalogMovieInput, UpdateCatalogMovieInput } from '@repo/schemas/admin';
 
 import {
   MovieGenre as MovieGenreEnum,
@@ -22,6 +23,27 @@ export class MovieRepository {
       ownerId: new Types.ObjectId(ownerId),
       deleted_at: null
     });
+  }
+
+  findCatalog(): Promise<MovieDocument[]> {
+    return this.model
+      .find({
+        in_catalog: true,
+        deleted_at: null,
+        upload_status: MovieUploadStatus.READY,
+        storage_key: { $ne: null },
+        file_deleted_at: null
+      })
+      .sort({ file_uploaded_at: -1, name: 1 });
+  }
+
+  findAllCatalog(): Promise<MovieDocument[]> {
+    return this.model
+      .find({
+        deleted_at: null,
+        is_catalog_entry: true
+      })
+      .sort({ file_uploaded_at: -1, name: 1 });
   }
 
   findById(id: string): Promise<MovieDocument | null> {
@@ -74,6 +96,85 @@ export class MovieRepository {
       description: data.description ?? null,
       upload_status: MovieUploadStatus.PENDING
     }).save();
+  }
+
+  createCatalogEntry(ownerId: string, data: CreateCatalogMovieInput): Promise<MovieDocument> {
+    const now = new Date();
+    return new this.model({
+      ownerId: new Types.ObjectId(ownerId),
+      name: data.name.trim(),
+      language: data.language,
+      movie_actors: [],
+      director: 'Unknown',
+      rating: 0,
+      length: data.duration_seconds ?? 0,
+      genre: MovieGenreEnum.OTHER,
+      description: data.description ?? null,
+      upload_status: MovieUploadStatus.READY,
+      storage_key: data.storage_key,
+      thumbnail_key: data.thumbnail_key,
+      mime_type: data.mime_type,
+      size_bytes: data.size_bytes,
+      duration_seconds: data.duration_seconds ?? null,
+      file_uploaded_at: now,
+      file_deleted_at: null,
+      file_purge_at: null,
+      in_catalog: true,
+      is_catalog_entry: true
+    }).save();
+  }
+
+  createCatalogEntryWithId(
+    id: string,
+    ownerId: string,
+    data: CreateCatalogMovieInput
+  ): Promise<MovieDocument> {
+    const now = new Date();
+    return new this.model({
+      _id: new Types.ObjectId(id),
+      ownerId: new Types.ObjectId(ownerId),
+      name: data.name.trim(),
+      language: data.language,
+      movie_actors: [],
+      director: 'Unknown',
+      rating: 0,
+      length: data.duration_seconds ?? 0,
+      genre: MovieGenreEnum.OTHER,
+      description: data.description ?? null,
+      upload_status: MovieUploadStatus.READY,
+      storage_key: data.storage_key,
+      thumbnail_key: data.thumbnail_key,
+      mime_type: data.mime_type,
+      size_bytes: data.size_bytes,
+      duration_seconds: data.duration_seconds ?? null,
+      file_uploaded_at: now,
+      file_deleted_at: null,
+      file_purge_at: null,
+      in_catalog: true,
+      is_catalog_entry: true
+    }).save();
+  }
+
+  updateCatalogEntry(
+    id: string,
+    data: UpdateCatalogMovieInput
+  ): Promise<MovieDocument | null> {
+    const set: Partial<{
+      in_catalog: boolean;
+      name: string;
+      description: string | null;
+    }> = {};
+    if (data.in_catalog !== undefined) set.in_catalog = data.in_catalog;
+    if (data.name !== undefined) set.name = data.name;
+    if (data.description !== undefined) set.description = data.description;
+    if (Object.keys(set).length === 0) {
+      return this.findById(id);
+    }
+    return this.model.findOneAndUpdate(
+      { _id: id, deleted_at: null, is_catalog_entry: true },
+      { $set: set },
+      { returnDocument: 'after' }
+    );
   }
 
   update(
