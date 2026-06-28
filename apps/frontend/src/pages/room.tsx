@@ -22,6 +22,7 @@ import { CountdownOverlay } from '@/components/countdown-overlay';
 import { ForcePlayConfirmationModal } from '@/components/force-play-confirmation-modal';
 import { RoomModerationModal, type RoomModerationAction } from '@/components/room-moderation-modal';
 import { InviteFriends } from '@/components/invite-friends';
+import { CopyRoomLinkButton } from '@/components/copy-room-link-button';
 import { RoomClosedOverlay } from '@/components/room-closed-overlay';
 import type { RoomExitTone } from '@/components/room-exit-notice';
 import { RoomPasswordGate } from '@/components/room-password-gate';
@@ -991,6 +992,7 @@ export function RoomPage() {
           <RoomStatusBadge status={liveRoomStatus} />
         </div>
         <div className="app-header-actions">
+          {id !== undefined && <CopyRoomLinkButton roomId={id} />}
           {isOwner && (
             <button
               type="button"
@@ -1258,7 +1260,7 @@ export function RoomPage() {
               value="participants"
               className="soft-scroll mt-1 min-h-0 flex-1 overflow-y-auto"
             >
-              <InviteFriends members={displayMembers} />
+              <InviteFriends members={displayMembers} roomId={id ?? ''} />
               {isOwner && (
                 <div style={{ padding: '4px 12px 8px' }}>
                   <div
