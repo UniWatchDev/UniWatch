@@ -31,6 +31,7 @@ export function FriendProvider({ children }: { children: React.ReactNode }) {
 
   const [friends, setFriends] = useState<FriendPresence[]>([]);
   const [pendingRequests, setPendingRequests] = useState<PendingFriendRequest[]>([]);
+  const [socketConnected, setSocketConnected] = useState(false);
   const [banner, setBanner] = useState<FriendBanner | null>(null);
   const [dmOpenForUserId, setDmOpenForUserId] = useState<string | null>(null);
   const [dmTargetName, setDmTargetName] = useState<string | null>(null);
@@ -68,11 +69,13 @@ export function FriendProvider({ children }: { children: React.ReactNode }) {
     if (sessionUser === null) {
       socketRef.current?.disconnect();
       socketRef.current = null;
+      setSocketConnected(false);
       return;
     }
 
     setFriends([]);
     setPendingRequests([]);
+    setSocketConnected(false);
 
     const socket = io(API_BASE_URL, {
       withCredentials: true,
@@ -85,6 +88,7 @@ export function FriendProvider({ children }: { children: React.ReactNode }) {
         const payload = connectionAckPayloadSchema.parse(raw);
         setFriends(payload.friends);
         setPendingRequests(payload.pendingRequests);
+        setSocketConnected(true);
       } catch {
         // ignore malformed ack
       }
@@ -287,6 +291,7 @@ export function FriendProvider({ children }: { children: React.ReactNode }) {
         friends,
         pendingRequests,
         friendUserIds,
+        socketConnected,
         banner,
         dismissBanner,
         dmOpenForUserId,

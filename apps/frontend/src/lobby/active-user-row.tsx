@@ -8,9 +8,10 @@ import { useFriendContext } from '@/friends/use-friend-context';
 
 type Props = {
   user: ActiveUser;
+  isSelf?: boolean;
 };
 
-export function ActiveUserRow({ user }: Props) {
+export function ActiveUserRow({ user, isSelf = false }: Props) {
   const navigate = useNavigate();
   const { openDm, sendFriendRequest } = useFriendContext();
   const [addState, setAddState] = useState<'idle' | 'sending' | 'error'>('idle');
@@ -105,64 +106,66 @@ export function ActiveUserRow({ user }: Props) {
       </div>
 
       <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-        {user.currentRoom?.roomType === 'public' && (
-          <button
-            type="button"
-            onClick={handleJoin}
-            style={{
-              background: 'none',
-              border: '1px solid var(--accent)',
-              borderRadius: 6,
-              padding: '3px 7px',
-              color: 'var(--accent)',
-              fontSize: 11,
-              cursor: 'pointer'
-            }}
-          >
-            Join
-          </button>
-        )}
-
-        {user.friendshipStatus === 'friend' ? (
-          <button
-            type="button"
-            title="Message"
-            onClick={() => { openDm(user.userId); }}
-            style={{
-              background: 'none',
-              border: '1px solid var(--border-medium)',
-              borderRadius: 6,
-              padding: '4px 8px',
-              color: 'var(--text-muted)',
-              fontSize: 12,
-              cursor: 'pointer'
-            }}
-          >
-            💬
-          </button>
-        ) : isPendingSent ? (
-          <span
-            style={{
-              fontSize: 11,
-              color: 'var(--text-muted)',
-              padding: '4px 8px'
-            }}
-          >
-            Pending…
-          </span>
-        ) : addState === 'error' ? (
-          <span style={{ fontSize: 11, color: 'var(--coral)', padding: '4px 8px' }}>
-            Error
+        {isSelf ? (
+          <span style={{ fontSize: 11, color: 'var(--text-muted)', padding: '4px 8px' }}>
+            You
           </span>
         ) : (
-          <button
-            type="button"
-            className="btn-primary"
-            style={{ padding: '4px 10px', fontSize: 12 }}
-            onClick={handleAdd}
-          >
-            + Add
-          </button>
+          <>
+            {user.currentRoom?.roomType === 'public' && (
+              <button
+                type="button"
+                onClick={handleJoin}
+                style={{
+                  background: 'none',
+                  border: '1px solid var(--accent)',
+                  borderRadius: 6,
+                  padding: '3px 7px',
+                  color: 'var(--accent)',
+                  fontSize: 11,
+                  cursor: 'pointer'
+                }}
+              >
+                Join
+              </button>
+            )}
+
+            {user.friendshipStatus === 'friend' ? (
+              <button
+                type="button"
+                title="Message"
+                onClick={() => { openDm(user.userId); }}
+                style={{
+                  background: 'none',
+                  border: '1px solid var(--border-medium)',
+                  borderRadius: 6,
+                  padding: '4px 8px',
+                  color: 'var(--text-muted)',
+                  fontSize: 12,
+                  cursor: 'pointer'
+                }}
+              >
+                💬
+              </button>
+            ) : isPendingSent ? (
+              <span style={{ fontSize: 11, color: 'var(--text-muted)', padding: '4px 8px' }}>
+                Pending…
+              </span>
+            ) : addState === 'error' ? (
+              <span style={{ fontSize: 11, color: 'var(--coral)', padding: '4px 8px' }}>
+                Error
+              </span>
+            ) : (
+              <button
+                type="button"
+                className="btn-primary"
+                style={{ padding: '4px 10px', fontSize: 12 }}
+                onClick={handleAdd}
+              >
+                + Add
+              </button>
+            )}
+          </>
         )}
       </div>
     </div>

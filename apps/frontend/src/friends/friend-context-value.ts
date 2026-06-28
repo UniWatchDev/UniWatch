@@ -21,6 +21,7 @@ export type FriendContextValue = {
   friends: FriendPresence[];
   pendingRequests: PendingFriendRequest[];
   friendUserIds: Set<string>;
+  socketConnected: boolean;
   banner: FriendBanner | null;
   dismissBanner: () => void;
   dmOpenForUserId: string | null;

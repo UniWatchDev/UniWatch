@@ -6,7 +6,7 @@ import { apiGetActiveUsers } from '@/friends/friend-api';
 
 const POLL_INTERVAL_MS = 3_000;
 
-export function useActiveUsers(): {
+export function useActiveUsers(socketConnected: boolean): {
   users: ActiveUser[];
   loading: boolean;
   error: string | null;
@@ -43,7 +43,9 @@ export function useActiveUsers(): {
       mounted = false;
       if (intervalRef.current !== null) clearInterval(intervalRef.current);
     };
-  }, []);
+  // Re-run (and immediately re-poll) when the socket connects so self appears right away.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [socketConnected]);
 
   return { users, loading, error };
 }

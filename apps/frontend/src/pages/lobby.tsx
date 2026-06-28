@@ -11,6 +11,8 @@ import { CinemaRoomCard } from '@/components/cinema-room-card';
 import type { RoomResponse, RoomStatus } from '@/types/room';
 import { Search } from 'lucide-react';
 import { ActiveUsersSidebar } from '@/lobby/active-users-sidebar';
+import { AdminCatalogPanel } from '@/admin/admin-catalog-panel';
+import { useCookieAuth } from '@/auth/use-cookie-auth';
 
 const REFRESH_INTERVAL_MS = 2_000;
 

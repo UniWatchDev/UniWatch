@@ -69,9 +69,7 @@ export class UsersService {
   }
 
   async getActiveUsers(currentUserId: string): Promise<ActiveUser[]> {
-    const onlineIds = this.presence
-      .getOnlineUserIds()
-      .filter((id) => id !== currentUserId);
+    const onlineIds = this.presence.getOnlineUserIds();
 
     if (onlineIds.length === 0) return [];
 
@@ -88,8 +86,9 @@ export class UsersService {
         .map((r) => r.to.toString())
     );
 
+    // Exclude self from mutual-count DB lookups (self has no meaningful mutual count)
     const strangerIds = onlineIds.filter(
-      (id) => !friendIdSet.has(id) && !pendingSentIds.has(id)
+      (id) => id !== currentUserId && !friendIdSet.has(id) && !pendingSentIds.has(id)
     );
 
     const [mutualCounts, roomTypes] = await Promise.all([

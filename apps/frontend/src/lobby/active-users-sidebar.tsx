@@ -3,6 +3,7 @@ import { useCallback, useRef, useState } from 'react';
 import type { ActiveUser } from '@repo/schemas/profile';
 
 import { PresetAvatar } from '@/components/preset-avatar';
+import { useCookieAuth } from '@/auth/use-cookie-auth';
 import { apiSearchUsers } from '@/friends/friend-api';
 import { useFriendContext } from '@/friends/use-friend-context';
 import { ActiveUserRow } from '@/lobby/active-user-row';
@@ -28,8 +29,10 @@ function SectionHeader({ label }: { label: string }) {
 }
 
 export function ActiveUsersSidebar() {
-  const { pendingRequests, respondToRequest } = useFriendContext();
-  const { users, loading } = useActiveUsers();
+  const { sessionUser } = useCookieAuth();
+  const { pendingRequests, respondToRequest, socketConnected } = useFriendContext();
+  const { users, loading } = useActiveUsers(socketConnected);
+  const selfUserId = sessionUser?.userId;
 
   const [searchQ, setSearchQ] = useState('');
   const [searchResults, setSearchResults] = useState<ActiveUser[]>([]);
@@ -139,7 +142,7 @@ export function ActiveUsersSidebar() {
               </p>
             )}
             {searchResults.map((u) => (
-              <ActiveUserRow key={u.userId} user={u} />
+              <ActiveUserRow key={u.userId} user={u} isSelf={u.userId === selfUserId} />
             ))}
           </div>
         )}
@@ -243,7 +246,7 @@ export function ActiveUsersSidebar() {
             <>
               <SectionHeader label="Friends" />
               {visibleFriends.map((u) => (
-                <ActiveUserRow key={u.userId} user={u} />
+                <ActiveUserRow key={u.userId} user={u} isSelf={u.userId === selfUserId} />
               ))}
             </>
           )}
@@ -252,7 +255,7 @@ export function ActiveUsersSidebar() {
             <>
               <SectionHeader label="People" />
               {visibleStrangers.map((u) => (
-                <ActiveUserRow key={u.userId} user={u} />
+                <ActiveUserRow key={u.userId} user={u} isSelf={u.userId === selfUserId} />
               ))}
             </>
           )}
@@ -261,7 +264,7 @@ export function ActiveUsersSidebar() {
             <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '8px 0' }}>
               {filter === 'in-room'
                 ? 'No one is in a room right now.'
-                : 'No one else is online right now.'}
+                : 'No one is online right now.'}
             </p>
           )}
         </>
