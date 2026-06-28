@@ -28,7 +28,8 @@ export const realtimeChatMessageSchema = z.object({
   userName: z.string(),
   color: z.string(),
   content: z.string().min(1).max(2000),
-  timestamp: z.string().datetime()
+  timestamp: z.string().datetime(),
+  kind: z.enum(['chat', 'system']).default('chat')
 });
 
 export type RealtimeChatMessage = z.infer<typeof realtimeChatMessageSchema>;

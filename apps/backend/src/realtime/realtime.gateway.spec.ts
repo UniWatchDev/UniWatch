@@ -276,6 +276,12 @@ describe('RealtimeGateway', () => {
       'room:user-joined',
       expect.objectContaining({ userId: viewerId, roomId })
     );
+    const messages = roomState.get(roomId)?.messages ?? [];
+    expect(messages.some((message) => message.kind === 'system' && message.content === 'Viewer joined the room')).toBe(true);
+    expect(roomEmit).toHaveBeenCalledWith(
+      REALTIME_SERVER_EVENTS.messageReceived,
+      expect.objectContaining({ kind: 'system', content: 'Viewer joined the room' })
+    );
     expect(roomEmit).not.toHaveBeenCalledWith('room:state', expect.anything());
   });
 
@@ -687,6 +693,11 @@ describe('RealtimeGateway', () => {
     expect(playback?.movieId).toBe(initialMovieId);
     expect(roomState.syncStatus(roomId, hostId)).toBe('watching');
     expect(roomEmit).toHaveBeenCalledWith('room:presence-changed', expect.any(Object));
+    expect(roomEmit).toHaveBeenCalledWith(
+      REALTIME_SERVER_EVENTS.messageReceived,
+      expect.objectContaining({ kind: 'system', content: 'Viewer left the room' })
+    );
+    expect(roomState.get(roomId)?.messages.some((message) => message.content === 'Viewer left the room')).toBe(true);
     expect(roomEmitHasEvent(REALTIME_SERVER_EVENTS.roomState)).toBe(false);
   });
 

@@ -9,10 +9,12 @@ export function CopyRoomLinkButton({
   roomId,
   className = 'btn-ghost',
   style,
+  compact = false,
 }: {
   roomId: string;
   className?: string;
   style?: React.CSSProperties;
+  compact?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -35,7 +37,8 @@ export function CopyRoomLinkButton({
       aria-label={copied ? 'Room link copied' : 'Copy room link'}
     >
       {copied ? <Check size={14} aria-hidden="true" /> : <Link size={14} aria-hidden="true" />}
-      {copied ? 'Copied' : 'Copy link'}
+      {!compact && (copied ? 'Copied' : 'Copy link')}
+      {compact && copied && <span className="sr-only">Copied</span>}
     </button>
   );
 }

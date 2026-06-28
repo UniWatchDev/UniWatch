@@ -329,7 +329,8 @@ export function useRoomSocket({
           userName: m.userName,
           color: m.color,
           content: m.content,
-          timestamp: new Date(m.timestamp)
+          timestamp: new Date(m.timestamp),
+          kind: m.kind
         }))
       );
       setSocketStatus('connected');
@@ -360,7 +361,8 @@ export function useRoomSocket({
           userName: parsed.data.userName,
           color: parsed.data.color,
           content: parsed.data.content,
-          timestamp: new Date(parsed.data.timestamp)
+          timestamp: new Date(parsed.data.timestamp),
+          kind: parsed.data.kind
         }
       ]);
     });

@@ -52,6 +52,7 @@ import { RoomModerationService } from '@/realtime/services/room-moderation.servi
 import { RoomStateService } from '@/realtime/services/room-state.service';
 import { SocketAuthService } from '@/realtime/services/socket-auth.service';
 import { creatorRefToId, type CreatorRefLike } from '@/realtime/utils/creator-ref';
+import { buildSystemChatMessage } from '@/realtime/utils/build-system-chat-message';
 import { getAuthenticatedUser, WsAuthGuard } from '@/realtime/ws-auth.guard';
 import { WsExceptionFilter } from '@/realtime/ws-exception.filter';
 import { ZodWsValidationPipe } from '@/realtime/zod-ws-validation.pipe';
@@ -174,6 +175,9 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     socket.emit(REALTIME_SERVER_EVENTS.roomState, this.broadcast.buildRoomState(roomId));
 
     if (!wasAlreadyConnected) {
+      const joinMessage = buildSystemChatMessage(roomId, `${user.userName} joined the room`);
+      this.roomState.addMessage(roomId, joinMessage);
+      this.broadcast.emitMessage(roomId, joinMessage);
       this.broadcast.emitUserJoined(roomId, {
         userId: user.userId,
         userName: user.userName,
@@ -207,7 +211,13 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     const result = this.roomState.removeSocket(roomId, socket.id);
     await socket.leave(roomId);
 
-    if (result && !result.userStillConnected) {
+    if (result && !result.userStillConnected && result.removed != null) {
+      const leaveMessage = buildSystemChatMessage(
+        roomId,
+        `${result.removed.userName} left the room`
+      );
+      this.roomState.addMessage(roomId, leaveMessage);
+      this.broadcast.emitMessage(roomId, leaveMessage);
       this.broadcast.emitUserLeft(roomId, user.userId);
       this.friendHandler.notifyFriendsLeftRoom(user.userId).catch((err: unknown) => {
         this.logger.error(`notifyFriendsLeftRoom error: ${String(err)}`);
@@ -440,7 +450,8 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       userName: user.userName,
       color: sender?.color ?? DEFAULT_USER_COLOR,
       content,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      kind: 'chat'
     };
   }
 

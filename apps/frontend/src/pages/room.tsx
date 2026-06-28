@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
 import { ROOM_CLOSED_MESSAGE } from '@repo/consts/realtime';
@@ -27,7 +27,8 @@ import { RoomClosedOverlay } from '@/components/room-closed-overlay';
 import type { RoomExitTone } from '@/components/room-exit-notice';
 import { RoomPasswordGate } from '@/components/room-password-gate';
 import { AppUtilityBar } from '@/components/app-utility-bar';
-import { MessageSquare, Users, Volume2, VolumeX } from 'lucide-react';
+import { MessageSquare, Users, Volume2, VolumeX, LogOut } from 'lucide-react';
+import { messageMentionsUsername } from '@/utils/chat-mentions';
 import { useFriendContext } from '@/friends/use-friend-context';
 import type { Member } from '@/types/room';
 import {
@@ -89,6 +90,21 @@ function playBeep() {
   } catch { /* audio not available */ }
 }
 
+function playMentionBeep() {
+  try {
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = 1046;
+    gain.gain.setValueAtTime(0.1, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.3);
+  } catch { /* audio not available */ }
+}
+
 
 function PencilIcon() {
   return (
@@ -126,6 +142,8 @@ export function RoomPage() {
   const [ownerMovieSaving, setOwnerMovieSaving] = useState(false);
   const [activeTab, setActiveTab] = useState('chat');
   const [unreadCount, setUnreadCount] = useState(0);
+  const [mentionUnreadCount, setMentionUnreadCount] = useState(0);
+  const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
   const [chatSoundMuted, setChatSoundMuted] = useState(false);
   const [chatDraft, setChatDraft] = useState('');
   const [ownerUploadFile, setOwnerUploadFile] = useState<File | null>(null);
@@ -406,11 +424,32 @@ export function RoomPage() {
   const needsForcePlayConfirmation = isOwner && !isSoloHost && unreadyMembers.length > 0;
   const showCountdown = roomState.countdown.active && !countdownDismissed;
   const readinessMembers = displayMembers.filter((member) => !member.isHost);
+  const knownChatUsernames = useMemo(
+    () => new Set(displayMembers.map((member) => member.username)),
+    [displayMembers]
+  );
+  const mentionedMessageIds = useMemo(() => {
+    const ids = new Set<string>();
+    const username = currentMember?.username ?? '';
+    if (username.length === 0) {
+      return ids;
+    }
+    for (const message of messages) {
+      if (message.kind === 'system') {
+        continue;
+      }
+      if (messageMentionsUsername(message.content, username)) {
+        ids.add(message.id);
+      }
+    }
+    return ids;
+  }, [messages, currentMember?.username]);
   const handleAddFriend = (member: Member) => {
     void sendFriendReq(member.id);
   };
   const handleTagUser = (member: Member) => {
     setActiveTab('chat');
+    setMobilePanelOpen(true);
     setChatDraft((draft) => {
       const prefix = draft.length > 0 && !draft.endsWith(' ') ? `${draft} ` : draft;
       return `${prefix}@${member.username} `;
@@ -622,14 +661,42 @@ export function RoomPage() {
     if (messages.length > prevMessageCount.current) {
       const newFromOthers = messages
         .slice(prevMessageCount.current)
-        .filter((m) => m.userId !== currentUserId);
+        .filter((m) => m.userId !== currentUserId && m.kind !== 'system');
       if (newFromOthers.length > 0 && activeTab !== 'chat') {
-        if (!chatSoundMuted) playBeep();
+        const currentUsername = currentMember?.username ?? '';
+        const mentionMessages = newFromOthers.filter((message) =>
+          messageMentionsUsername(message.content, currentUsername)
+        );
+        if (!chatSoundMuted) {
+          if (mentionMessages.length > 0) {
+            playMentionBeep();
+          } else {
+            playBeep();
+          }
+        }
         setUnreadCount((n) => n + newFromOthers.length);
+        if (mentionMessages.length > 0) {
+          setMentionUnreadCount((n) => n + mentionMessages.length);
+        }
       }
     }
     prevMessageCount.current = messages.length;
-  }, [messages, activeTab, chatSoundMuted, currentUserId]);
+  }, [messages, activeTab, chatSoundMuted, currentUserId, currentMember?.username]);
+
+  useEffect(() => {
+    if (!mobilePanelOpen) {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setMobilePanelOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [mobilePanelOpen]);
 
   const handleJoin = async () => {
     if (!id) return;
@@ -928,6 +995,13 @@ export function RoomPage() {
   const readyCount = readinessMembers.filter((member) => member.isReady).length;
   const liveViewerCount = displayMembers.length;
 
+  const openMobilePanel = (preferredTab?: 'chat' | 'participants') => {
+    if (preferredTab === 'chat' || (preferredTab === undefined && mentionUnreadCount > 0)) {
+      setActiveTab('chat');
+    }
+    setMobilePanelOpen(true);
+  };
+
   const ownerMovieActions = isOwner && room.movie == null ? (
     <div
       style={{
@@ -991,23 +1065,27 @@ export function RoomPage() {
           </span>
           <RoomStatusBadge status={liveRoomStatus} />
         </div>
-        <div className="app-header-actions">
-          {id !== undefined && <CopyRoomLinkButton roomId={id} />}
+        <div className="app-header-actions room-header-actions room-header-actions--compact">
+          {id !== undefined && (
+            <CopyRoomLinkButton roomId={id} compact />
+          )}
           {isOwner && (
             <button
               type="button"
               className="btn-primary"
-              style={{ padding: '7px 14px', fontSize: 13 }}
+              style={{ padding: '7px 14px', fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}
               onClick={() => { void navigate(`/room/${String(id)}/edit`); }}
               title="Edit room settings"
+              aria-label="Edit room settings"
             >
               <PencilIcon />
-              Edit room
+              <span className="room-header-action-label">Edit room</span>
             </button>
           )}
           <button
             className="btn-danger"
-            style={{ padding: '7px 16px', fontSize: 13 }}
+            style={{ padding: '7px 16px', fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            aria-label="Leave room"
             onClick={() => {
               if (!isOwner && id) {
                 void leaveRoom(id).finally(() => { void navigate('/rooms'); });
@@ -1016,7 +1094,8 @@ export function RoomPage() {
               }
             }}
           >
-            Leave room
+            <LogOut size={14} aria-hidden="true" />
+            <span className="room-header-action-label">Leave room</span>
           </button>
           <ThemeToggleButton />
         </div>
@@ -1112,14 +1191,31 @@ export function RoomPage() {
           </div>
         </div>
 
+        <button
+          type="button"
+          className="room-mobile-toggle"
+          aria-label="Open chat and viewers"
+          onClick={() => { openMobilePanel(); }}
+        >
+          <MessageSquare size={16} aria-hidden="true" />
+          Chat
+          {unreadCount > 0 && (
+            <span className="room-mobile-toggle__badge">{String(unreadCount)}</span>
+          )}
+          {mentionUnreadCount > 0 && (
+            <span className="room-mobile-toggle__mention">@{String(mentionUnreadCount)}</span>
+          )}
+        </button>
+
+        <div
+          className={`room-sidebar-backdrop${mobilePanelOpen ? ' is-open' : ''}`}
+          aria-hidden={!mobilePanelOpen}
+          onClick={() => { setMobilePanelOpen(false); }}
+        />
+
         {/* Sidebar */}
         <aside
-          className="room-sidebar"
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-          }}
+          className={`room-sidebar${mobilePanelOpen ? ' room-sidebar--drawer-open' : ''}`}
         >
           {/* Sidebar info bar — movie title + connection status only (room name is in the top header) */}
           {(room.movie_name !== null && room.movie_name !== undefined) || socketStatus !== 'connected' || roomError !== null ? (
@@ -1223,7 +1319,10 @@ export function RoomPage() {
             value={activeTab}
             onValueChange={(tab) => {
               setActiveTab(tab);
-              if (tab === 'chat') setUnreadCount(0);
+              if (tab === 'chat') {
+                setUnreadCount(0);
+                setMentionUnreadCount(0);
+              }
             }}
             className="flex min-h-0 flex-1 flex-col overflow-hidden"
           >
@@ -1239,6 +1338,7 @@ export function RoomPage() {
                 <TabsTrigger value="chat" className="flex flex-1 items-center gap-1.5 text-xs">
                   <MessageSquare size={12} />
                   Chat{unreadCount > 0 ? ` (${String(unreadCount)})` : ''}
+                  {mentionUnreadCount > 0 ? ` · @${String(mentionUnreadCount)}` : ''}
                 </TabsTrigger>
               </TabsList>
               <button
@@ -1370,6 +1470,9 @@ export function RoomPage() {
                 draftMessage={chatDraft}
                 onDraftMessageChange={setChatDraft}
                 friendUserIds={friendUserIds}
+                currentUsername={currentMember?.username ?? null}
+                knownUsernames={knownChatUsernames}
+                mentionedMessageIds={mentionedMessageIds}
               />
             </TabsContent>
           </Tabs>

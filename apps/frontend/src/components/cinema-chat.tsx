@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { ChatMessage } from '@/types/room';
+import { renderChatContent } from '@/utils/chat-mentions';
 import { Send } from 'lucide-react';
 
 interface CinemaChatProps {
@@ -8,13 +9,25 @@ interface CinemaChatProps {
   draftMessage: string;
   onDraftMessageChange: (value: string) => void;
   friendUserIds?: ReadonlySet<string> | undefined;
+  currentUsername?: string | null;
+  knownUsernames?: ReadonlySet<string>;
+  mentionedMessageIds?: ReadonlySet<string>;
 }
 
 function formatTime(date: Date): string {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-export function CinemaChat({ messages, onSend, draftMessage, onDraftMessageChange, friendUserIds }: CinemaChatProps) {
+export function CinemaChat({
+  messages,
+  onSend,
+  draftMessage,
+  onDraftMessageChange,
+  friendUserIds,
+  currentUsername = null,
+  knownUsernames = new Set<string>(),
+  mentionedMessageIds = new Set<string>(),
+}: CinemaChatProps) {
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -29,10 +42,9 @@ export function CinemaChat({ messages, onSend, draftMessage, onDraftMessageChang
   };
 
   return (
-    <div className="flex h-full flex-col">
-      {/* Message list */}
+    <div className="cinema-chat flex h-full flex-col">
       <div
-        className="soft-scroll flex-1 overflow-y-auto px-3 py-3"
+        className="soft-scroll cinema-chat__messages flex-1 overflow-y-auto px-3 py-3"
         style={{ display: 'flex', flexDirection: 'column', gap: 10 }}
       >
         {messages.length === 0 ? (
@@ -44,39 +56,54 @@ export function CinemaChat({ messages, onSend, draftMessage, onDraftMessageChang
           </p>
         ) : (
           messages.map((msg) => {
+            if (msg.kind === 'system') {
+              return (
+                <p key={msg.id} className="cinema-chat__system-line">
+                  {msg.content}
+                </p>
+              );
+            }
+
             const isFriend = friendUserIds?.has(msg.userId) ?? false;
+            const isMentioned =
+              currentUsername != null &&
+              currentUsername.length > 0 &&
+              mentionedMessageIds.has(msg.id);
+
             return (
-            <div key={msg.id} className="group">
-              <div className="flex items-baseline gap-2">
-                <span
-                  className={`text-xs font-bold leading-none${isFriend ? ' friend-sparkle' : ''}`}
-                  style={{ color: msg.color }}
-                >
-                  {msg.userName}{isFriend ? ' ✨' : ''}
-                </span>
-                <span
-                  className="text-[10px] opacity-0 transition-opacity group-hover:opacity-100"
-                  style={{ color: 'var(--text-muted)' }}
-                >
-                  {formatTime(msg.timestamp)}
-                </span>
-              </div>
-              <p
-                className="mt-1 text-sm leading-relaxed"
-                style={{ color: 'var(--text-secondary)' }}
+              <div
+                key={msg.id}
+                className={`group${isMentioned ? ' cinema-chat__message--mentioned' : ''}`}
               >
-                {msg.content}
-              </p>
-            </div>
+                <div className="flex items-baseline gap-2">
+                  <span
+                    className={`text-xs font-bold leading-none${isFriend ? ' friend-sparkle' : ''}`}
+                    style={{ color: msg.color }}
+                  >
+                    {msg.userName}{isFriend ? ' ✨' : ''}
+                  </span>
+                  <span
+                    className="text-[10px] opacity-0 transition-opacity group-hover:opacity-100"
+                    style={{ color: 'var(--text-muted)' }}
+                  >
+                    {formatTime(msg.timestamp)}
+                  </span>
+                </div>
+                <p
+                  className="mt-1 text-sm leading-relaxed"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
+                  {renderChatContent(msg.content, knownUsernames)}
+                </p>
+              </div>
             );
           })
         )}
         <div ref={endRef} />
       </div>
 
-      {/* Input bar */}
       <div
-        className="flex items-center gap-2 border-t px-3 py-2.5"
+        className="cinema-chat__input-bar flex items-center gap-2 border-t px-3 py-2.5"
         style={{ borderColor: 'var(--border-subtle)', flexShrink: 0 }}
       >
         <input
