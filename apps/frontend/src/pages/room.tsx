@@ -28,7 +28,7 @@ import type { RoomExitTone } from '@/components/room-exit-notice';
 import { RoomPasswordGate } from '@/components/room-password-gate';
 import { AppUtilityBar } from '@/components/app-utility-bar';
 import { MessageSquare, Users, Volume2, VolumeX, LogOut } from 'lucide-react';
-import { messageMentionsUsername } from '@/utils/chat-mentions';
+import { messageMentionsUsername, buildUsernameColorMap } from '@/utils/chat-mentions';
 import { useFriendContext } from '@/friends/use-friend-context';
 import type { Member } from '@/types/room';
 import {
@@ -424,9 +424,22 @@ export function RoomPage() {
   const needsForcePlayConfirmation = isOwner && !isSoloHost && unreadyMembers.length > 0;
   const showCountdown = roomState.countdown.active && !countdownDismissed;
   const readinessMembers = displayMembers.filter((member) => !member.isHost);
-  const knownChatUsernames = useMemo(
-    () => new Set(displayMembers.map((member) => member.username)),
+  const chatUsernameColors = useMemo(
+    () => buildUsernameColorMap(
+      displayMembers.map((member) => ({ username: member.username, color: member.avatarColor }))
+    ),
     [displayMembers]
+  );
+  const chatMentionCandidates = useMemo(
+    () => displayMembers
+      .filter((member) => member.id !== currentUserId)
+      .map((member) => ({
+        userId: member.id,
+        username: member.username,
+        name: member.name,
+        color: member.avatarColor,
+      })),
+    [displayMembers, currentUserId]
   );
   const mentionedMessageIds = useMemo(() => {
     const ids = new Set<string>();
@@ -1469,9 +1482,10 @@ export function RoomPage() {
                 onSend={socketSendMessage}
                 draftMessage={chatDraft}
                 onDraftMessageChange={setChatDraft}
+                mentionCandidates={chatMentionCandidates}
                 friendUserIds={friendUserIds}
                 currentUsername={currentMember?.username ?? null}
-                knownUsernames={knownChatUsernames}
+                usernameColors={chatUsernameColors}
                 mentionedMessageIds={mentionedMessageIds}
               />
             </TabsContent>

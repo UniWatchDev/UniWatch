@@ -146,6 +146,8 @@ export function useRoomSocket({
   const onRoomClosedRef = useRef(onRoomClosed);
   const onKickedRef = useRef(onKicked);
   const onBannedRef = useRef(onBanned);
+  const onMovieUpdatedRef = useRef(onMovieUpdated);
+  const onPlaybackChangedRef = useRef(onPlaybackChanged);
 
   useEffect(() => {
     onRoomClosedRef.current = onRoomClosed;
@@ -158,6 +160,14 @@ export function useRoomSocket({
   useEffect(() => {
     onBannedRef.current = onBanned;
   }, [onBanned]);
+
+  useEffect(() => {
+    onMovieUpdatedRef.current = onMovieUpdated;
+  }, [onMovieUpdated]);
+
+  useEffect(() => {
+    onPlaybackChangedRef.current = onPlaybackChanged;
+  }, [onPlaybackChanged]);
 
   const sendMessage = useCallback(
     (content: string) => {
@@ -205,13 +215,6 @@ export function useRoomSocket({
       socketRef.current?.emit(REALTIME_CLIENT_EVENTS.blockUser, payload);
     },
     [roomId]
-  );
-
-  const pushPlaybackChange = useCallback(
-    (event: PlaybackChangeEvent) => {
-      onPlaybackChanged?.(event);
-    },
-    [onPlaybackChanged]
   );
 
   const bumpPlaybackEpoch = useCallback(() => {
@@ -426,7 +429,7 @@ export function useRoomSocket({
         return;
       }
 
-      onMovieUpdated?.(parsed.data.movieId, parsed.data.movieName);
+      onMovieUpdatedRef.current?.(parsed.data.movieId, parsed.data.movieName);
     });
 
     socket.on(REALTIME_SERVER_EVENTS.playbackChanged, (data: unknown) => {
@@ -444,7 +447,10 @@ export function useRoomSocket({
         countdown: countdownComplete ? { active: false, endsAt: null } : prev.countdown
       }));
       bumpPlaybackEpoch();
-      pushPlaybackChange({ actorUserId: parsed.data.actorUserId, playback: parsed.data.playback });
+      onPlaybackChangedRef.current?.({
+        actorUserId: parsed.data.actorUserId,
+        playback: parsed.data.playback
+      });
     });
 
     socket.on(REALTIME_SERVER_EVENTS.roomBanned, (data: unknown) => {
@@ -499,7 +505,7 @@ export function useRoomSocket({
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [roomId, disabled, creatorId, onMovieUpdated, pushPlaybackChange, bumpPlaybackEpoch]);
+  }, [roomId, disabled, creatorId, bumpPlaybackEpoch]);
 
   return {
     messages,

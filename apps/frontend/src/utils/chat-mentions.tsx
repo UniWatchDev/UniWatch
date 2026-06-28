@@ -39,28 +39,45 @@ export function messageMentionsUsername(content: string, username: string): bool
   return pattern.test(content);
 }
 
-function isKnownUsername(username: string, knownUsernames: ReadonlySet<string>): boolean {
-  for (const known of knownUsernames) {
-    if (known.localeCompare(username, undefined, { sensitivity: 'accent' }) === 0) {
-      return true;
-    }
+function resolveUsernameColor(
+  username: string,
+  usernameColors: ReadonlyMap<string, string>
+): string | undefined {
+  return usernameColors.get(username.toLowerCase());
+}
+
+function isKnownUsername(username: string, usernameColors: ReadonlyMap<string, string>): boolean {
+  return resolveUsernameColor(username, usernameColors) !== undefined;
+}
+
+export function buildUsernameColorMap(
+  entries: ReadonlyArray<{ username: string; color: string }>
+): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const entry of entries) {
+    map.set(entry.username.toLowerCase(), entry.color);
   }
-  return false;
+  return map;
 }
 
 export function renderChatContent(
   content: string,
-  knownUsernames: ReadonlySet<string>
+  usernameColors: ReadonlyMap<string, string>
 ): ReactNode[] {
   return parseMentionTokens(content).map((segment, index) => {
     if (segment.type === 'text') {
       return segment.value;
     }
-    if (!isKnownUsername(segment.username, knownUsernames)) {
+    if (!isKnownUsername(segment.username, usernameColors)) {
       return segment.value;
     }
+    const color = resolveUsernameColor(segment.username, usernameColors) ?? 'var(--accent)';
     return (
-      <span key={`mention-${String(index)}`} className="cinema-chat__mention">
+      <span
+        key={`mention-${String(index)}`}
+        className="cinema-chat__mention"
+        style={{ color }}
+      >
         {segment.value}
       </span>
     );
