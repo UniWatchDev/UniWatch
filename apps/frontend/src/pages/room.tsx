@@ -3,10 +3,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 
 import { ROOM_CLOSED_MESSAGE } from '@repo/consts/realtime';
 import type { BlockedUser, RoomPreview, RoomResponse, RoomStatus } from '@repo/schemas/rooms';
-import { useRoomSocket, type PlaybackChangeEvent } from '@/hooks/use-room-socket';
 import { attachMovieToRoom } from '@/movies/attach-room-movie';
 import { MovieUploadField } from '@/movies/movie-upload-field';
-import { MovieUploadProgress } from '@/movies/movie-upload-progress';
 import { RoomVideoPlayer } from '@/movies/room-video-player';
 import type { PlaybackRate } from '@/movies/room-playback';
 import { useRoomPlaybackSync } from '@/movies/use-room-playback-sync';
@@ -15,6 +13,8 @@ import { prepareMovieForRoom } from '@/movies/prepare-movie-for-room';
 import { clearRoomUpload } from '@/movies/room-upload-tracker';
 import { useRoomUploadProgress } from '@/movies/use-room-upload-progress';
 import { validateMovieFile } from '@/movies/upload-movie-file';
+import type { PlaybackChangeEvent } from '@/hooks/use-room-socket';
+import { useRoomSession } from '@/rooms/room-session-context';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ParticipantList } from '@/components/participant-list';
 import { CinemaChat } from '@/components/cinema-chat';
@@ -22,12 +22,11 @@ import { CountdownOverlay } from '@/components/countdown-overlay';
 import { ForcePlayConfirmationModal } from '@/components/force-play-confirmation-modal';
 import { RoomModerationModal, type RoomModerationAction } from '@/components/room-moderation-modal';
 import { InviteFriends } from '@/components/invite-friends';
-import { RoomMovieChangeNotice } from '@/components/room-movie-change-notice';
 import { RoomClosedOverlay } from '@/components/room-closed-overlay';
 import type { RoomExitTone } from '@/components/room-exit-notice';
 import { RoomPasswordGate } from '@/components/room-password-gate';
 import { AppUtilityBar } from '@/components/app-utility-bar';
-import { Users, MessageSquare, Volume2, VolumeX } from 'lucide-react';
+import { MessageSquare, Users, Volume2, VolumeX } from 'lucide-react';
 import { useFriendContext } from '@/friends/use-friend-context';
 import type { Member } from '@/types/room';
 import {
@@ -274,27 +273,6 @@ export function RoomPage() {
     setRemotePlaybackEvent(null);
   }, []);
 
-  const handleRoomClosed = useCallback(
-    (message: string) => {
-      redirectToLobby(message, { tone: 'closed' });
-    },
-    [redirectToLobby]
-  );
-
-  const handleRoomKicked = useCallback(
-    (message: string) => {
-      redirectToLobby(message, { title: 'Removed from room', tone: 'kicked' });
-    },
-    [redirectToLobby]
-  );
-
-  const handleRoomBanned = useCallback(
-    (message: string) => {
-      redirectToLobby(message, { title: 'Banned from room', tone: 'banned' });
-    },
-    [redirectToLobby]
-  );
-
   const {
     messages,
     members,
@@ -306,24 +284,35 @@ export function RoomPage() {
     sendPlaybackUpdate,
     sendKickUser,
     sendBlockUser,
-    connectionGeneration
-  } = useRoomSocket({
-    roomId: id ?? '',
-    disabled: loading || room === null,
-    creatorId: room?.creator ?? '',
-    creatorName: room?.creator_name ?? undefined,
-    initialMemberIds: room?.allowed_users ?? [],
-    onMovieUpdated: handleMovieUpdated,
-    onPlaybackChanged: handlePlaybackChanged,
-    onRoomClosed: handleRoomClosed,
-    onKicked: handleRoomKicked,
-    onBanned: handleRoomBanned
-  });
+    connectionGeneration,
+    syncSessionRoom,
+    registerMovieUpdatedHandler,
+    registerPlaybackChangedHandler,
+  } = useRoomSession();
+
+  useEffect(() => {
+    if (room !== null) {
+      syncSessionRoom(room);
+    }
+  }, [room, syncSessionRoom]);
+
+  useEffect(() => {
+    registerMovieUpdatedHandler(handleMovieUpdated);
+    return () => {
+      registerMovieUpdatedHandler(null);
+    };
+  }, [handleMovieUpdated, registerMovieUpdatedHandler]);
+
+  useEffect(() => {
+    registerPlaybackChangedHandler(handlePlaybackChanged);
+    return () => {
+      registerPlaybackChangedHandler(null);
+    };
+  }, [handlePlaybackChanged, registerPlaybackChangedHandler]);
 
   const roomUpload = useRoomUploadProgress(id);
-  const trackerIsUploading = roomUpload?.phase === 'uploading';
-  const trackerUploadPercent = trackerIsUploading ? roomUpload.percent : null;
-  const activeUploadPercent = ownerUploadPercent ?? trackerUploadPercent;
+  const trackerIsActive =
+    roomUpload?.phase === 'uploading' || roomUpload?.phase === 'complete';
 
   const authoritativeMovieId = resolveActiveRoomMovieId(
     roomState.playback.movieId,
@@ -332,11 +321,10 @@ export function RoomPage() {
   );
   const roomMovieId = canCurrentUserAccessRoomMovie(currentUserId, room) ? authoritativeMovieId : null;
   const ownerIsUploading =
-    ownerMovieSaving || ownerUploadPercent !== null || trackerIsUploading;
+    ownerMovieSaving || ownerUploadPercent !== null || trackerIsActive;
 
   useEffect(() => {
     if (roomUpload?.phase === 'complete' && id !== undefined) {
-      clearRoomUpload(id);
       setMovieStreamRevision((revision) => revision + 1);
     }
   }, [roomUpload?.phase, id]);
@@ -380,6 +368,18 @@ export function RoomPage() {
   } = useRoomMovie(roomMovieId, movieStreamRevision);
   const isOwner = currentUserId !== null && currentUserId === room?.creator;
 
+  useEffect(() => {
+    if (roomUpload?.phase === 'complete' && moviePlayable && id !== undefined) {
+      clearRoomUpload(id);
+    }
+  }, [roomUpload?.phase, moviePlayable, id]);
+
+  useEffect(() => {
+    if (moviePlayable && ownerUploadPercent !== null) {
+      setOwnerUploadPercent(null);
+    }
+  }, [moviePlayable, ownerUploadPercent]);
+
   const showMovieSwapOverlay =
     movieChangePending !== null &&
     !roomState.playback.isPlaying &&
@@ -389,7 +389,6 @@ export function RoomPage() {
     (mediaSrc !== null || movieLoading);
   const awaitingHostMovieName =
     movieChangePending?.movieName ?? movie?.name ?? room?.movie_name ?? null;
-  const showMovieChangeNotice = movieChangePending !== null;
 
   const displayMembers = members.map((member) => ({
     ...member,
@@ -885,12 +884,14 @@ export function RoomPage() {
       });
       const updated = await attachMovieToRoom(room.id, uploadedMovie);
       setRoom(updated);
-      clearOwnerUpload();
+      setOwnerUploadFile(null);
+      setOwnerUploadError(null);
+      setOwnerUploadPercent(100);
     } catch (err: unknown) {
       setOwnerUploadError(err instanceof Error ? err.message : 'Failed to upload video');
+      setOwnerUploadPercent(null);
     } finally {
       setOwnerMovieSaving(false);
-      setOwnerUploadPercent(null);
     }
   };
 
@@ -959,7 +960,6 @@ export function RoomPage() {
       >
         {ownerMovieSaving ? 'Uploading…' : 'Upload'}
       </button>
-      {ownerUploadPercent !== null && <MovieUploadProgress percent={ownerUploadPercent} />}
     </div>
   ) : null;
 
@@ -996,7 +996,7 @@ export function RoomPage() {
               type="button"
               className="btn-primary"
               style={{ padding: '7px 14px', fontSize: 13 }}
-              onClick={() => { void navigate(`/rooms/${String(id)}/edit`); }}
+              onClick={() => { void navigate(`/room/${String(id)}/edit`); }}
               title="Edit room settings"
             >
               <PencilIcon />
@@ -1020,14 +1020,6 @@ export function RoomPage() {
         </div>
       </header>
 
-      {showMovieChangeNotice && (
-        <RoomMovieChangeNotice
-          movieName={awaitingHostMovieName}
-          isHost={isOwner}
-          loading={!moviePlayable || (showMovieSwapOverlay && !posterFrameReady && videoError === null)}
-        />
-      )}
-
       {/* Main area */}
       <div className="room-main">
         {/* Video column */}
@@ -1040,7 +1032,7 @@ export function RoomPage() {
               statusTone={playerStatusTone}
               loading={movieLoading && !ownerIsUploading}
               error={ownerIsUploading ? null : movieError}
-              isUploading={movieUploading || trackerIsUploading}
+              isUploading={playerStatusUploading}
               isFailed={movieFailed || roomUpload?.phase === 'failed'}
               mediaSrc={mediaSrc}
               videoKey={roomMovieId}
@@ -1093,34 +1085,6 @@ export function RoomPage() {
               ownerActions={ownerMovieActions}
               placeholderText={ownerPlaceholderText}
             />
-            {isOwner && trackerIsUploading && activeUploadPercent !== null && (
-              <div
-                className="room-upload-overlay"
-                style={{
-                  position: 'absolute',
-                  inset: 0,
-                  zIndex: 20,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: 24,
-                  background: 'rgba(0, 0, 0, 0.55)',
-                  pointerEvents: 'none',
-                }}
-              >
-                <div
-                  style={{
-                    width: 'min(100%, 360px)',
-                    padding: '20px 24px',
-                    borderRadius: 12,
-                    background: 'rgba(18, 12, 6, 0.95)',
-                    border: '1px solid var(--border-medium)',
-                  }}
-                >
-                  <MovieUploadProgress percent={activeUploadPercent} label="Uploading your video" />
-                </div>
-              </div>
-            )}
             {showCountdown && (
               <CountdownOverlay
                 key={roomState.countdown.endsAt ?? 'countdown'}

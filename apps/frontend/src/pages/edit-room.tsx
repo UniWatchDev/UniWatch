@@ -16,6 +16,7 @@ import { fetchOwnedMovies } from '@/movies/fetch-owned-movies';
 import { prepareMovieForRoom } from '@/movies/prepare-movie-for-room';
 import { validateMovieFile } from '@/movies/upload-movie-file';
 import { formatFetchError } from '@/auth/auth-fetch-helpers';
+import { useRoomSession } from '@/rooms/room-session-context';
 
 function PencilIcon() {
   return (
@@ -96,6 +97,7 @@ async function fetchCurrentUserId(): Promise<string | null> {
 export function EditRoom() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { syncSessionRoom } = useRoomSession();
 
   const [room, setRoom] = useState<RoomResponse | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -154,6 +156,12 @@ export function EditRoom() {
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [id]);
+
+  useEffect(() => {
+    if (room !== null) {
+      syncSessionRoom(room);
+    }
+  }, [room, syncSessionRoom]);
 
   useEffect(() => {
     if (!loading && room && currentUserId !== null && currentUserId !== room.creator) {

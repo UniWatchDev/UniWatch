@@ -464,6 +464,31 @@ textarea.input {
   animation: upload-progress-indeterminate 1.4s ease-in-out infinite;
 }
 
+.movie-upload-progress {
+  margin-top: 8px;
+}
+
+.movie-upload-progress__header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.movie-upload-progress__track {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--bg-input);
+  overflow: hidden;
+}
+
+.movie-upload-progress__fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), #ec4899);
+  transition: width 200ms ease;
+}
+
 /* ── Room page layout ────────────────────────────────────────── */
 .room-main {
   display: flex;
@@ -552,69 +577,6 @@ textarea.input {
   object-fit: contain;
   background: #000;
   cursor: pointer;
-}
-
-.room-video-player__overlay {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
-}
-
-.room-video-player__overlay--interactive {
-  pointer-events: auto;
-}
-
-.room-video-player__overlay--placeholder {
-  color: var(--text-muted);
-  padding: 0 24px;
-  text-align: center;
-}
-
-.room-video-player__overlay--loading {
-  background: rgba(0, 0, 0, 0.5);
-  color: var(--text-muted);
-  font-size: 14px;
-}
-
-.room-video-player__overlay--error {
-  background: rgba(0, 0, 0, 0.78);
-  color: var(--text-secondary);
-  font-size: 14px;
-  padding: 0 24px;
-  text-align: center;
-}
-
-.room-video-player__placeholder-icon {
-  font-size: 40px;
-  margin: 0 0 8px;
-}
-
-.room-video-player__placeholder-text {
-  font-size: 14px;
-  margin: 0 0 12px;
-  max-width: 420px;
-}
-
-.room-video-player__placeholder-stack {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 14px;
-  width: min(100%, 520px);
-}
-
-.room-video-player__owner-actions {
-  display: flex;
-  justify-content: center;
-  width: 100%;
-}
-
-.room-video-player__upload-progress {
-  width: min(100%, 280px);
 }
 
 .room-video-player__center-play {

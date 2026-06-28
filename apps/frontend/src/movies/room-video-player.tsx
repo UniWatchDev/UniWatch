@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Play } from 'lucide-react';
+import { AlertTriangle, Clapperboard, Loader2, Play, Upload } from 'lucide-react';
 
 import { MovieAwaitingHostOverlay } from '@/components/movie-awaiting-host-overlay';
-import { MovieUploadProgress } from '@/movies/movie-upload-progress';
+import { RoomVideoStageOverlay } from '@/components/room-video-stage-overlay';
 import type { PlaybackRate } from '@/movies/room-playback';
 import { RoomVideoPlayerControls } from '@/movies/room-video-player-controls';
 import type { PlayerToolbarStatusTone } from '@/rooms/room-status-display';
@@ -118,6 +118,8 @@ export function RoomVideoPlayer({
     !showAwaitingHostOverlay;
   const showControls = mediaSrc !== null && videoError === null;
   const controlsVisible = !isFullscreen || !isPlaying || overlayVisible;
+  const trimmedMovieName = movieName?.trim();
+  const hasMovieName = trimmedMovieName !== undefined && trimmedMovieName.length > 0;
 
   const syncBufferedEnd = useCallback(() => {
     setBufferedEnd(readBufferedEnd(videoRef.current, duration));
@@ -159,6 +161,11 @@ export function RoomVideoPlayer({
     syncBufferedEnd();
   };
 
+  const handleLoadedMetadata = () => {
+    syncBufferedEnd();
+    onLoadedMetadata();
+  };
+
   const controls = (
     <RoomVideoPlayerControls
       canControl={canControl}
@@ -185,6 +192,105 @@ export function RoomVideoPlayer({
     />
   );
 
+  const preparingOverlay = (
+    <RoomVideoStageOverlay
+      icon={Loader2}
+      loading
+      eyebrow="Preparing video"
+      title={hasMovieName ? trimmedMovieName : 'Loading movie…'}
+      description="Hang tight — the stream is getting ready for everyone."
+    />
+  );
+
+  const stageOverlay = (() => {
+    if (showAwaitingHostOverlay) {
+      return (
+        <MovieAwaitingHostOverlay
+          movieName={awaitingHostMovieName}
+          loading={awaitingHostLoading}
+          isHost={isHostViewer}
+        />
+      );
+    }
+
+    if (videoError !== null && mediaSrc !== null) {
+      return (
+        <RoomVideoStageOverlay
+          icon={AlertTriangle}
+          eyebrow="Playback error"
+          title="Video failed to play"
+          description={videoError}
+          ariaLive="assertive"
+        />
+      );
+    }
+
+    if (showPlaceholder) {
+      if (loading) {
+        return (
+          <RoomVideoStageOverlay
+            icon={Loader2}
+            loading
+            eyebrow="Loading"
+            title="Fetching video…"
+            description="Hang tight while this room's movie loads."
+          />
+        );
+      }
+
+      if (isUploading) {
+        return (
+          <RoomVideoStageOverlay
+            icon={Upload}
+            loading
+            eyebrow="Uploading"
+            title={hasMovieName ? trimmedMovieName : 'Video uploading…'}
+            description="Keep this tab open until the upload finishes."
+          />
+        );
+      }
+
+      if (isFailed) {
+        return (
+          <RoomVideoStageOverlay
+            icon={AlertTriangle}
+            eyebrow="Upload failed"
+            title="Video could not be uploaded"
+            description="Edit the room to choose another file and try again."
+          />
+        );
+      }
+
+      if (error != null) {
+        return (
+          <RoomVideoStageOverlay
+            icon={AlertTriangle}
+            eyebrow="Unable to load"
+            title="Something went wrong"
+            description={error}
+          />
+        );
+      }
+
+      return (
+        <RoomVideoStageOverlay
+          icon={Clapperboard}
+          eyebrow={showHostControls ? 'Your room' : 'Waiting for host'}
+          title={showHostControls ? 'Add a video to start' : 'No video yet'}
+          description={placeholderText ?? 'Waiting for the host to upload a video…'}
+          footer={ownerActions}
+          interactiveFooter={ownerActions != null}
+        />
+      );
+    }
+
+    if (!videoReady && currentTime === 0) {
+      return preparingOverlay;
+    }
+
+    return null;
+  })();
+
   return (
     <div
       ref={shellRef}
@@ -202,7 +308,7 @@ export function RoomVideoPlayer({
               onClick={handleStageClick}
               onTimeUpdate={handleTimeUpdate}
               onProgress={handleProgress}
-              onLoadedMetadata={onLoadedMetadata}
+              onLoadedMetadata={handleLoadedMetadata}
               onLoadedData={onLoadedData}
               onPlay={onPlay}
               onPause={onPause}
@@ -214,73 +320,7 @@ export function RoomVideoPlayer({
             />
           )}
 
-          {showPlaceholder && (
-            <div className="room-video-player__overlay room-video-player__overlay--placeholder">
-              <div className="room-video-player__placeholder-stack">
-                {loading ? (
-                  <>
-                    <p className="room-video-player__placeholder-icon">⏳</p>
-                    <p className="room-video-player__placeholder-text">Loading video…</p>
-                  </>
-                ) : isUploading ? (
-                  <>
-                    <p className="room-video-player__placeholder-icon">📤</p>
-                    <p className="room-video-player__placeholder-text">
-                      {movieName ? `"${movieName}" is still uploading…` : 'Video is still uploading…'}
-                    </p>
-                    <div className="room-video-player__upload-progress">
-                      <MovieUploadProgress percent={0} indeterminate label="Preparing video for playback" />
-                    </div>
-                  </>
-                ) : isFailed ? (
-                  <>
-                    <p className="room-video-player__placeholder-icon">⚠️</p>
-                    <p className="room-video-player__placeholder-text">Video upload failed. Edit the room to try again.</p>
-                  </>
-                ) : error ? (
-                  <>
-                    <p className="room-video-player__placeholder-icon">⚠️</p>
-                    <p className="room-video-player__placeholder-text">{error}</p>
-                  </>
-                ) : (
-                  <>
-                    <p className="room-video-player__placeholder-icon">⏳</p>
-                    <p className="room-video-player__placeholder-text">
-                      {placeholderText ?? 'Waiting for the host to upload a video…'}
-                    </p>
-                  </>
-                )}
-
-                {ownerActions && (
-                  <div className="room-video-player__owner-actions room-video-player__overlay--interactive">
-                    {ownerActions}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {showAwaitingHostOverlay && (
-            <MovieAwaitingHostOverlay
-              movieName={awaitingHostMovieName}
-              loading={awaitingHostLoading}
-              isHost={isHostViewer}
-            />
-          )}
-
-          {mediaSrc !== null &&
-            !videoReady &&
-            !videoError &&
-            currentTime === 0 &&
-            !showAwaitingHostOverlay && (
-            <div className="room-video-player__overlay room-video-player__overlay--loading">Loading video…</div>
-          )}
-
-          {videoError !== null && (
-            <div className="room-video-player__overlay room-video-player__overlay--error room-video-player__overlay--interactive">
-              {videoError}
-            </div>
-          )}
+          {stageOverlay}
 
           {showCenterPlay && (
             <button
