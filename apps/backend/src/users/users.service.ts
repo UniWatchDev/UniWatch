@@ -2,6 +2,8 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 
 import {
   avatarPresetIdSchema,
+  type ActiveUser,
+  type FriendshipStatus,
   type GetUserProfileResponse,
   type PublicProfile,
   type UserSearchResponse
@@ -10,6 +12,8 @@ import {
 import { UserRepository } from '@/auth/user.repository';
 import type { UserDocument } from '@/auth/user.schema';
 import { FriendRequestRepository } from '@/friends/friend-request.repository';
+import { GlobalPresenceService } from '@/realtime/services/global-presence.service';
+import { RoomRepository } from '@/rooms/room.repository';
 
 function userToPublicProfile(doc: UserDocument): PublicProfile {
   const userId = doc._id.toString();
@@ -26,11 +30,30 @@ function userToPublicProfile(doc: UserDocument): PublicProfile {
   };
 }
 
+function docToActiveUser(
+  doc: UserDocument,
+  friendshipStatus: FriendshipStatus,
+  mutualFriendsCount: number,
+  currentRoom: ActiveUser['currentRoom']
+): ActiveUser {
+  return {
+    userId: doc._id.toString(),
+    userName: doc.userName,
+    firstName: doc.firstName,
+    avatarId: avatarPresetIdSchema.parse(doc.avatarId),
+    friendshipStatus,
+    mutualFriendsCount,
+    currentRoom
+  };
+}
+
 @Injectable()
 export class UsersService {
   constructor(
     private readonly users: UserRepository,
-    private readonly friendRequests: FriendRequestRepository
+    private readonly friendRequests: FriendRequestRepository,
+    private readonly presence: GlobalPresenceService,
+    private readonly rooms: RoomRepository
   ) {}
 
   async getProfileByUserName(
@@ -41,26 +64,127 @@ export class UsersService {
     if (doc === null) {
       throw new NotFoundException('User not found');
     }
-
     const viewerIsOwner = doc._id.toString() === viewerUserId;
-    return {
-      profile: userToPublicProfile(doc),
-      viewerIsOwner
-    };
+    return { profile: userToPublicProfile(doc), viewerIsOwner };
+  }
+
+  async getActiveUsers(currentUserId: string): Promise<ActiveUser[]> {
+    const onlineIds = this.presence.getOnlineUserIds();
+
+    if (onlineIds.length === 0) return [];
+
+    const [profiles, friendIds, pendingRequests] = await Promise.all([
+      this.users.findManyByIds(onlineIds),
+      this.users.findFriendIds(currentUserId),
+      this.friendRequests.findAllPendingForUser(currentUserId)
+    ]);
+
+    const friendIdSet = new Set(friendIds);
+    const pendingSentIds = new Set(
+      pendingRequests
+        .filter((r) => r.from.toString() === currentUserId)
+        .map((r) => r.to.toString())
+    );
+
+    // Exclude self from mutual-count DB lookups (self has no meaningful mutual count)
+    const strangerIds = onlineIds.filter(
+      (id) => id !== currentUserId && !friendIdSet.has(id) && !pendingSentIds.has(id)
+    );
+
+    const [mutualCounts, roomTypes] = await Promise.all([
+      this.users.findMutualFriendCounts(strangerIds, friendIds),
+      this.resolveRoomTypes(onlineIds)
+    ]);
+
+    const profileMap = new Map(profiles.map((p) => [p._id.toString(), p]));
+
+    const result: ActiveUser[] = [];
+    for (const id of onlineIds) {
+      const doc = profileMap.get(id);
+      if (doc === undefined) continue;
+
+      const fs: FriendshipStatus = friendIdSet.has(id)
+        ? 'friend'
+        : pendingSentIds.has(id)
+        ? 'pending_sent'
+        : 'none';
+
+      const presence = this.presence.getUserPresence(id);
+      const roomType =
+        presence.currentRoomId !== undefined
+          ? (roomTypes.get(presence.currentRoomId) ?? ('private' as const))
+          : undefined;
+      // Only expose room metadata for public rooms; private room names/ids are
+      // not visible to non-members.
+      const currentRoom =
+        presence.currentRoomId !== undefined &&
+        presence.currentRoomName !== undefined &&
+        roomType === 'public'
+          ? {
+              roomId: presence.currentRoomId,
+              roomName: presence.currentRoomName,
+              roomType: 'public' as const
+            }
+          : null;
+
+      result.push(
+        docToActiveUser(doc, fs, fs === 'none' ? (mutualCounts.get(id) ?? 0) : 0, currentRoom)
+      );
+    }
+
+    return result.sort((a, b) => {
+      if (a.friendshipStatus === 'friend' && b.friendshipStatus !== 'friend') return -1;
+      if (a.friendshipStatus !== 'friend' && b.friendshipStatus === 'friend') return 1;
+      return 0;
+    });
   }
 
   async searchUsers(viewerUserId: string, q: string): Promise<UserSearchResponse> {
-    const [friendIds, pendingRequests] = await Promise.all([
+    const [friendIds, pendingRequests, docs] = await Promise.all([
       this.users.findFriendIds(viewerUserId),
-      this.friendRequests.findAllPendingForUser(viewerUserId)
+      this.friendRequests.findAllPendingForUser(viewerUserId),
+      this.users.searchByUsername(viewerUserId, q, [])
     ]);
 
-    const pendingUserIds = pendingRequests.map((r) =>
-      r.from.toString() === viewerUserId ? r.to.toString() : r.from.toString()
+    const friendIdSet = new Set(friendIds);
+    const pendingSentIds = new Set(
+      pendingRequests
+        .filter((r) => r.from.toString() === viewerUserId)
+        .map((r) => r.to.toString())
     );
-    const excludeIds = [...new Set([...friendIds, ...pendingUserIds])];
 
-    const docs = await this.users.searchByUsername(viewerUserId, q, excludeIds);
-    return docs.map(userToPublicProfile);
+    const strangerDocIds = docs
+      .map((d) => d._id.toString())
+      .filter((id) => !friendIdSet.has(id) && !pendingSentIds.has(id));
+
+    const mutualCounts = await this.users.findMutualFriendCounts(strangerDocIds, friendIds);
+
+    return docs.map((doc) => {
+      const id = doc._id.toString();
+      const fs: FriendshipStatus = friendIdSet.has(id)
+        ? 'friend'
+        : pendingSentIds.has(id)
+        ? 'pending_sent'
+        : 'none';
+      return docToActiveUser(
+        doc,
+        fs,
+        fs === 'none' ? (mutualCounts.get(id) ?? 0) : 0,
+        null
+      );
+    });
   }
+
+  private async resolveRoomTypes(userIds: string[]): Promise<Map<string, 'public' | 'private'>> {
+    const roomIds = [
+      ...new Set(
+        userIds
+          .map((id) => this.presence.getUserPresence(id).currentRoomId)
+          .filter((id): id is string => id !== undefined)
+      )
+    ];
+    if (roomIds.length === 0) return new Map();
+    return this.rooms.findTypesByIds(roomIds);
+  }
+
 }

@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 
 import { FRIEND_BROADCAST_PORT } from '@/realtime/friend-broadcast.port';
 import { UserRepository } from '@/auth/user.repository';
+import { GlobalPresenceService } from '@/realtime/services/global-presence.service';
 import { FriendRequestRepository } from './friend-request.repository';
 import { FriendsService } from './friends.service';
 
@@ -46,6 +47,15 @@ describe('FriendsService', () => {
           useValue: {
             notifyFriendRequest: jest.fn(),
             notifyRequestAccepted: jest.fn()
+          }
+        },
+        {
+          provide: GlobalPresenceService,
+          useValue: {
+            isOnline: jest.fn().mockReturnValue(false),
+            getOnlineUserIds: jest.fn().mockReturnValue([]),
+            getUserPresence: jest.fn().mockReturnValue({ isOnline: false }),
+            getSocketsForUser: jest.fn().mockReturnValue([])
           }
         }
       ]

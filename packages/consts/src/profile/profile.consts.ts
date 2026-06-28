@@ -9,3 +9,6 @@ export const USERS_BY_USERNAME_ENDPOINT = '/api/users/:userName' as const;
 
 /** GET /api/users/search?q=:username */
 export const USERS_SEARCH_ENDPOINT = '/api/users/search' as const;
+
+/** GET /api/users/active — all online platform users enriched with friendship status. */
+export const USERS_ACTIVE_ENDPOINT = '/api/users/active' as const;

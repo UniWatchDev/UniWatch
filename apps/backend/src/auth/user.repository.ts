@@ -205,6 +205,39 @@ export class UserRepository {
     return (friends ?? []).map((id) => id.toString());
   }
 
+  async findMutualFriendCounts(
+    strangerIds: string[],
+    currentFriendIds: string[]
+  ): Promise<Map<string, number>> {
+    const counts = new Map<string, number>(strangerIds.map((id) => [id, 0]));
+    if (strangerIds.length === 0 || currentFriendIds.length === 0) return counts;
+
+    const strangerOids = strangerIds
+      .filter((id) => Types.ObjectId.isValid(id))
+      .map((id) => new Types.ObjectId(id));
+    const friendOids = currentFriendIds
+      .filter((id) => Types.ObjectId.isValid(id))
+      .map((id) => new Types.ObjectId(id));
+
+    const results = await this.model.aggregate<{ _id: Types.ObjectId; mutualCount: number }>([
+      { $match: { _id: { $in: strangerOids } } },
+      {
+        $project: {
+          mutualCount: {
+            $size: {
+              $ifNull: [{ $setIntersection: ['$friends', friendOids] }, []]
+            }
+          }
+        }
+      }
+    ]);
+
+    for (const r of results) {
+      counts.set(r._id.toString(), r.mutualCount);
+    }
+    return counts;
+  }
+
   setIsAdmin(id: string, isAdmin: boolean): Promise<UserDocument | null> {
     if (!Types.ObjectId.isValid(id)) {
       return Promise.resolve(null);

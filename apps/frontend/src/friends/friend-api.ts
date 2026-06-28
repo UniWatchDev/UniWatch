@@ -7,10 +7,10 @@ import {
   sendFriendRequestContract,
   unfriendContract
 } from '@repo/contracts/friends';
-import { searchUsersContract } from '@repo/contracts/users';
+import { getActiveUsersContract, searchUsersContract } from '@repo/contracts/users';
 import type { DirectMessage } from '@repo/schemas/dm';
 import type { FriendRequestResponse, SendFriendRequestResponse } from '@repo/schemas/friends';
-import type { PublicProfile } from '@repo/schemas/profile';
+import type { ActiveUser } from '@repo/schemas/profile';
 
 async function authedFetch(
   url: string,
@@ -28,7 +28,7 @@ async function authedFetch(
   return res;
 }
 
-export async function apiFetchFriends(): Promise<PublicProfile[]> {
+export async function apiFetchFriends() {
   const res = await authedFetch(`${API_BASE_URL}${listFriendsContract.path}`);
   return listFriendsContract.responseSchema.parse(await res.json());
 }
@@ -71,7 +71,7 @@ export async function apiUnfriend(targetUserId: string): Promise<void> {
   await authedFetch(`${API_BASE_URL}${path}`, { method: unfriendContract.method });
 }
 
-export async function apiSearchUsers(q: string): Promise<PublicProfile[]> {
+export async function apiSearchUsers(q: string): Promise<ActiveUser[]> {
   const query = searchUsersContract.querySchema.parse({ q });
   const qs = new URLSearchParams({ q: query.q }).toString();
   const res = await authedFetch(`${API_BASE_URL}${searchUsersContract.path}?${qs}`);
@@ -83,4 +83,9 @@ export async function apiFetchDmHistory(targetUserId: string): Promise<DirectMes
   const path = getDmHistoryContract.path.replace(':userId', encodeURIComponent(params.userId));
   const res = await authedFetch(`${API_BASE_URL}${path}`);
   return getDmHistoryContract.responseSchema.parse(await res.json());
+}
+
+export async function apiGetActiveUsers(): Promise<ActiveUser[]> {
+  const res = await authedFetch(`${API_BASE_URL}${getActiveUsersContract.path}`);
+  return getActiveUsersContract.responseSchema.parse(await res.json());
 }

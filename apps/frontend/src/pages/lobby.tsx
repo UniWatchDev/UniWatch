@@ -10,7 +10,7 @@ import { FeaturedRoomHero } from '@/components/featured-room-hero';
 import { CinemaRoomCard } from '@/components/cinema-room-card';
 import type { RoomResponse, RoomStatus } from '@/types/room';
 import { Search } from 'lucide-react';
-import { LobbyFriendSidebar } from '@/friends/lobby-friend-sidebar';
+import { ActiveUsersSidebar } from '@/lobby/active-users-sidebar';
 import { AdminCatalogPanel } from '@/admin/admin-catalog-panel';
 import { useCookieAuth } from '@/auth/use-cookie-auth';
 
@@ -246,7 +246,7 @@ export function Lobby() {
         )}
       </div>
       </div>
-      <LobbyFriendSidebar />
+      <ActiveUsersSidebar />
     </div>
   );
 }

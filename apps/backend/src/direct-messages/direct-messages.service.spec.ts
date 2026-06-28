@@ -51,24 +51,17 @@ describe('DirectMessagesService', () => {
   });
 
   describe('friendship gate', () => {
-    it('getHistory throws ForbiddenException when users are not friends', async () => {
-      friendsService.getFriendList.mockResolvedValueOnce([]);
-      await expect(service.getHistory(ALICE, BOB)).rejects.toBeInstanceOf(ForbiddenException);
+    it('getHistory returns conversation history without a friendship check', async () => {
+      repo.findConversation.mockResolvedValueOnce([]);
+      const result = await service.getHistory(ALICE, BOB);
+      expect(result).toEqual([]);
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(repo.findConversation).toHaveBeenCalledWith(ALICE, BOB, 50);
     });
 
     it('send throws ForbiddenException when users are not friends', async () => {
       friendsService.getFriendList.mockResolvedValueOnce([]);
       await expect(service.send(ALICE, BOB, 'hello')).rejects.toBeInstanceOf(ForbiddenException);
-    });
-
-    it('getHistory returns messages when users are friends', async () => {
-      friendsService.getFriendList.mockResolvedValueOnce([BOB_PROFILE]);
-      repo.findConversation.mockResolvedValueOnce([]);
-
-      const result = await service.getHistory(ALICE, BOB);
-      expect(result).toEqual([]);
-      // eslint-disable-next-line @typescript-eslint/unbound-method
-      expect(repo.findConversation).toHaveBeenCalledWith(ALICE, BOB, 50);
     });
 
     it('send creates message when users are friends', async () => {

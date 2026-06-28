@@ -1,15 +1,21 @@
-import { USERS_SEARCH_ENDPOINT } from '@repo/consts/profile';
+import { USERS_ACTIVE_ENDPOINT, USERS_SEARCH_ENDPOINT } from '@repo/consts/profile';
 import {
-  publicProfileSchema,
+  getActiveUsersResponseSchema,
   userSearchQuerySchema,
-  type PublicProfile,
+  type ActiveUser,
   type UserSearchQuery
 } from '@repo/schemas/profile';
 import type { EndpointContract } from '../shared/endpoint.js';
 
-export const searchUsersContract: EndpointContract<PublicProfile[], void, void, UserSearchQuery> = {
+export const searchUsersContract: EndpointContract<ActiveUser[], void, void, UserSearchQuery> = {
   method: 'GET',
   path: USERS_SEARCH_ENDPOINT,
-  responseSchema: publicProfileSchema.array(),
+  responseSchema: getActiveUsersResponseSchema,
   querySchema: userSearchQuerySchema
+};
+
+export const getActiveUsersContract: EndpointContract<ActiveUser[]> = {
+  method: 'GET',
+  path: USERS_ACTIVE_ENDPOINT,
+  responseSchema: getActiveUsersResponseSchema
 };
