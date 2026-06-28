@@ -174,7 +174,7 @@ export function MovieUploadField({
                 Drop a video file here or browse
               </p>
               <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>
-                {MOVIE_ALLOWED_FORMATS_LABEL}, up to 1 GB
+                {MOVIE_ALLOWED_FORMATS_LABEL}, up to 5 GB
               </p>
             </div>
             <div style={{ display: 'flex', justifyContent: 'center' }}>

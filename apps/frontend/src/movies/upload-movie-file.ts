@@ -21,7 +21,7 @@ export function validateMovieFile(file: File): string | null {
     return `Only ${MOVIE_ALLOWED_FORMATS_LABEL} video files are supported.`;
   }
   if (file.size > MOVIE_MAX_BYTES) {
-    return 'File exceeds the 1 GB upload limit.';
+    return 'File exceeds the 5 GB upload limit.';
   }
   return null;
 }

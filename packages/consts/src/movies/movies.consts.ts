@@ -6,7 +6,7 @@ export const MOVIE_UPLOAD_ENDPOINT = '/api/movies/:id/upload' as const;
 export const MOVIE_STREAM_ENDPOINT = '/api/movies/:id/stream' as const;
 export const MOVIE_MEDIA_ENDPOINT = '/api/movies/:id/media' as const;
 
-export const MOVIE_MAX_BYTES = 1_073_741_824;
+export const MOVIE_MAX_BYTES = 5_368_709_120;
 
 /** Canonical MIME types accepted for movie uploads (MP4 + QuickTime .MOV). */
 export const MOVIE_ALLOWED_MIMES = ['video/mp4', 'video/quicktime'] as const;
