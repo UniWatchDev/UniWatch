@@ -860,7 +860,7 @@ textarea.input {
   width: 100%;
   height: 3px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.2);
   overflow: hidden;
   transition: height 160ms ease;
 }
@@ -874,7 +874,7 @@ textarea.input {
   inset-block: 0;
   left: 0;
   border-radius: inherit;
-  background: rgba(255, 255, 255, 0.22);
+  background: rgba(210, 210, 210, 0.92);
 }
 
 .room-video-player__progress-played {
@@ -882,11 +882,7 @@ textarea.input {
   inset-block: 0;
   left: 0;
   border-radius: inherit;
-  background: #fff;
-}
-
-.dark .room-video-player__progress-played {
-  background: #fff;
+  background: #e50914;
 }
 
 .room-video-player__progress-thumb {
@@ -897,7 +893,7 @@ textarea.input {
   margin-top: -6px;
   margin-left: -6px;
   border-radius: 50%;
-  background: #fff;
+  background: #e50914;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18);
   opacity: 0;
   transform: scale(0.5);
