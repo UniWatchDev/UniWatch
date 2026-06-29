@@ -180,6 +180,7 @@ export const loginResponseSchema = z.strictObject({
     'teal-ticket',
     'gold-bolt'
   ]),
+  isAdmin: z.boolean(),
   createdAt: z.string()
 });
 

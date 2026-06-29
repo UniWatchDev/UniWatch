@@ -131,7 +131,8 @@ export class RoomMovieChangeService {
       userName: options.actorUserName,
       color: actor?.color ?? DEFAULT_USER_COLOR,
       content,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      kind: 'chat'
     };
   }
 

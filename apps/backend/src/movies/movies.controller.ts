@@ -49,6 +49,16 @@ export class MoviesController {
     return this.moviesService.list(getAuthenticatedUserId(req));
   }
 
+  @Get('catalog')
+  @ZodResponse({
+    status: 200,
+    description: 'List curated catalog movies available to all authenticated users',
+    type: [MovieResponseDto]
+  })
+  listCatalog(): Promise<MovieResponse[]> {
+    return this.moviesService.listCatalog();
+  }
+
   @Get(':id/stream')
   @ZodResponse({
     status: 200,

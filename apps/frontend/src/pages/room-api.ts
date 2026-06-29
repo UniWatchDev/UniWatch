@@ -1,12 +1,15 @@
 import { API_BASE_URL } from '@repo/consts/api';
+import { ROOM_BANNED_MESSAGE } from '@repo/consts/realtime';
 import { getAuthMeContract } from '@repo/contracts/auth';
 import {
   getRoomContract,
   joinRoomContract,
   leaveRoomContract,
-  previewRoomContract
+  listBlockedUsersContract,
+  previewRoomContract,
+  unblockUserContract
 } from '@repo/contracts/rooms';
-import type { RoomPreview, RoomResponse } from '@repo/schemas/rooms';
+import type { BlockedUser, RoomPreview, RoomResponse } from '@repo/schemas/rooms';
 
 function roomPath(template: string, id: string): string {
   return `${API_BASE_URL}${template.replace(':id', encodeURIComponent(id))}`;
@@ -15,6 +18,10 @@ function roomPath(template: string, id: string): string {
 async function readErrorDetail(res: Response): Promise<string> {
   const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   return typeof data['detail'] === 'string' ? data['detail'] : `HTTP ${String(res.status)}`;
+}
+
+export function isRoomBanMessage(message: string): boolean {
+  return message === ROOM_BANNED_MESSAGE || message.toLowerCase().includes('banned from this room');
 }
 
 export async function fetchRoom(id: string): Promise<RoomResponse> {
@@ -71,4 +78,33 @@ export async function fetchCurrentUserId(): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+export async function fetchBlockedUsers(roomId: string): Promise<BlockedUser[]> {
+  const params = listBlockedUsersContract.paramsSchema.parse({ id: roomId });
+  const path = listBlockedUsersContract.path.replace(':id', encodeURIComponent(params.id));
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    headers: { Accept: 'application/json' },
+    credentials: 'include'
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res));
+  }
+  return listBlockedUsersContract.responseSchema.parse(await res.json());
+}
+
+export async function unblockUser(roomId: string, userId: string): Promise<BlockedUser[]> {
+  const params = unblockUserContract.paramsSchema.parse({ id: roomId, userId });
+  const path = unblockUserContract.path
+    .replace(':id', encodeURIComponent(params.id))
+    .replace(':userId', encodeURIComponent(params.userId));
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    method: unblockUserContract.method,
+    headers: { Accept: 'application/json' },
+    credentials: 'include'
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res));
+  }
+  return unblockUserContract.responseSchema.parse(await res.json());
 }

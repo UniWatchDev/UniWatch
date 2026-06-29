@@ -8,16 +8,8 @@ export function MovieUploadProgress({
   indeterminate?: boolean;
 }) {
   return (
-    <div style={{ marginTop: 8 }}>
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          fontSize: 12,
-          color: 'var(--text-muted)',
-          marginBottom: 6,
-        }}
-      >
+    <div className="movie-upload-progress">
+      <div className="movie-upload-progress__header">
         <span>{label}</span>
         {!indeterminate && <span>{percent}%</span>}
       </div>
@@ -28,21 +20,11 @@ export function MovieUploadProgress({
         aria-valuenow={indeterminate ? undefined : percent}
         aria-busy={indeterminate}
         aria-label={label}
-        style={{
-          height: 8,
-          borderRadius: 999,
-          background: 'var(--bg-input)',
-          overflow: 'hidden',
-        }}
+        className="movie-upload-progress__track"
       >
         <div
-          className={indeterminate ? 'upload-progress-indeterminate' : undefined}
-          style={{
-            height: '100%',
-            width: indeterminate ? '40%' : `${String(percent)}%`,
-            background: 'linear-gradient(90deg, var(--accent), #ec4899)',
-            transition: indeterminate ? undefined : 'width 200ms ease',
-          }}
+          className={indeterminate ? 'movie-upload-progress__fill upload-progress-indeterminate' : 'movie-upload-progress__fill'}
+          style={indeterminate ? undefined : { width: `${String(percent)}%` }}
         />
       </div>
     </div>

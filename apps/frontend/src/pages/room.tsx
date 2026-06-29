@@ -1,39 +1,49 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
 import { ROOM_CLOSED_MESSAGE } from '@repo/consts/realtime';
-import type { RoomPreview, RoomResponse, RoomStatus } from '@repo/schemas/rooms';
-import { useRoomSocket, type PlaybackChangeEvent } from '@/hooks/use-room-socket';
+import type { BlockedUser, RoomPreview, RoomResponse, RoomStatus } from '@repo/schemas/rooms';
 import { attachMovieToRoom } from '@/movies/attach-room-movie';
 import { MovieUploadField } from '@/movies/movie-upload-field';
-import { MovieUploadProgress } from '@/movies/movie-upload-progress';
 import { RoomVideoPlayer } from '@/movies/room-video-player';
 import type { PlaybackRate } from '@/movies/room-playback';
 import { useRoomPlaybackSync } from '@/movies/use-room-playback-sync';
 import { useRoomMovie } from '@/movies/use-room-movie';
 import { prepareMovieForRoom } from '@/movies/prepare-movie-for-room';
+import { clearRoomUpload } from '@/movies/room-upload-tracker';
+import { useRoomUploadProgress } from '@/movies/use-room-upload-progress';
 import { validateMovieFile } from '@/movies/upload-movie-file';
+import type { PlaybackChangeEvent } from '@/hooks/use-room-socket';
+import { useRoomSession } from '@/rooms/room-session-context';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ParticipantList } from '@/components/participant-list';
 import { CinemaChat } from '@/components/cinema-chat';
 import { CountdownOverlay } from '@/components/countdown-overlay';
 import { ForcePlayConfirmationModal } from '@/components/force-play-confirmation-modal';
+import { RoomModerationModal, type RoomModerationAction } from '@/components/room-moderation-modal';
 import { InviteFriends } from '@/components/invite-friends';
-import { RoomMovieChangeNotice } from '@/components/room-movie-change-notice';
+import { CopyRoomLinkButton } from '@/components/copy-room-link-button';
 import { RoomClosedOverlay } from '@/components/room-closed-overlay';
+import type { RoomExitTone } from '@/components/room-exit-notice';
 import { RoomPasswordGate } from '@/components/room-password-gate';
-import { Users, MessageSquare, Volume2, VolumeX } from 'lucide-react';
+import { AppUtilityBar } from '@/components/app-utility-bar';
+import { MessageSquare, Users, Volume2, VolumeX, LogOut } from 'lucide-react';
+import { messageMentionsUsername, buildUsernameColorMap } from '@/utils/chat-mentions';
 import { useFriendContext } from '@/friends/use-friend-context';
 import type { Member } from '@/types/room';
 import {
+  fetchBlockedUsers,
   fetchCurrentUserId,
   fetchRoom,
   fetchRoomPreview,
+  isRoomBanMessage,
   joinRoom,
-  leaveRoom
+  leaveRoom,
+  unblockUser as unblockRoomUser
 } from '@/pages/room-api';
 import { RoomStatusBadge } from '@/rooms/room-status-badge';
-import { roomStatusShortLabel } from '@/rooms/room-status-display';
+import { playerToolbarStatusTone, roomStatusShortLabel } from '@/rooms/room-status-display';
+import { ThemeToggleButton } from '@/theme/theme-toggle-button';
 
 const ROOM_CLOSED_REDIRECT_MS = 1_800;
 
@@ -80,6 +90,21 @@ function playBeep() {
   } catch { /* audio not available */ }
 }
 
+function playMentionBeep() {
+  try {
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = 1046;
+    gain.gain.setValueAtTime(0.1, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.3);
+  } catch { /* audio not available */ }
+}
+
 
 function PencilIcon() {
   return (
@@ -117,6 +142,8 @@ export function RoomPage() {
   const [ownerMovieSaving, setOwnerMovieSaving] = useState(false);
   const [activeTab, setActiveTab] = useState('chat');
   const [unreadCount, setUnreadCount] = useState(0);
+  const [mentionUnreadCount, setMentionUnreadCount] = useState(0);
+  const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
   const [chatSoundMuted, setChatSoundMuted] = useState(false);
   const [chatDraft, setChatDraft] = useState('');
   const [ownerUploadFile, setOwnerUploadFile] = useState<File | null>(null);
@@ -124,6 +151,15 @@ export function RoomPage() {
   const [ownerUploadPercent, setOwnerUploadPercent] = useState<number | null>(null);
   const [showRoomPassword, setShowRoomPassword] = useState(false);
   const [forcePlayModalOpen, setForcePlayModalOpen] = useState(false);
+  const [moderationTarget, setModerationTarget] = useState<{
+    member: Member;
+    action: RoomModerationAction;
+  } | null>(null);
+  const [showBlockedUsers, setShowBlockedUsers] = useState(false);
+  const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
+  const [blockedLoading, setBlockedLoading] = useState(false);
+  const [blockedError, setBlockedError] = useState<string | null>(null);
+  const [unblockingId, setUnblockingId] = useState<string | null>(null);
   const [remotePlaybackEvent, setRemotePlaybackEvent] = useState<PlaybackChangeEvent | null>(null);
   const [swapMovieId, setSwapMovieId] = useState<string | null>(null);
   const [movieChangePending, setMovieChangePending] = useState<{ movieName: string | null } | null>(
@@ -142,7 +178,11 @@ export function RoomPage() {
   const roomClosedPendingRef = useRef(false);
   const roomClosedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const PROGRESS_UI_MS = 250;
-  const [roomClosedNotice, setRoomClosedNotice] = useState<string | null>(null);
+  const [roomExitNotice, setRoomExitNotice] = useState<{
+    message: string;
+    title: string;
+    tone: RoomExitTone;
+  } | null>(null);
 
   useEffect(() => {
     return () => {
@@ -152,19 +192,27 @@ export function RoomPage() {
     };
   }, []);
 
-  const redirectToLobbyClosed = useCallback(
-    (message: string) => {
+  const redirectToLobby = useCallback(
+    (
+      message: string,
+      options?: { title?: string; tone?: RoomExitTone }
+    ) => {
       if (roomClosedRedirectRef.current || roomClosedPendingRef.current) {
         return;
       }
+      const tone = options?.tone ?? 'closed';
+      const title = options?.title ?? (tone === 'kicked' ? 'Removed from room' : tone === 'banned' ? 'Banned from room' : 'Room closed');
       roomClosedPendingRef.current = true;
-      setRoomClosedNotice(message);
+      setRoomExitNotice({ message, title, tone });
       if (roomClosedTimerRef.current !== null) {
         clearTimeout(roomClosedTimerRef.current);
       }
       roomClosedTimerRef.current = setTimeout(() => {
         roomClosedRedirectRef.current = true;
-        void navigate('/rooms', { replace: true, state: { roomClosedMessage: message } });
+        void navigate('/rooms', {
+          replace: true,
+          state: { lobbyNoticeMessage: message, lobbyNoticeTitle: title, lobbyNoticeTone: tone }
+        });
       }, ROOM_CLOSED_REDIRECT_MS);
     },
     [navigate]
@@ -189,12 +237,12 @@ export function RoomPage() {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : '';
       if (msg.includes('404')) {
-        redirectToLobbyClosed(ROOM_CLOSED_MESSAGE);
+      redirectToLobby(ROOM_CLOSED_MESSAGE, { tone: 'closed' });
         return;
       }
       console.error('[room]', msg || 'Failed to refresh room');
     }
-  }, [id, redirectToLobbyClosed]);
+  }, [id, redirectToLobby]);
 
   const handleMovieUpdated = useCallback((movieId: string, movieName?: string) => {
     if (movieId.length === 0) return;
@@ -244,13 +292,6 @@ export function RoomPage() {
     setRemotePlaybackEvent(null);
   }, []);
 
-  const handleRoomClosed = useCallback(
-    (message: string) => {
-      redirectToLobbyClosed(message);
-    },
-    [redirectToLobbyClosed]
-  );
-
   const {
     messages,
     members,
@@ -262,17 +303,35 @@ export function RoomPage() {
     sendPlaybackUpdate,
     sendKickUser,
     sendBlockUser,
-    connectionGeneration
-  } = useRoomSocket({
-    roomId: id ?? '',
-    disabled: loading || room === null,
-    creatorId: room?.creator ?? '',
-    creatorName: room?.creator_name ?? undefined,
-    initialMemberIds: room?.allowed_users ?? [],
-    onMovieUpdated: handleMovieUpdated,
-    onPlaybackChanged: handlePlaybackChanged,
-    onRoomClosed: handleRoomClosed
-  });
+    connectionGeneration,
+    syncSessionRoom,
+    registerMovieUpdatedHandler,
+    registerPlaybackChangedHandler,
+  } = useRoomSession();
+
+  useEffect(() => {
+    if (room !== null) {
+      syncSessionRoom(room);
+    }
+  }, [room, syncSessionRoom]);
+
+  useEffect(() => {
+    registerMovieUpdatedHandler(handleMovieUpdated);
+    return () => {
+      registerMovieUpdatedHandler(null);
+    };
+  }, [handleMovieUpdated, registerMovieUpdatedHandler]);
+
+  useEffect(() => {
+    registerPlaybackChangedHandler(handlePlaybackChanged);
+    return () => {
+      registerPlaybackChangedHandler(null);
+    };
+  }, [handlePlaybackChanged, registerPlaybackChangedHandler]);
+
+  const roomUpload = useRoomUploadProgress(id);
+  const trackerIsActive =
+    roomUpload?.phase === 'uploading' || roomUpload?.phase === 'complete';
 
   const authoritativeMovieId = resolveActiveRoomMovieId(
     roomState.playback.movieId,
@@ -280,7 +339,20 @@ export function RoomPage() {
     room?.movie ?? null
   );
   const roomMovieId = canCurrentUserAccessRoomMovie(currentUserId, room) ? authoritativeMovieId : null;
-  const ownerIsUploading = ownerMovieSaving || ownerUploadPercent !== null;
+  const ownerIsUploading =
+    ownerMovieSaving || ownerUploadPercent !== null || trackerIsActive;
+
+  useEffect(() => {
+    if (roomUpload?.phase === 'complete' && id !== undefined) {
+      setMovieStreamRevision((revision) => revision + 1);
+    }
+  }, [roomUpload?.phase, id]);
+
+  useEffect(() => {
+    if (roomUpload?.phase === 'failed' && roomUpload.error !== undefined) {
+      setOwnerUploadError(roomUpload.error);
+    }
+  }, [roomUpload?.phase, roomUpload?.error]);
 
   useEffect(() => {
     swapMovieIdRef.current = swapMovieId;
@@ -315,6 +387,18 @@ export function RoomPage() {
   } = useRoomMovie(roomMovieId, movieStreamRevision);
   const isOwner = currentUserId !== null && currentUserId === room?.creator;
 
+  useEffect(() => {
+    if (roomUpload?.phase === 'complete' && moviePlayable && id !== undefined) {
+      clearRoomUpload(id);
+    }
+  }, [roomUpload?.phase, moviePlayable, id]);
+
+  useEffect(() => {
+    if (moviePlayable && ownerUploadPercent !== null) {
+      setOwnerUploadPercent(null);
+    }
+  }, [moviePlayable, ownerUploadPercent]);
+
   const showMovieSwapOverlay =
     movieChangePending !== null &&
     !roomState.playback.isPlaying &&
@@ -324,7 +408,6 @@ export function RoomPage() {
     (mediaSrc !== null || movieLoading);
   const awaitingHostMovieName =
     movieChangePending?.movieName ?? movie?.name ?? room?.movie_name ?? null;
-  const showMovieChangeNotice = movieChangePending !== null;
 
   const displayMembers = members.map((member) => ({
     ...member,
@@ -341,11 +424,45 @@ export function RoomPage() {
   const needsForcePlayConfirmation = isOwner && !isSoloHost && unreadyMembers.length > 0;
   const showCountdown = roomState.countdown.active && !countdownDismissed;
   const readinessMembers = displayMembers.filter((member) => !member.isHost);
+  const chatUsernameColors = useMemo(
+    () => buildUsernameColorMap(
+      displayMembers.map((member) => ({ username: member.username, color: member.avatarColor }))
+    ),
+    [displayMembers]
+  );
+  const chatMentionCandidates = useMemo(
+    () => displayMembers
+      .filter((member) => member.id !== currentUserId)
+      .map((member) => ({
+        userId: member.id,
+        username: member.username,
+        name: member.name,
+        color: member.avatarColor,
+      })),
+    [displayMembers, currentUserId]
+  );
+  const mentionedMessageIds = useMemo(() => {
+    const ids = new Set<string>();
+    const username = currentMember?.username ?? '';
+    if (username.length === 0) {
+      return ids;
+    }
+    for (const message of messages) {
+      if (message.kind === 'system') {
+        continue;
+      }
+      if (messageMentionsUsername(message.content, username)) {
+        ids.add(message.id);
+      }
+    }
+    return ids;
+  }, [messages, currentMember?.username]);
   const handleAddFriend = (member: Member) => {
     void sendFriendReq(member.id);
   };
   const handleTagUser = (member: Member) => {
     setActiveTab('chat');
+    setMobilePanelOpen(true);
     setChatDraft((draft) => {
       const prefix = draft.length > 0 && !draft.endsWith(' ') ? `${draft} ` : draft;
       return `${prefix}@${member.username} `;
@@ -353,11 +470,68 @@ export function RoomPage() {
   };
   const handleKickUser = (member: Member) => {
     if (!isOwner) return;
-    sendKickUser(member.id);
+    setModerationTarget({ member, action: 'kick' });
   };
   const handleBlockUser = (member: Member) => {
     if (!isOwner) return;
-    sendBlockUser(member.id);
+    setModerationTarget({ member, action: 'block' });
+  };
+  const cancelModeration = () => {
+    setModerationTarget(null);
+  };
+  const confirmModeration = () => {
+    if (moderationTarget === null || !isOwner) return;
+    const { member, action } = moderationTarget;
+    if (action === 'kick') {
+      sendKickUser(member.id);
+    } else {
+      sendBlockUser(member.id);
+      setBlockedUsers((current) => {
+        if (current.some((user) => user.id === member.id)) {
+          return current;
+        }
+        return [...current, { id: member.id, name: member.name }];
+      });
+      setShowBlockedUsers(true);
+    }
+    setModerationTarget(null);
+  };
+  const loadBlockedUsers = useCallback(async () => {
+    if (id === undefined) return;
+    setBlockedLoading(true);
+    setBlockedError(null);
+    try {
+      const users = await fetchBlockedUsers(id);
+      setBlockedUsers(users);
+    } catch (err: unknown) {
+      setBlockedError(err instanceof Error ? err.message : 'Failed to load blocked users');
+    } finally {
+      setBlockedLoading(false);
+    }
+  }, [id]);
+  const toggleBlockedUsersPanel = () => {
+    setShowBlockedUsers((open) => {
+      const next = !open;
+      if (next && blockedUsers.length === 0 && !blockedLoading) {
+        void loadBlockedUsers();
+      }
+      return next;
+    });
+  };
+  const handleUnblockUser = (userId: string) => {
+    if (id === undefined || !isOwner) return;
+    setUnblockingId(userId);
+    setBlockedError(null);
+    void unblockRoomUser(id, userId)
+      .then((users) => {
+        setBlockedUsers(users);
+      })
+      .catch((err: unknown) => {
+        setBlockedError(err instanceof Error ? err.message : 'Failed to unblock user');
+      })
+      .finally(() => {
+        setUnblockingId(null);
+      });
   };
 
   const loadRoom = (roomId: string, cancelled: { current: boolean }) => {
@@ -376,21 +550,39 @@ export function RoomPage() {
           try {
             const preview = await fetchRoomPreview(roomId);
             if (preview.room_type === 'public' && !preview.has_password) {
-              await joinRoom(roomId, undefined);
-              if (!cancelled.current) {
-                autoJoining = true;
-                loadRoom(roomId, cancelled);
+              try {
+                await joinRoom(roomId, undefined);
+                if (!cancelled.current) {
+                  autoJoining = true;
+                  loadRoom(roomId, cancelled);
+                }
+              } catch (joinErr: unknown) {
+                const joinMsg = joinErr instanceof Error ? joinErr.message : '';
+                if (isRoomBanMessage(joinMsg)) {
+                  if (!cancelled.current) {
+                    redirectToLobby(joinMsg, { title: 'Banned from room', tone: 'banned' });
+                  }
+                } else if (!cancelled.current) {
+                  setLoadError('You do not have access to this room.');
+                }
               }
             } else if (!cancelled.current) {
               setRoomPreview(preview);
               setPasswordRequired(true);
             }
-          } catch {
-            if (!cancelled.current) setLoadError('You do not have access to this room.');
+          } catch (joinPreviewErr: unknown) {
+            const previewMsg = joinPreviewErr instanceof Error ? joinPreviewErr.message : '';
+            if (isRoomBanMessage(previewMsg)) {
+              if (!cancelled.current) {
+                redirectToLobby(previewMsg, { title: 'Banned from room', tone: 'banned' });
+              }
+            } else if (!cancelled.current) {
+              setLoadError('You do not have access to this room.');
+            }
           }
         } else if (msg.includes('404')) {
           if (!cancelled.current) {
-            redirectToLobbyClosed(ROOM_CLOSED_MESSAGE);
+          redirectToLobby(ROOM_CLOSED_MESSAGE, { tone: 'closed' });
           }
         } else if (!cancelled.current) {
           setLoadError(msg || 'Failed to load room');
@@ -482,14 +674,42 @@ export function RoomPage() {
     if (messages.length > prevMessageCount.current) {
       const newFromOthers = messages
         .slice(prevMessageCount.current)
-        .filter((m) => m.userId !== currentUserId);
+        .filter((m) => m.userId !== currentUserId && m.kind !== 'system');
       if (newFromOthers.length > 0 && activeTab !== 'chat') {
-        if (!chatSoundMuted) playBeep();
+        const currentUsername = currentMember?.username ?? '';
+        const mentionMessages = newFromOthers.filter((message) =>
+          messageMentionsUsername(message.content, currentUsername)
+        );
+        if (!chatSoundMuted) {
+          if (mentionMessages.length > 0) {
+            playMentionBeep();
+          } else {
+            playBeep();
+          }
+        }
         setUnreadCount((n) => n + newFromOthers.length);
+        if (mentionMessages.length > 0) {
+          setMentionUnreadCount((n) => n + mentionMessages.length);
+        }
       }
     }
     prevMessageCount.current = messages.length;
-  }, [messages, activeTab, chatSoundMuted, currentUserId]);
+  }, [messages, activeTab, chatSoundMuted, currentUserId, currentMember?.username]);
+
+  useEffect(() => {
+    if (!mobilePanelOpen) {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setMobilePanelOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [mobilePanelOpen]);
 
   const handleJoin = async () => {
     if (!id) return;
@@ -500,7 +720,12 @@ export function RoomPage() {
       const cancelled: { current: boolean } = { current: false };
       loadRoom(id, cancelled);
     } catch (err: unknown) {
-      setPasswordError(err instanceof Error ? err.message : 'Incorrect password');
+      const msg = err instanceof Error ? err.message : 'Incorrect password';
+      if (isRoomBanMessage(msg)) {
+        redirectToLobby(msg, { title: 'Banned from room', tone: 'banned' });
+        return;
+      }
+      setPasswordError(msg);
     } finally {
       setJoiningRoom(false);
     }
@@ -508,15 +733,20 @@ export function RoomPage() {
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100dvh' }}>
-        <p style={{ color: 'var(--text-muted)' }}>Loading room…</p>
+      <div className="flex min-h-dvh flex-col" style={{ background: 'var(--bg-primary)' }}>
+        <AppUtilityBar />
+        <div className="flex flex-1 items-center justify-center">
+          <p style={{ color: 'var(--text-muted)' }}>Loading room…</p>
+        </div>
       </div>
     );
   }
 
   if (passwordRequired && roomPreview !== null) {
     return (
-      <RoomPasswordGate
+      <div className="flex min-h-dvh flex-col" style={{ background: 'var(--bg-primary)' }}>
+        <AppUtilityBar />
+        <RoomPasswordGate
         preview={roomPreview}
         passwordInput={passwordInput}
         passwordError={passwordError}
@@ -532,14 +762,18 @@ export function RoomPage() {
           void navigate('/rooms');
         }}
       />
+      </div>
     );
   }
 
   if (loadError || !room) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100dvh', gap: 16 }}>
-        <p style={{ color: 'var(--text-secondary)', fontSize: 18 }}>{loadError ?? 'Room not found.'}</p>
-        <button className="btn-primary" onClick={() => { void navigate('/rooms'); }}>Back to Lobby</button>
+      <div className="flex min-h-dvh flex-col" style={{ background: 'var(--bg-primary)' }}>
+        <AppUtilityBar />
+        <div className="flex flex-1 flex-col items-center justify-center gap-4">
+          <p style={{ color: 'var(--text-secondary)', fontSize: 18 }}>{loadError ?? 'Room not found.'}</p>
+          <button className="btn-primary" onClick={() => { void navigate('/rooms'); }}>Back to Lobby</button>
+        </div>
       </div>
     );
   }
@@ -731,12 +965,14 @@ export function RoomPage() {
       });
       const updated = await attachMovieToRoom(room.id, uploadedMovie);
       setRoom(updated);
-      clearOwnerUpload();
+      setOwnerUploadFile(null);
+      setOwnerUploadError(null);
+      setOwnerUploadPercent(100);
     } catch (err: unknown) {
       setOwnerUploadError(err instanceof Error ? err.message : 'Failed to upload video');
+      setOwnerUploadPercent(null);
     } finally {
       setOwnerMovieSaving(false);
-      setOwnerUploadPercent(null);
     }
   };
 
@@ -756,9 +992,14 @@ export function RoomPage() {
     broadcastPlaybackState();
   };
 
-  const playbackStatusText = movieUploading
+  const playerStatusUploading = ownerIsUploading || movieUploading;
+  const playbackStatusText = playerStatusUploading
     ? 'UPLOADING'
     : roomStatusShortLabel(liveRoomStatus);
+  const playerStatusTone = playerToolbarStatusTone({
+    isUploading: playerStatusUploading,
+    status: liveRoomStatus,
+  });
   const ownerPlaceholderText = isOwner
     ? 'Choose one of your recent videos or upload a new one to start this room.'
     : 'Ask the owner to upload a movie.';
@@ -766,6 +1007,13 @@ export function RoomPage() {
   const roomPasswordVisible = isOwner && roomPassword.length > 0 && showRoomPassword;
   const readyCount = readinessMembers.filter((member) => member.isReady).length;
   const liveViewerCount = displayMembers.length;
+
+  const openMobilePanel = (preferredTab?: 'chat' | 'participants') => {
+    if (preferredTab === 'chat' || (preferredTab === undefined && mentionUnreadCount > 0)) {
+      setActiveTab('chat');
+    }
+    setMobilePanelOpen(true);
+  };
 
   const ownerMovieActions = isOwner && room.movie == null ? (
     <div
@@ -800,7 +1048,6 @@ export function RoomPage() {
       >
         {ownerMovieSaving ? 'Uploading…' : 'Upload'}
       </button>
-      {ownerUploadPercent !== null && <MovieUploadProgress percent={ownerUploadPercent} />}
     </div>
   ) : null;
 
@@ -815,42 +1062,43 @@ export function RoomPage() {
         overflow: 'hidden',
       }}
     >
-      {roomClosedNotice !== null && <RoomClosedOverlay message={roomClosedNotice} />}
+      {roomExitNotice !== null && (
+        <RoomClosedOverlay
+          message={roomExitNotice.message}
+          title={roomExitNotice.title}
+          tone={roomExitNotice.tone}
+        />
+      )}
 
       {/* Top bar */}
-      <header
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '10px 20px',
-          borderBottom: '1px solid var(--border-subtle)',
-          flexShrink: 0,
-          gap: 12,
-        }}
-      >
+      <header className="room-page-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span className="display" style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>
             {room.name}
           </span>
           <RoomStatusBadge status={liveRoomStatus} />
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div className="app-header-actions room-header-actions room-header-actions--compact">
+          {id !== undefined && (
+            <CopyRoomLinkButton roomId={id} compact />
+          )}
           {isOwner && (
             <button
               type="button"
               className="btn-primary"
-              style={{ padding: '7px 14px', fontSize: 13 }}
-              onClick={() => { void navigate(`/rooms/${String(id)}/edit`); }}
+              style={{ padding: '7px 14px', fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              onClick={() => { void navigate(`/room/${String(id)}/edit`); }}
               title="Edit room settings"
+              aria-label="Edit room settings"
             >
               <PencilIcon />
-              Edit room
+              <span className="room-header-action-label">Edit room</span>
             </button>
           )}
           <button
             className="btn-danger"
-            style={{ padding: '7px 16px', fontSize: 13 }}
+            style={{ padding: '7px 16px', fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            aria-label="Leave room"
             onClick={() => {
               if (!isOwner && id) {
                 void leaveRoom(id).finally(() => { void navigate('/rooms'); });
@@ -859,18 +1107,12 @@ export function RoomPage() {
               }
             }}
           >
-            Leave room
+            <LogOut size={14} aria-hidden="true" />
+            <span className="room-header-action-label">Leave room</span>
           </button>
+          <ThemeToggleButton />
         </div>
       </header>
-
-      {showMovieChangeNotice && (
-        <RoomMovieChangeNotice
-          movieName={awaitingHostMovieName}
-          isHost={isOwner}
-          loading={!moviePlayable || (showMovieSwapOverlay && !posterFrameReady && videoError === null)}
-        />
-      )}
 
       {/* Main area */}
       <div className="room-main">
@@ -881,11 +1123,11 @@ export function RoomPage() {
               roomName={room.name}
               movieName={room.movie_name}
               statusText={playbackStatusText}
-              isLive={moviePlayable && isPlaying}
+              statusTone={playerStatusTone}
               loading={movieLoading && !ownerIsUploading}
               error={ownerIsUploading ? null : movieError}
-              isUploading={movieUploading}
-              isFailed={movieFailed}
+              isUploading={playerStatusUploading}
+              isFailed={movieFailed || roomUpload?.phase === 'failed'}
               mediaSrc={mediaSrc}
               videoKey={roomMovieId}
               videoRef={videoRef}
@@ -952,17 +1194,41 @@ export function RoomPage() {
               onCancel={cancelForcePlay}
               onConfirm={confirmForcePlay}
             />
+            <RoomModerationModal
+              open={moderationTarget !== null}
+              action={moderationTarget?.action ?? 'kick'}
+              memberName={moderationTarget?.member.name ?? ''}
+              onCancel={cancelModeration}
+              onConfirm={confirmModeration}
+            />
           </div>
         </div>
 
+        <button
+          type="button"
+          className="room-mobile-toggle"
+          aria-label="Open chat and viewers"
+          onClick={() => { openMobilePanel(); }}
+        >
+          <MessageSquare size={16} aria-hidden="true" />
+          Chat
+          {unreadCount > 0 && (
+            <span className="room-mobile-toggle__badge">{String(unreadCount)}</span>
+          )}
+          {mentionUnreadCount > 0 && (
+            <span className="room-mobile-toggle__mention">@{String(mentionUnreadCount)}</span>
+          )}
+        </button>
+
+        <div
+          className={`room-sidebar-backdrop${mobilePanelOpen ? ' is-open' : ''}`}
+          aria-hidden={!mobilePanelOpen}
+          onClick={() => { setMobilePanelOpen(false); }}
+        />
+
         {/* Sidebar */}
         <aside
-          className="room-sidebar"
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-          }}
+          className={`room-sidebar${mobilePanelOpen ? ' room-sidebar--drawer-open' : ''}`}
         >
           {/* Sidebar info bar — movie title + connection status only (room name is in the top header) */}
           {(room.movie_name !== null && room.movie_name !== undefined) || socketStatus !== 'connected' || roomError !== null ? (
@@ -1066,7 +1332,10 @@ export function RoomPage() {
             value={activeTab}
             onValueChange={(tab) => {
               setActiveTab(tab);
-              if (tab === 'chat') setUnreadCount(0);
+              if (tab === 'chat') {
+                setUnreadCount(0);
+                setMentionUnreadCount(0);
+              }
             }}
             className="flex min-h-0 flex-1 flex-col overflow-hidden"
           >
@@ -1082,6 +1351,7 @@ export function RoomPage() {
                 <TabsTrigger value="chat" className="flex flex-1 items-center gap-1.5 text-xs">
                   <MessageSquare size={12} />
                   Chat{unreadCount > 0 ? ` (${String(unreadCount)})` : ''}
+                  {mentionUnreadCount > 0 ? ` · @${String(mentionUnreadCount)}` : ''}
                 </TabsTrigger>
               </TabsList>
               <button
@@ -1103,7 +1373,95 @@ export function RoomPage() {
               value="participants"
               className="soft-scroll mt-1 min-h-0 flex-1 overflow-y-auto"
             >
-              <InviteFriends members={displayMembers} />
+              <InviteFriends members={displayMembers} roomId={id ?? ''} />
+              {isOwner && (
+                <div style={{ padding: '4px 12px 8px' }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: showBlockedUsers ? 8 : 0
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 700,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.08em',
+                        color: 'var(--text-muted)'
+                      }}
+                    >
+                      Blocked users
+                    </span>
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      style={{ fontSize: 11, padding: '4px 8px', minHeight: 0 }}
+                      onClick={toggleBlockedUsersPanel}
+                    >
+                      {showBlockedUsers ? 'Hide' : 'Manage'}
+                    </button>
+                  </div>
+                  {showBlockedUsers && (
+                    <div
+                      style={{
+                        border: '1px solid var(--border-subtle)',
+                        borderRadius: 10,
+                        background: 'var(--bg-elevated)',
+                        padding: '8px 10px'
+                      }}
+                    >
+                      {blockedLoading && (
+                        <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
+                          Loading…
+                        </p>
+                      )}
+                      {!blockedLoading && blockedError !== null && (
+                        <p style={{ margin: 0, fontSize: 12, color: 'var(--danger)' }}>
+                          {blockedError}
+                        </p>
+                      )}
+                      {!blockedLoading && blockedError === null && blockedUsers.length === 0 && (
+                        <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
+                          No blocked users.
+                        </p>
+                      )}
+                      {!blockedLoading && blockedUsers.length > 0 && (
+                        <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: 6 }}>
+                          {blockedUsers.map((user) => (
+                            <li
+                              key={user.id}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: 8
+                              }}
+                            >
+                              <span style={{ fontSize: 13, color: 'var(--text-primary)' }}>
+                                {user.name}
+                              </span>
+                              <button
+                                type="button"
+                                className="btn-ghost"
+                                style={{ fontSize: 11, padding: '4px 8px', minHeight: 0 }}
+                                disabled={unblockingId === user.id}
+                                onClick={() => {
+                                  handleUnblockUser(user.id);
+                                }}
+                              >
+                                {unblockingId === user.id ? 'Unblocking…' : 'Unblock'}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
               <ParticipantList
                 members={displayMembers}
                 currentUserId={currentUserId}
@@ -1124,7 +1482,11 @@ export function RoomPage() {
                 onSend={socketSendMessage}
                 draftMessage={chatDraft}
                 onDraftMessageChange={setChatDraft}
+                mentionCandidates={chatMentionCandidates}
                 friendUserIds={friendUserIds}
+                currentUsername={currentMember?.username ?? null}
+                usernameColors={chatUsernameColors}
+                mentionedMessageIds={mentionedMessageIds}
               />
             </TabsContent>
           </Tabs>

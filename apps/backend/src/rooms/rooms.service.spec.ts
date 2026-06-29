@@ -22,6 +22,7 @@ describe('RoomsService', () => {
     findOneAccessibleById: jest.fn(),
     setStatus: jest.fn(),
     banUser: jest.fn(),
+    unbanUser: jest.fn(),
     create: jest.fn(),
     updateIfCreator: jest.fn(),
     softDeleteIfCreator: jest.fn(),
@@ -153,6 +154,44 @@ describe('RoomsService', () => {
     expect((realtimeBroadcast.removeRoomMember as jest.Mock).mock.calls).toEqual([[roomId, userId]]);
     expect((roomStateService.syncStatus as jest.Mock).mock.calls).toEqual([[roomId, creatorId]]);
     expect((roomsRepo.setStatus as jest.Mock).mock.calls).toEqual([[roomId, 'waiting']]);
+  });
+
+  it('lists blocked users for the room creator', async () => {
+    const roomId = new Types.ObjectId().toString();
+    const creatorId = new Types.ObjectId().toString();
+    const bannedId = new Types.ObjectId().toString();
+
+    roomsRepo.findOneAccessibleById.mockResolvedValue({
+      _id: new Types.ObjectId(roomId),
+      creator: { _id: new Types.ObjectId(creatorId), userName: 'Host' },
+      banned_users: [{ _id: new Types.ObjectId(bannedId), userName: 'Banned User' }]
+    } as never);
+
+    await expect(service.listBlockedUsers(roomId, creatorId)).resolves.toEqual([
+      { id: bannedId, name: 'Banned User' }
+    ]);
+  });
+
+  it('rejects blocked user list for non-creators', async () => {
+    const roomId = new Types.ObjectId().toString();
+    const creatorId = new Types.ObjectId().toString();
+    const viewerId = new Types.ObjectId().toString();
+
+    roomsRepo.findOneAccessibleById.mockResolvedValue({
+      _id: new Types.ObjectId(roomId),
+      creator: new Types.ObjectId(creatorId),
+      banned_users: []
+    } as never);
+    roomsRepo.findRawById.mockResolvedValue({
+      _id: new Types.ObjectId(roomId),
+      creator: new Types.ObjectId(creatorId),
+      deleted_at: null,
+      banned_users: []
+    } as never);
+
+    await expect(service.listBlockedUsers(roomId, viewerId)).rejects.toBeInstanceOf(
+      ForbiddenException
+    );
   });
 
   it('closes the realtime room when the creator deletes it', async () => {

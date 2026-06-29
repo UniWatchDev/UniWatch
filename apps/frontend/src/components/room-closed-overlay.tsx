@@ -1,37 +1,53 @@
-import { DoorClosed } from 'lucide-react';
+import {
+  ROOM_EXIT_TONE_LABELS,
+  getRoomExitToneStyle,
+  type RoomExitTone
+} from '@/components/room-exit-notice';
 
 interface RoomClosedOverlayProps {
   message: string;
+  title?: string;
+  tone?: RoomExitTone;
 }
 
-export function RoomClosedOverlay({ message }: RoomClosedOverlayProps) {
+export function RoomClosedOverlay({
+  message,
+  title,
+  tone = 'closed'
+}: RoomClosedOverlayProps) {
+  const styles = getRoomExitToneStyle(tone);
+  const Icon = styles.Icon;
+  const heading = title ?? ROOM_EXIT_TONE_LABELS[tone];
+
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 px-6 backdrop-blur-sm animate-in fade-in duration-300"
+      className={`fixed inset-0 z-[100] flex items-center justify-center px-6 backdrop-blur-sm animate-in fade-in duration-300 ${styles.overlayBackdrop}`}
       role="alertdialog"
       aria-modal="true"
       aria-labelledby="room-closed-title"
       aria-describedby="room-closed-description"
     >
-      <div className="flex max-w-md flex-col items-center gap-4 rounded-2xl border border-amber-500/25 bg-amber-500/10 px-8 py-10 text-center shadow-2xl animate-in zoom-in-95 slide-in-from-bottom-4 duration-300">
+      <div
+        className={`flex max-w-md flex-col items-center gap-4 rounded-2xl border px-8 py-10 text-center animate-in zoom-in-95 slide-in-from-bottom-4 duration-300 ${styles.panel}`}
+      >
         <div
-          className="flex size-16 items-center justify-center rounded-full border border-amber-500/30 bg-amber-500/15 text-amber-100"
+          className={`flex size-16 items-center justify-center rounded-full border ${styles.iconWrap}`}
           aria-hidden="true"
         >
-          <DoorClosed className="size-8" />
+          <Icon className="size-8" />
         </div>
 
         <div>
           <p
             id="room-closed-title"
-            className="m-0 font-mono text-xs uppercase tracking-[0.24em] text-amber-200/70"
+            className={`m-0 font-mono text-xs uppercase tracking-[0.24em] ${styles.kicker}`}
           >
-            Room closed
+            {heading}
           </p>
-          <p id="room-closed-description" className="mt-3 mb-0 text-lg font-semibold text-white">
+          <p id="room-closed-description" className={`mt-3 mb-0 text-lg font-semibold ${styles.message}`}>
             {message}
           </p>
-          <p className="mt-2 mb-0 text-sm text-white/65">Returning you to the lobby…</p>
+          <p className={`mt-2 mb-0 text-sm ${styles.footer}`}>Returning you to the lobby…</p>
         </div>
       </div>
     </div>

@@ -55,16 +55,53 @@ export class RoomModerationService {
       await this.rooms.banUser(roomId, new Types.ObjectId(targetUserId));
     }
 
-    for (const socketId of targetSocketIds) {
-      this.broadcast.disconnectSocket(socketId, errorMessage);
+    if (targetSocketIds.length > 0) {
+      await this.ejectUserFromLiveRoom(roomId, targetUserId, creatorId);
     }
+
+    for (const socketId of targetSocketIds) {
+      if (shouldBan) {
+        this.broadcast.banSocket(socketId, roomId, errorMessage);
+      } else {
+        this.broadcast.kickSocket(socketId, roomId, errorMessage);
+      }
+    }
+  }
+
+  private async ejectUserFromLiveRoom(
+    roomId: string,
+    targetUserId: string,
+    creatorId: string | null
+  ): Promise<void> {
+    if (!this.roomState.get(roomId)) {
+      return;
+    }
+
+    const isConnected = this.roomState
+      .get(roomId)
+      ?.connectedUsers.some((user) => user.userId === targetUserId);
+    if (!isConnected) {
+      return;
+    }
+
+    if (this.roomState.isLastUserLeave(roomId, targetUserId)) {
+      this.roomState.prepareEmptyRoom(roomId);
+    }
+
+    const removed = this.roomState.removeUser(roomId, targetUserId);
+    if (!removed) {
+      return;
+    }
+
+    this.broadcast.emitUserLeft(roomId, targetUserId);
 
     if (!this.roomState.get(roomId)) {
       this.broadcast.clearCountdown(roomId);
-    } else {
-      await this.syncStatus(roomId, creatorId);
-      this.broadcast.emitRoomPresenceChanged(roomId);
+      return;
     }
+
+    await this.syncStatus(roomId, creatorId);
+    this.broadcast.emitRoomPresenceChanged(roomId);
   }
 
   private collectUserSocketIds(roomId: string, targetUserId: string): string[] {

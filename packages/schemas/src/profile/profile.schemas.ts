@@ -89,6 +89,7 @@ export const userProfileSchema = z.strictObject({
   emailVerified: z.boolean(),
   isProfilePrivate: z.boolean(),
   avatarId: avatarPresetIdSchema,
+  isAdmin: z.boolean(),
   createdAt: z.string()
 });
 

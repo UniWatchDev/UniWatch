@@ -10,6 +10,7 @@ export function MovieUploadField({
   onFileChange,
   onRemove,
   disabled,
+  required = false,
 }: {
   label?: string;
   file: File | null;
@@ -17,6 +18,7 @@ export function MovieUploadField({
   onFileChange: (file: File | null, validationError: string | null) => void;
   onRemove?: () => void;
   disabled?: boolean;
+  required?: boolean;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -33,7 +35,11 @@ export function MovieUploadField({
     <div>
       <label style={labelStyle}>
         {label}
-        <span style={{ color: 'var(--text-muted)', fontWeight: 400, marginLeft: 4 }}>(optional)</span>
+        {!required ? (
+          <span style={{ color: 'var(--text-muted)', fontWeight: 400, marginLeft: 4 }}>(optional)</span>
+        ) : (
+          <span style={{ color: '#f87171', marginLeft: 2 }}>*</span>
+        )}
       </label>
       <div
         role="button"
@@ -74,7 +80,7 @@ export function MovieUploadField({
           borderRadius: 14,
           textAlign: 'center',
           transition: 'border-color 200ms ease, background 200ms ease, transform 200ms ease',
-          background: file ? 'var(--accent-dim)' : isDragging ? 'rgba(124,58,237,0.08)' : 'transparent',
+          background: file ? 'var(--accent-dim)' : isDragging ? 'var(--accent-dim)' : 'transparent',
           cursor: disabled ? 'not-allowed' : 'pointer',
           opacity: disabled ? 0.7 : 1,
           minHeight: 158,
@@ -94,8 +100,8 @@ export function MovieUploadField({
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  background: 'rgba(124,58,237,0.14)',
-                  color: 'var(--accent-hover)',
+                  background: 'var(--accent-dim)',
+                  color: 'var(--accent)',
                   fontSize: 24,
                 }}
               >

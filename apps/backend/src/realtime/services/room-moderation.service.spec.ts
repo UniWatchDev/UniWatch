@@ -75,13 +75,17 @@ describe('RoomModerationService', () => {
     expect(rooms.banUser).toHaveBeenCalledTimes(1);
     expect(first.disconnect).toHaveBeenCalledWith(true);
     expect(second.disconnect).toHaveBeenCalledWith(true);
-    expect(first.emit).toHaveBeenCalledWith('room:error', { message: 'You were removed' });
+    expect(first.emit).toHaveBeenCalledWith('room:banned', { roomId, message: 'You were removed' });
+    expect(roomEmit).toHaveBeenCalledWith('room:user-left', { roomId, userId: targetId });
+    expect(roomState.get(roomId)?.connectedUsers.some((user) => user.userId === targetId)).toBe(
+      false
+    );
   });
 
   it('kicks without banning', async () => {
     mockHostRoom();
-    registerSocket('target-1');
-    registerSocket('target-2');
+    const first = registerSocket('target-1');
+    const second = registerSocket('target-2');
 
     await moderation.moderate({
       actorUserId: hostId,
@@ -92,6 +96,14 @@ describe('RoomModerationService', () => {
     });
 
     expect(rooms.banUser).not.toHaveBeenCalled();
+    expect(first.emit).toHaveBeenCalledWith('room:kicked', { roomId, message: 'kicked' });
+    expect(second.emit).toHaveBeenCalledWith('room:kicked', { roomId, message: 'kicked' });
+    expect(first.disconnect).toHaveBeenCalledWith(true);
+    expect(second.disconnect).toHaveBeenCalledWith(true);
+    expect(roomEmit).toHaveBeenCalledWith('room:user-left', { roomId, userId: targetId });
+    expect(roomState.get(roomId)?.connectedUsers.some((user) => user.userId === targetId)).toBe(
+      false
+    );
   });
 
   it('rejects when the actor is not the room creator', async () => {

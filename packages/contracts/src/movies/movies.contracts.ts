@@ -1,5 +1,6 @@
 import {
   MOVIES_ENDPOINT,
+  MOVIES_CATALOG_ENDPOINT,
   MOVIE_ENDPOINT,
   MOVIE_RESOLVE_ENDPOINT,
   MOVIE_STREAM_ENDPOINT,
@@ -25,6 +26,12 @@ import type { EndpointContract } from '../shared/endpoint.js';
 export const listMoviesContract: EndpointContract<MovieResponse[]> = {
   method: 'GET',
   path: MOVIES_ENDPOINT,
+  responseSchema: moviesListSchema
+};
+
+export const listCatalogMoviesContract: EndpointContract<MovieResponse[]> = {
+  method: 'GET',
+  path: MOVIES_CATALOG_ENDPOINT,
   responseSchema: moviesListSchema
 };
 

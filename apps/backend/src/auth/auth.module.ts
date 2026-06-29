@@ -5,6 +5,8 @@ import { RefreshSessionRecord, RefreshSessionSchema } from '@/auth/refresh-sessi
 import { RefreshSessionRepository } from '@/auth/refresh-session.repository';
 import { UserRecord, UserSchema } from '@/auth/user.schema';
 import { UserRepository } from '@/auth/user.repository';
+import { AdminGuard } from '@/auth/admin.guard';
+import { AdminRoleService } from '@/auth/admin-role.service';
 import { AuthController } from '@/auth/auth.controller';
 import { AuthService } from '@/auth/auth.service';
 import { JwtAuthGuard } from '@/auth/jwt-auth.guard';
@@ -19,7 +21,7 @@ import { MailModule } from '@/mail/mail.module';
     ])
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtAuthGuard, UserRepository, RefreshSessionRepository],
-  exports: [AuthService, JwtAuthGuard, UserRepository]
+  providers: [AuthService, JwtAuthGuard, AdminGuard, AdminRoleService, UserRepository, RefreshSessionRepository],
+  exports: [AuthService, JwtAuthGuard, AdminGuard, AdminRoleService, UserRepository]
 })
 export class AuthModule {}

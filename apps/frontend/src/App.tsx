@@ -26,6 +26,8 @@ import { ProfilePage } from '@/profile/profile-page';
 import { ProfileRedirect } from '@/profile/profile-redirect';
 import { AboutPage } from '@/pages/about';
 import { PrivacyPolicyPage } from '@/pages/privacy-policy';
+import { LegacyRoomEditRedirect } from '@/rooms/legacy-room-edit-redirect';
+import { RoomSessionLayout } from '@/rooms/room-session-layout';
 
 function AppShell() {
   const { pathname } = useLocation();
@@ -46,9 +48,12 @@ function AppShell() {
           <Route path="/u/:userName" element={<ProfilePage />} />
           <Route path="/" element={<LandingPage />} />
           <Route path="/rooms" element={<RequireAuth><Lobby /></RequireAuth>} />
-          <Route path="/room/:id" element={<RequireAuth><RoomPage /></RequireAuth>} />
+          <Route path="/room/:id" element={<RequireAuth><RoomSessionLayout /></RequireAuth>}>
+            <Route index element={<RoomPage />} />
+            <Route path="edit" element={<EditRoom />} />
+          </Route>
           <Route path="/rooms/new" element={<RequireAuth><CreateRoom /></RequireAuth>} />
-          <Route path="/rooms/:id/edit" element={<RequireAuth><EditRoom /></RequireAuth>} />
+          <Route path="/rooms/:id/edit" element={<RequireAuth><LegacyRoomEditRedirect /></RequireAuth>} />
           <Route path="/about" element={<AboutPage />} />
           <Route path="/privacy" element={<PrivacyPolicyPage />} />
         </Routes>

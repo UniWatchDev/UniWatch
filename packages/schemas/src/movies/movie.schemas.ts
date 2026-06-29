@@ -65,6 +65,7 @@ export const movieResponseSchema = z.object({
   language: movieLanguageSchema,
   description: z.string().nullable(),
   upload_status: movieUploadStatusSchema,
+  in_catalog: z.boolean(),
   size_bytes: z.number().nullable(),
   mime_type: z.string().nullable(),
   duration_seconds: z.number().nullable(),

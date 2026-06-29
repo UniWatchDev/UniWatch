@@ -238,6 +238,33 @@ export class UserRepository {
     return counts;
   }
 
+  setIsAdmin(id: string, isAdmin: boolean): Promise<UserDocument | null> {
+    if (!Types.ObjectId.isValid(id)) {
+      return Promise.resolve(null);
+    }
+    return this.model.findByIdAndUpdate(id, { $set: { isAdmin } }, { returnDocument: 'after' });
+  }
+
+  async promoteEmailsToAdmin(emails: string[]): Promise<number> {
+    if (emails.length === 0) {
+      return 0;
+    }
+    const result = await this.model.updateMany(
+      { email: { $in: emails }, isAdmin: { $ne: true } },
+      { $set: { isAdmin: true } }
+    );
+    return result.modifiedCount;
+  }
+
+  async demoteAdminsNotInEmails(emails: string[]): Promise<number> {
+    const filter =
+      emails.length === 0
+        ? { isAdmin: true }
+        : { isAdmin: true, email: { $nin: emails } };
+    const result = await this.model.updateMany(filter, { $set: { isAdmin: false } });
+    return result.modifiedCount;
+  }
+
   /** Fetch multiple users by id in one query. */
   findManyByIds(ids: string[]): Promise<UserDocument[]> {
     const objectIds = ids.filter((id) => Types.ObjectId.isValid(id)).map((id) => new Types.ObjectId(id));

@@ -23,6 +23,7 @@ import type {
   MovieStreamResponse,
   UpdateMovieInput
 } from '@repo/schemas/movies';
+import type { CreateCatalogMovieInput, UpdateCatalogMovieInput, UploadCatalogMovieBody } from '@repo/schemas/admin';
 
 import { buildMovieThumbnailSvg } from '@/storage/movie-thumbnail.util';
 import { STORAGE_SERVICE, type StorageService, type StoredObject } from '@/storage/storage.interface';
@@ -61,6 +62,7 @@ function toResponse(doc: MovieDocument): MovieResponse {
         : null,
     has_file: hasFile,
     file_deleted_at: doc.file_deleted_at?.toISOString() ?? null,
+    in_catalog: doc.in_catalog,
     created_at: doc.created_at.toISOString(),
     updated_at: doc.updated_at.toISOString()
   };
@@ -78,6 +80,100 @@ export class MoviesService {
   async list(ownerId: string): Promise<MovieResponse[]> {
     const docs = await this.movies.findAllForOwner(ownerId);
     return docs.map(toResponse);
+  }
+
+  async listCatalog(): Promise<MovieResponse[]> {
+    const docs = await this.movies.findCatalog();
+    return docs.map(toResponse);
+  }
+
+  async listCatalogAdmin(): Promise<MovieResponse[]> {
+    const docs = await this.movies.findAllCatalog();
+    return docs.map(toResponse);
+  }
+
+  async createCatalogEntry(
+    ownerId: string,
+    data: CreateCatalogMovieInput
+  ): Promise<MovieResponse> {
+    try {
+      const doc = await this.movies.createCatalogEntry(ownerId, data);
+      return toResponse(doc);
+    } catch (error) {
+      if (isDuplicateKeyError(error)) {
+        throw new ConflictException(`You already have a movie named "${data.name}"`);
+      }
+      throw error;
+    }
+  }
+
+  async updateCatalogEntry(id: string, data: UpdateCatalogMovieInput): Promise<MovieResponse> {
+    const doc = await this.movies.updateCatalogEntry(id, data);
+    if (doc === null) {
+      throw new NotFoundException('Catalog movie not found');
+    }
+    return toResponse(doc);
+  }
+
+  async uploadCatalogMovie(
+    ownerId: string,
+    file: Express.Multer.File,
+    metadata: UploadCatalogMovieBody
+  ): Promise<MovieResponse> {
+    const allowedMimes = this.config.get('MOVIE_ALLOWED_MIMES', { infer: true });
+    const maxBytes = this.config.get('MOVIE_UPLOAD_MAX_BYTES', { infer: true });
+
+    const resolvedMime = resolveMovieMime(file.mimetype, file.originalname);
+    if (resolvedMime === null || !allowedMimes.includes(resolvedMime)) {
+      throw new BadRequestException(`Only ${allowedMimes.join(', ')} files are allowed`);
+    }
+    if (file.size > maxBytes) {
+      throw new BadRequestException(`File exceeds maximum size of ${String(maxBytes)} bytes`);
+    }
+
+    const movieId = new Types.ObjectId();
+    const movieIdStr = movieId.toString();
+    const storageKey = `catalog/${ownerId}/${movieIdStr}${extensionForMovieMime(resolvedMime)}`;
+    const thumbnailKey = `catalog/${ownerId}/${movieIdStr}-poster.svg`;
+
+    try {
+      const stream = createReadStream(file.path);
+      await this.storage.putObject({
+        key: storageKey,
+        body: stream,
+        contentType: resolvedMime,
+        contentLength: file.size
+      });
+
+      const thumbnailBody = buildMovieThumbnailSvg(metadata.name.trim());
+      await this.storage.putObject({
+        key: thumbnailKey,
+        body: thumbnailBody,
+        contentType: 'image/svg+xml',
+        contentLength: thumbnailBody.length
+      });
+
+      const doc = await this.movies.createCatalogEntryWithId(movieIdStr, ownerId, {
+        name: metadata.name,
+        language: metadata.language,
+        description: metadata.description,
+        storage_key: storageKey,
+        thumbnail_key: thumbnailKey,
+        mime_type: resolvedMime,
+        size_bytes: file.size
+      });
+
+      return toResponse(doc);
+    } catch (error) {
+      await this.storage.deleteObject(storageKey).catch(() => undefined);
+      await this.storage.deleteObject(thumbnailKey).catch(() => undefined);
+      if (isDuplicateKeyError(error)) {
+        throw new ConflictException(`You already have a movie named "${metadata.name}"`);
+      }
+      throw error;
+    } finally {
+      await fs.unlink(file.path).catch(() => undefined);
+    }
   }
 
   async get(id: string, userId: string): Promise<MovieResponse> {
@@ -290,13 +386,7 @@ export class MoviesService {
       throw new NotFoundException('Movie thumbnail is not available');
     }
 
-    const isOwner = doc.ownerId.toString() === userId;
-    if (!isOwner) {
-      const hasRoomAccess = await this.userHasRoomAccessToMovie(id, userId);
-      if (!hasRoomAccess) {
-        throw new ForbiddenException('You do not have access to this movie');
-      }
-    }
+    await this.assertMovieAccess(doc, id, userId);
 
     const expiresIn = this.config.get('MOVIE_STREAM_URL_EXPIRES_SECONDS', {
       infer: true
@@ -338,13 +428,7 @@ export class MoviesService {
       throw new NotFoundException(`Movie "${id}" not found`);
     }
 
-    const isOwner = doc.ownerId.toString() === userId;
-    if (!isOwner) {
-      const hasRoomAccess = await this.userHasRoomAccessToMovie(id, userId);
-      if (!hasRoomAccess) {
-        throw new ForbiddenException('You do not have access to this movie');
-      }
-    }
+    await this.assertMovieAccess(doc, id, userId);
 
     if (options.requireReadyFile) {
       if (
@@ -357,6 +441,22 @@ export class MoviesService {
     }
 
     return doc;
+  }
+
+  private async assertMovieAccess(
+    doc: MovieDocument,
+    movieId: string,
+    userId: string
+  ): Promise<void> {
+    const isOwner = doc.ownerId.toString() === userId;
+    if (isOwner || doc.in_catalog) {
+      return;
+    }
+
+    const hasRoomAccess = await this.userHasRoomAccessToMovie(movieId, userId);
+    if (!hasRoomAccess) {
+      throw new ForbiddenException('You do not have access to this movie');
+    }
   }
 
   private async userHasRoomAccessToMovie(movieId: string, userId: string): Promise<boolean> {

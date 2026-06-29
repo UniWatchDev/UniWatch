@@ -123,6 +123,16 @@ export class RoomRepository {
     );
   }
 
+  unbanUser(roomId: string, userId: Types.ObjectId): Promise<RoomDocument | null> {
+    return this.model
+      .findByIdAndUpdate(
+        roomId,
+        { $pull: { banned_users: userId } },
+        { returnDocument: 'after' }
+      )
+      .populate('creator movie allowed_users banned_users');
+  }
+
   updateIfCreator(
     roomId: string,
     creatorId: string,

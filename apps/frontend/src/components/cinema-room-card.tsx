@@ -24,25 +24,11 @@ export function CinemaRoomCard({ room }: CinemaRoomCardProps) {
       tabIndex={0}
       onClick={handleClick}
       onKeyDown={handleKey}
-      className="cinema-card-hover group relative cursor-pointer overflow-hidden rounded-xl"
-      style={{
-        aspectRatio: '16 / 9',
-        border: '1px solid rgba(255,255,255,0.07)',
-        background: '#100d08',
-        userSelect: 'none',
-      }}
+      className="cinema-card-shell cinema-card-hover group relative cursor-pointer overflow-hidden rounded-xl"
+      style={{ userSelect: 'none' }}
     >
       {/* Gradient background standing in for movie art */}
-      <div
-        className="absolute inset-0"
-        style={{
-          background: `
-            radial-gradient(ellipse at 30% 40%, rgba(245, 158, 11, 0.14) 0%, transparent 65%),
-            radial-gradient(ellipse at 80% 20%, rgba(249, 115, 22, 0.10) 0%, transparent 60%),
-            linear-gradient(160deg, #1a1208 0%, #100d08 100%)
-          `,
-        }}
-      />
+      <div className="cinema-card-fallback-bg absolute inset-0" />
 
       {/* Status badge — top left */}
       {statusCfg !== null && (

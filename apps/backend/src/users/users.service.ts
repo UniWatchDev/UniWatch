@@ -187,4 +187,5 @@ export class UsersService {
     if (roomIds.length === 0) return new Map();
     return this.rooms.findTypesByIds(roomIds);
   }
+
 }

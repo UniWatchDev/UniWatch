@@ -28,7 +28,8 @@ export const realtimeChatMessageSchema = z.object({
   userName: z.string(),
   color: z.string(),
   content: z.string().min(1).max(2000),
-  timestamp: z.string().datetime()
+  timestamp: z.string().datetime(),
+  kind: z.enum(['chat', 'system']).default('chat')
 });
 
 export type RealtimeChatMessage = z.infer<typeof realtimeChatMessageSchema>;
@@ -192,6 +193,20 @@ export const roomClosedEventSchema = z.strictObject({
 });
 
 export type RoomClosedEvent = z.infer<typeof roomClosedEventSchema>;
+
+export const roomKickedEventSchema = z.strictObject({
+  roomId: z.string(),
+  message: z.string()
+});
+
+export type RoomKickedEvent = z.infer<typeof roomKickedEventSchema>;
+
+export const roomBannedEventSchema = z.strictObject({
+  roomId: z.string(),
+  message: z.string()
+});
+
+export type RoomBannedEvent = z.infer<typeof roomBannedEventSchema>;
 
 // ---------------------------------------------------------------------------
 // Constant

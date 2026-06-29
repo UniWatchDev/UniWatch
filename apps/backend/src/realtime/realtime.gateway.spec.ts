@@ -1,6 +1,6 @@
 import { Types } from 'mongoose';
 import type { Server } from 'socket.io';
-import { REALTIME_SERVER_EVENTS } from '@repo/consts/realtime';
+import { REALTIME_SERVER_EVENTS, ROOM_BANNED_MESSAGE, ROOM_KICKED_MESSAGE } from '@repo/consts/realtime';
 import type { PlaybackState } from '@repo/schemas/realtime';
 
 import { RealtimeGateway } from '@/realtime/realtime.gateway';
@@ -121,12 +121,16 @@ describe('RealtimeGateway', () => {
   });
 
   function mockHostRoom(movieId: string, movieName = 'Room movie'): void {
-    rooms.findOneAccessibleById.mockResolvedValue({
+    const roomDoc = {
       _id: new Types.ObjectId(roomId),
       creator: new Types.ObjectId(hostId),
       movie: new Types.ObjectId(movieId),
-      movie_name: movieName
-    } as never);
+      movie_name: movieName,
+      deleted_at: null,
+      banned_users: []
+    } as never;
+    rooms.findOneAccessibleById.mockResolvedValue(roomDoc);
+    rooms.findRawById.mockResolvedValue(roomDoc);
   }
 
   function roomEmitPlaybackPayload(eventName: string): { playback: PlaybackState } {
@@ -202,8 +206,14 @@ describe('RealtimeGateway', () => {
 
     await gateway.handleKickUser(socket as never, { roomId, targetUserId: viewerId });
 
-    expect(viewerSocketTwo.emit).toHaveBeenCalledWith('room:error', { message: 'kicked from the room' });
-    expect(viewerSocketThree.emit).toHaveBeenCalledWith('room:error', { message: 'kicked from the room' });
+    expect(viewerSocketTwo.emit).toHaveBeenCalledWith(REALTIME_SERVER_EVENTS.roomKicked, {
+      roomId,
+      message: ROOM_KICKED_MESSAGE
+    });
+    expect(viewerSocketThree.emit).toHaveBeenCalledWith(REALTIME_SERVER_EVENTS.roomKicked, {
+      roomId,
+      message: ROOM_KICKED_MESSAGE
+    });
     expect(viewerSocketTwo.disconnect).toHaveBeenCalledWith(true);
     expect(viewerSocketThree.disconnect).toHaveBeenCalledWith(true);
   });
@@ -220,7 +230,10 @@ describe('RealtimeGateway', () => {
     await gateway.handleBlockUser(socket as never, { roomId, targetUserId: viewerId });
 
     expect((rooms.banUser as jest.Mock).mock.calls).toHaveLength(1);
-    expect(viewerSocket.emit).toHaveBeenCalledWith('room:error', { message: 'blocked from the room' });
+    expect(viewerSocket.emit).toHaveBeenCalledWith(REALTIME_SERVER_EVENTS.roomBanned, {
+      roomId,
+      message: ROOM_BANNED_MESSAGE
+    });
     expect(viewerSocket.disconnect).toHaveBeenCalledWith(true);
   });
 
@@ -262,6 +275,12 @@ describe('RealtimeGateway', () => {
     expect(roomEmit).toHaveBeenCalledWith(
       'room:user-joined',
       expect.objectContaining({ userId: viewerId, roomId })
+    );
+    const messages = roomState.get(roomId)?.messages ?? [];
+    expect(messages.some((message) => message.kind === 'system' && message.content === 'Viewer joined the room')).toBe(true);
+    expect(roomEmit).toHaveBeenCalledWith(
+      REALTIME_SERVER_EVENTS.messageReceived,
+      expect.objectContaining({ kind: 'system', content: 'Viewer joined the room' })
     );
     expect(roomEmit).not.toHaveBeenCalledWith('room:state', expect.anything());
   });
@@ -674,6 +693,11 @@ describe('RealtimeGateway', () => {
     expect(playback?.movieId).toBe(initialMovieId);
     expect(roomState.syncStatus(roomId, hostId)).toBe('watching');
     expect(roomEmit).toHaveBeenCalledWith('room:presence-changed', expect.any(Object));
+    expect(roomEmit).toHaveBeenCalledWith(
+      REALTIME_SERVER_EVENTS.messageReceived,
+      expect.objectContaining({ kind: 'system', content: 'Viewer left the room' })
+    );
+    expect(roomState.get(roomId)?.messages.some((message) => message.content === 'Viewer left the room')).toBe(true);
     expect(roomEmitHasEvent(REALTIME_SERVER_EVENTS.roomState)).toBe(false);
   });
 

@@ -51,6 +51,20 @@ export class RealtimeBroadcastService implements RealtimeBroadcastPort {
     socket.disconnect(true);
   }
 
+  kickSocket(socketId: string, roomId: string, message: string): void {
+    const socket = this.getSocket(socketId);
+    if (!socket) return;
+    socket.emit(REALTIME_SERVER_EVENTS.roomKicked, { roomId, message });
+    socket.disconnect(true);
+  }
+
+  banSocket(socketId: string, roomId: string, message: string): void {
+    const socket = this.getSocket(socketId);
+    if (!socket) return;
+    socket.emit(REALTIME_SERVER_EVENTS.roomBanned, { roomId, message });
+    socket.disconnect(true);
+  }
+
   buildRoomState(roomId: string): RoomStateEvent {
     const state = this.roomState.getOrCreate(roomId);
     return {

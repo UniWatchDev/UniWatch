@@ -5,7 +5,7 @@ import { Play, MessageSquare, Zap, Users } from 'lucide-react';
 import { useCookieAuth } from '@/auth/use-cookie-auth';
 import { StarField } from '@/components/star-field';
 import { useTheme } from '@/theme/use-theme';
-import { ThemeToggle } from '@/theme/theme-toggle';
+import { ThemeToggleButton } from '@/theme/theme-toggle-button';
 
 const FEATURES = [
   {
@@ -71,10 +71,7 @@ export function LandingPage() {
       />
 
       {/* Top bar */}
-      <header
-        className="relative z-10 flex items-center justify-between px-6 py-5 sm:px-10"
-        style={{ flexShrink: 0 }}
-      >
+      <header className="landing-page-header relative z-10 flex items-center justify-between">
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span
             style={{
@@ -110,14 +107,14 @@ export function LandingPage() {
           </span>
         </div>
 
-        <nav style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <ThemeToggle />
+        <nav className="app-header-actions">
           <Link to="/login" className="btn-ghost navbar-link" style={{ fontSize: 13 }}>
             Sign In
           </Link>
           <Link to="/register" className="btn-primary navbar-link" style={{ fontSize: 13 }}>
             Get Started
           </Link>
+          <ThemeToggleButton />
         </nav>
       </header>
 
